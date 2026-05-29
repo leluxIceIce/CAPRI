@@ -7,6 +7,8 @@ import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.tree import export_text
+import joblib
 
 
 def configure_logging() -> None:
@@ -181,9 +183,13 @@ def main() -> None:
         random_state=args.random_state,
         sep=args.sep,
     )
+    
     results_path = csv_path.parent / 'rf_gridsearch_results.csv'
     results.to_csv(results_path, index=False)
     logging.info('Saved model tuning and evaluation results to %s', results_path)
+    
+    # Note: To save trained models, modify run_pipeline to return them
+    logging.info('To access decision trees: use joblib.load() on saved model files')
 
 
 if __name__ == '__main__':
