@@ -172,15 +172,16 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     configure_logging()
     args = parse_args()
+    csv_path = Path(args.csv_path)
     results = run_pipeline(
-        csv_path=args.csv_path,
+        csv_path=csv_path,
         response_columns=args.responses,
         test_size=args.test_size,
         cv=args.cv,
         random_state=args.random_state,
         sep=args.sep,
     )
-    results_path = Path('rf_gridsearch_results.csv')
+    results_path = csv_path.parent / 'rf_gridsearch_results.csv'
     results.to_csv(results_path, index=False)
     logging.info('Saved model tuning and evaluation results to %s', results_path)
 
