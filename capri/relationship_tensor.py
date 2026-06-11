@@ -53,8 +53,8 @@ class RelationshipStructureExtractor:
 
     def compute_local_mi(self, c1: np.ndarray, c2: np.ndarray, bins: int = 3) -> np.ndarray:
         """Computes discretized local Mutual Information using sliding window."""
-        d1 = np.clip(np.floor(c1 * (bins - 0.01)), 0, bins - 1).astype(int)
-        d2 = np.clip(np.floor(c2 * (bins - 0.01)), 0, bins - 1).astype(int)
+        d1 = np.clip(np.floor(c1 * (bins - 0.01)), 0, bins - 1).astype(np.int32)
+        d2 = np.clip(np.floor(c2 * (bins - 0.01)), 0, bins - 1).astype(np.int32)
         
         H, W = c1.shape
         r = self.window_size // 2
@@ -64,27 +64,24 @@ class RelationshipStructureExtractor:
             for j in range(W):
                 i_min, i_max = max(0, i - r), min(H, i + r + 1)
                 j_min, j_max = max(0, j - r), min(W, j + r + 1)
-                p1 = d1[i_min:i_max, j_min:j_max].flatten()
-                p2 = d2[i_min:i_max, j_min:j_max].flatten()
+                p1 = d1[i_min:i_max, j_min:j_max].ravel()
+                p2 = d2[i_min:i_max, j_min:j_max].ravel()
                 
                 n = p1.size
-                joint_counts = np.zeros((bins, bins))
-                for x, y in zip(p1, p2):
-                    joint_counts[x, y] += 1
+                joint_counts = np.bincount(p1 * bins + p2, minlength=bins*bins).reshape(bins, bins)
                 
                 p_xy = joint_counts / n
                 p_x = p_xy.sum(axis=1)
                 p_y = p_xy.sum(axis=0)
                 
-                mi = 0.0
-                for x in range(bins):
-                    for y in range(bins):
-                        if p_xy[x, y] > 0:
-                            mi += p_xy[x, y] * np.log2(p_xy[x, y] / (p_x[x] * p_y[y] + 1e-12) + 1e-12)
+                p_x_p_y = p_x[:, np.newaxis] * p_y[np.newaxis, :]
+                mask = p_xy > 0
+                mi = np.sum(p_xy[mask] * np.log2(p_xy[mask] / (p_x_p_y[mask] + 1e-12) + 1e-12))
                 mi_grid[i, j] = mi
         
         max_mi = np.log2(bins)
         return np.clip(mi_grid / max_mi, 0.0, 1.0)
+
 
     def _rank_transform(self, channel: np.ndarray) -> np.ndarray:
         """Rank-transforms a 2D channel to [0, 1] based on value sorting."""

@@ -3,3 +3,11 @@ __pycache__/
 *.pyc
 *.log
 .pytest_cache/
+datasets/
+plots/
+*.npy
+*.pt
+*.parquet
+*.csv
+model_metadata.json
+dependency_graph.json

@@ -53,7 +53,7 @@ embedding_db = None
 discovery_results = None
 
 def init_eef_pipeline():
-    global explorer
+    global explorer, embedding_db, discovery_results, training_pipeline
     logger.info("Initializing EEF backend pipeline...")
     if explorer is None:
         try:
@@ -72,30 +72,95 @@ def init_eef_pipeline():
             in_ch = len(encoder_pipeline.encode(cube_builder.generate_synthetic_cube(), TileMetadata()).channel_manifest)
             model = EcologicalFingerprintEncoder(in_channels=in_ch, latent_dim=128)
             
-            dummy_cubes = [cube_builder.generate_synthetic_cube() for _ in range(5)]
-            dummy_embeddings = np.random.randn(5, 128).astype(np.float32)
+            # Load encoder.pt weights if they exist
+            if os.path.exists("encoder.pt"):
+                logger.info("Loading existing encoder.pt weights...")
+                try:
+                    model.load_state_dict(torch.load("encoder.pt", map_location="cpu"))
+                    training_pipeline.model.load_state_dict(torch.load("encoder.pt", map_location="cpu"))
+                except Exception as load_err:
+                    logger.warning(f"Could not load encoder.pt weights: {load_err}")
             
-            disc = RegimeDiscoverer(n_regimes=3)
-            disc.fit_transform_latent_space(dummy_embeddings)
-            disc.discover_regimes(dummy_embeddings)
+            # Check if we can load existing embeddings to build the state space and retriever
+            loaded_real_db = False
+            db_path_parquet = Path("embeddings.parquet")
+            db_path_csv = Path("embeddings.csv")
             
-            ret = EcologicalAnalogRetriever(n_neighbors=3)
-            ret.fit(dummy_embeddings)
+            if db_path_parquet.exists() or db_path_csv.exists():
+                logger.info("Loading existing embedding database from disk...")
+                try:
+                    from embedding_database import EmbeddingDatabase
+                    db = EmbeddingDatabase()
+                    if db_path_parquet.exists():
+                        db.from_parquet(str(db_path_parquet))
+                    else:
+                        db = EmbeddingDatabase.load_csv(str(db_path_csv))
+                    
+                    if len(db.records) > 0:
+                        embedding_db = db
+                        Z = np.stack([r.embedding for r in db.records])
+                        
+                        disc = RegimeDiscoverer(n_regimes=3, reduction_method="umap", n_components=3)
+                        Z_proj = disc.fit_transform_latent_space(Z)
+                        hdb_labels, gmm_probs, gmm_labels = disc.discover_regimes(Z)
+                        
+                        discovery_results = {
+                            "umap": Z_proj,
+                            "hdbscan_labels": hdb_labels,
+                            "gmm_probs": gmm_probs,
+                            "gmm_labels": gmm_labels,
+                            "num_embeddings": Z.shape[0],
+                            "embedding_dim": Z.shape[1],
+                            "nan_count": int(np.isnan(Z).sum()),
+                            "variance": float(np.var(Z))
+                        }
+                        
+                        ret = EcologicalAnalogRetriever(n_neighbors=5)
+                        ret.fit(Z)
+                        
+                        interpreter = EcologicalInterpreter(variable_names=cube_builder.variables)
+                        cubes = [r.cube if r.cube is not None else cube_builder.generate_synthetic_cube() for r in db.records]
+                        interpreter.auto_name_regimes(cubes, gmm_labels)
+                        
+                        explorer = EcologicalExplorer(
+                            encoder_model=model,
+                            encoder_pipeline=encoder_pipeline,
+                            regime_discoverer=disc,
+                            analog_retriever=ret,
+                            interpreter=interpreter
+                        )
+                        loaded_real_db = True
+                        logger.info(f"EEF Explorer successfully initialized with {len(db.records)} reference embeddings.")
+                except Exception as db_err:
+                    logger.error(f"Error restoring embedding database at startup: {db_err}", exc_info=True)
             
-            interpreter = EcologicalInterpreter(variable_names=cube_builder.variables)
-            interpreter.auto_name_regimes(dummy_cubes, np.array([0, 0, 1, 1, 2]))
-            
-            explorer = EcologicalExplorer(
-                encoder_model=model,
-                encoder_pipeline=encoder_pipeline,
-                regime_discoverer=disc,
-                analog_retriever=ret,
-                interpreter=interpreter
-            )
-            logger.info("EEF Explorer pipeline fully initialized.")
+            if not loaded_real_db:
+                logger.info("No reference database loaded. Initializing with dummy defaults.")
+                dummy_cubes = [cube_builder.generate_synthetic_cube() for _ in range(5)]
+                dummy_embeddings = np.random.randn(5, 128).astype(np.float32)
+                
+                disc = RegimeDiscoverer(n_regimes=3)
+                disc.fit_transform_latent_space(dummy_embeddings)
+                disc.discover_regimes(dummy_embeddings)
+                
+                ret = EcologicalAnalogRetriever(n_neighbors=3)
+                ret.fit(dummy_embeddings)
+                
+                interpreter = EcologicalInterpreter(variable_names=cube_builder.variables)
+                interpreter.auto_name_regimes(dummy_cubes, np.array([0, 0, 1, 1, 2]))
+                
+                explorer = EcologicalExplorer(
+                    encoder_model=model,
+                    encoder_pipeline=encoder_pipeline,
+                    regime_discoverer=disc,
+                    analog_retriever=ret,
+                    interpreter=interpreter
+                )
+                logger.info("EEF Explorer pipeline initialized with dummy fallbacks.")
         except Exception as ex:
             logger.warning(f"Could not fully initialize real explorer pipeline: {str(ex)}. Using robust fallbacks.")
     logger.info("EEF Pipeline initialized and waiting for data.")
+
 
 def parse_csv_to_cube(csv_content: str) -> np.ndarray:
     """Parses uploaded CSV content into a 20x20x7 cube."""
@@ -294,6 +359,60 @@ def merge_datasets():
         logger.error(f"Error merging datasets: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+def update_explorer_from_trained():
+    global explorer, training_pipeline, embedding_db
+    if embedding_db is None or len(embedding_db.records) == 0:
+        logger.warning("Attempted to update explorer, but embedding database is empty.")
+        return
+    
+    logger.info("Updating runtime EcologicalExplorer with trained model and embeddings...")
+    try:
+        from spatial_structure import SpatialStructureExtractor
+        from relationship_tensor import RelationshipStructureExtractor
+        from ecological_encoder import EcologicalEncoder
+        from regime_discovery import RegimeDiscoverer
+        from analog_retrieval import EcologicalAnalogRetriever
+        from interpreter import EcologicalInterpreter
+        from explorer import EcologicalExplorer
+        
+        # 1. Get current model
+        model = training_pipeline.model
+        model.eval()
+        
+        # 2. Extract embeddings matrix Z
+        Z = np.stack([r.embedding for r in embedding_db.records])
+        
+        # 3. Fit RegimeDiscoverer on Z
+        disc = RegimeDiscoverer(n_regimes=3, reduction_method="umap", n_components=3)
+        disc.fit_transform_latent_space(Z)
+        disc.discover_regimes(Z)
+        
+        # 4. Fit EcologicalAnalogRetriever on Z
+        ret = EcologicalAnalogRetriever(n_neighbors=5)
+        ret.fit(Z)
+        
+        # 5. Create interpreter
+        interpreter = EcologicalInterpreter(variable_names=cube_builder.variables)
+        cubes = [r.cube if r.cube is not None else cube_builder.generate_synthetic_cube() for r in embedding_db.records]
+        gmm_labels = disc.gmm.predict(Z)
+        interpreter.auto_name_regimes(cubes, gmm_labels)
+        
+        # 6. Update global explorer
+        spatial_extractor = SpatialStructureExtractor(window_size=3)
+        rel_extractor = RelationshipStructureExtractor(mode="all", variables=cube_builder.variables)
+        encoder_pipeline = EcologicalEncoder(spatial_extractor, rel_extractor)
+        
+        explorer = EcologicalExplorer(
+            encoder_model=model,
+            encoder_pipeline=encoder_pipeline,
+            regime_discoverer=disc,
+            analog_retriever=ret,
+            interpreter=interpreter
+        )
+        logger.info("Runtime EcologicalExplorer successfully updated.")
+    except Exception as e:
+        logger.error(f"Error updating explorer from trained model: {str(e)}", exc_info=True)
+
 @app.route("/api/encoder/train", methods=["POST"])
 @app.route("/train-encoder", methods=["POST"])
 def train_encoder():
@@ -348,6 +467,9 @@ def train_encoder():
         # Build the state space
         discovery_results = training_pipeline.discover_states(embedding_db)
         
+        # Update the runtime explorer with the new model state
+        update_explorer_from_trained()
+        
         return jsonify({
             "status": "success",
             "losses": losses,
@@ -359,6 +481,7 @@ def train_encoder():
     except Exception as e:
         logger.error(f"Error training encoder: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/discovery/fit", methods=["POST", "GET"])
 @app.route("/run-umap", methods=["POST", "GET"])
@@ -577,10 +700,21 @@ def upload_cube_csv():
 
 @app.route("/api/encoder/reset", methods=["POST", "GET"])
 def reset_encoder():
-    global training_pipeline, embedding_db, discovery_results
+    global training_pipeline, embedding_db, discovery_results, explorer
     training_pipeline = EcologicalTrainingPipeline(datasets_dir="./datasets")
     embedding_db = None
     discovery_results = None
+    explorer = None
+    
+    # Clean files on disk to prevent reloading them on restart
+    for f in ["encoder.pt", "embeddings.csv", "embeddings.parquet", "model_metadata.json", "umap_projection.csv", "cluster_assignments.csv", "dependency_graph.json", "relationship_tensor.npy"]:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except Exception as e:
+                logger.warning(f"Could not remove {f} on reset: {e}")
+                
+    init_eef_pipeline()
     logger.info("Encoder reset complete.")
     return jsonify({"status": "success", "message": "Encoder model reset successfully."}), 200
 
@@ -588,8 +722,15 @@ def reset_encoder():
 def reset_discovery():
     global discovery_results
     discovery_results = None
+    for f in ["umap_projection.csv", "cluster_assignments.csv"]:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except Exception as e:
+                logger.warning(f"Could not remove {f} on reset: {e}")
     logger.info("Regime discovery results reset.")
     return jsonify({"status": "success", "message": "State space discovery reset successfully."}), 200
+
 
 @app.route("/api/dataset/reset", methods=["POST", "GET"])
 def reset_dataset():
@@ -759,27 +900,49 @@ def get_cube_transfer():
             return jsonify({"error": "Missing cube data"}), 400
             
         cube = np.array(data["cube"], dtype=np.float32)
-        mean_chl = float(np.mean(cube[:, :, 0]))
-        if mean_chl >= 0.4:
-            regime = "Productive Coastal"
-        elif mean_chl >= 0.15:
-            regime = "Shelf Sea"
-        else:
-            regime = "Open Ocean"
-            
-        similarity = float(0.75 + 0.20 * np.random.rand())
-        novelty = float(0.10 + 0.15 * np.random.rand())
-        confidence = float(0.80 + 0.15 * np.random.rand())
         
+        if explorer is None:
+            init_eef_pipeline()
+            
+        meta = TileMetadata(source_file="transfer_query.csv")
+        z = explorer.get_embedding(cube, meta)
+        
+        # Run analog retrieval
+        results = explorer.analog_retriever.retrieve_analogs(z)
+        
+        # Get nearest regime
+        nearest_idx = results["indices"][0]
+        if embedding_db is not None and nearest_idx < len(embedding_db.records):
+            nearest_regime = embedding_db.records[nearest_idx].regime
+        else:
+            pred_lbl = int(explorer.regime_discoverer.gmm.predict(z.reshape(1, -1))[0])
+            nearest_regime = explorer.interpreter.regime_names.get(pred_lbl, "Unknown")
+            
+        nearest_regime = nearest_regime.replace("_", " ").title()
+        
+        similarity_score = float(results["similarities"][0])
+        novelty_score = float(results["nearest_distance"])
+        confidence = 1.0 - float(results["novelty_p_value"])
+        
+        top_k = []
+        for d, idx in zip(results["distances"], results["indices"]):
+            reg = "Unknown"
+            if embedding_db is not None and idx < len(embedding_db.records):
+                reg = embedding_db.records[idx].regime.replace("_", " ").title()
+            else:
+                reg = nearest_regime
+            top_k.append({
+                "idx": int(idx),
+                "distance": float(d),
+                "regime": reg
+            })
+            
         return jsonify({
-            "similarity_score": similarity,
-            "novelty_score": novelty,
-            "nearest_regime": regime,
+            "similarity_score": similarity_score,
+            "novelty_score": novelty_score,
+            "nearest_regime": nearest_regime,
             "confidence": confidence,
-            "top_k_neighbors": [
-                {"idx": 1, "distance": float(1.0 - similarity), "regime": regime},
-                {"idx": 2, "distance": float(1.0 - similarity + 0.1), "regime": "Transition Zone"}
-            ]
+            "top_k_neighbors": top_k
         }), 200
     except Exception as e:
         logger.error(f"Error assessing transferability: {str(e)}")
@@ -793,10 +956,12 @@ def get_cube_embedding():
             return jsonify({"error": "Missing cube data"}), 400
             
         cube = np.array(data["cube"], dtype=np.float32)
-        mean_vals = cube.mean(axis=(0, 1))
         
-        np.random.seed(int(mean_vals.sum() * 1000) % 2**32)
-        z = np.random.normal(0, 0.5, 128)
+        if explorer is None:
+            init_eef_pipeline()
+            
+        meta = TileMetadata(source_file="embedding_query.csv")
+        z = explorer.get_embedding(cube, meta)
         norm = float(np.linalg.norm(z))
         
         return jsonify({
@@ -806,6 +971,7 @@ def get_cube_embedding():
     except Exception as e:
         logger.error(f"Error embedding cube: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/models", methods=["GET"])
 @app.route("/api/models", methods=["GET"])

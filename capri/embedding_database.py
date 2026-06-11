@@ -87,3 +87,43 @@ class EmbeddingDatabase:
                 )
                 db.add(rec)
         return db
+
+    def from_parquet(self, path: str):
+        import pandas as pd
+        df = pd.read_parquet(path, engine="pyarrow")
+        self.records = []
+        for _, row in df.iterrows():
+            lon_min_val = row.get("lon_min")
+            lon_max_val = row.get("lon_max")
+            lat_min_val = row.get("lat_min")
+            lat_max_val = row.get("lat_max")
+            
+            lon_b = (float(lon_min_val), float(lon_max_val)) if pd.notna(lon_min_val) and pd.notna(lon_max_val) else None
+            lat_b = (float(lat_min_val), float(lat_max_val)) if pd.notna(lat_min_val) and pd.notna(lat_max_val) else None
+            
+            cube = None
+            orig_meas = row.get("original_measurements")
+            if orig_meas is not None and len(orig_meas) > 0:
+                meas = np.array(orig_meas, dtype=np.float32)
+                if len(meas) == 20 * 20 * 8:
+                    cube = meas.reshape(20, 20, 8)
+                    
+            rec = EmbeddingRecord(
+                embedding_id=int(row["embedding_id"]),
+                cube_id=row["cube_id"],
+                dataset_id=row["dataset_id"],
+                lon_bounds=lon_b,
+                lat_bounds=lat_b,
+                regime=row["regime"],
+                embedding=np.array(row["embedding_vector"], dtype=np.float32),
+                timestamp=row.get("timestamp", ""),
+                cube=cube
+            )
+            self.add(rec)
+
+    @classmethod
+    def load_parquet(cls, path: str) -> 'EmbeddingDatabase':
+        db = cls()
+        db.from_parquet(path)
+        return db
+
