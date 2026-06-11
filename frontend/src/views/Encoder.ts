@@ -14,7 +14,7 @@ export function buildEncoderView(): HTMLElement {
       <p>CubeNet learns ecological representations from the 20×20×8 observation space</p>
     </div>
     <div class="page-scroll">
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;">
         <!-- Architecture card -->
         <div class="card">
           <div class="card-label">CubeNet Architecture</div>
@@ -79,6 +79,27 @@ export function buildEncoderView(): HTMLElement {
               Reset Model
             </button>
             <div id="enc-status-msg" style="font-size:12px; color:var(--text-muted); text-align:center; display:none;"></div>
+          </div>
+        </div>
+
+        <!-- Save model controls -->
+        <div class="card">
+          <div class="card-label">Save Trained Model</div>
+          <div style="margin-top:12px; display:flex; flex-direction:column; gap:12px;">
+            <div>
+              <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Model Name</label>
+              <input type="text" id="save-model-name" placeholder="e.g. cubenet_denmark_v1"
+                     style="width:100%; padding:6px 10px; background:var(--surface-3); border:1px solid var(--border); border-radius:var(--r-sm); color:var(--text); font:inherit; font-size:13px;" />
+            </div>
+            <div>
+              <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Description</label>
+              <textarea id="save-model-desc" placeholder="Details about dataset, parameters..." rows="2"
+                     style="width:100%; padding:6px 10px; background:var(--surface-3); border:1px solid var(--border); border-radius:var(--r-sm); color:var(--text); font:inherit; font-size:12px; resize:vertical;"></textarea>
+            </div>
+            <button class="btn btn-primary" id="btn-save-model" style="width:100%; justify-content:center;">
+              Save Active Model
+            </button>
+            <div id="save-model-status" style="font-size:12px; color:var(--text-muted); text-align:center; display:none; margin-top:8px;"></div>
           </div>
         </div>
       </div>

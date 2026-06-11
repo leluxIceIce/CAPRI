@@ -3,11 +3,23 @@ __pycache__/
 *.pyc
 *.log
 .pytest_cache/
-datasets/
+
+# Ignore heavy voxel files in datasets, but keep folder metadata and CSVs
+datasets/**/*.npy
 plots/
-*.npy
-*.pt
-*.parquet
-*.csv
-model_metadata.json
-dependency_graph.json
+
+# Ignore active temporary root files (to avoid cluttering root git status)
+/encoder.pt
+/decoder.pt
+/umap_reducer.pkl
+/hdbscan_model.pkl
+/embeddings.csv
+/embeddings.parquet
+/umap_projection.csv
+/cluster_assignments.csv
+/dependency_graph.json
+/relationship_tensor.npy
+/model_metadata.json
+
+# Track saved_models/ folder completely
+!saved_models/

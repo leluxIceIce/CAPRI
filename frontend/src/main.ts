@@ -20,6 +20,7 @@ import { buildTransferView, renderTransferResults } from './views/Transfer';
 import { buildExportView, enableExports, initExportHandlers } from './views/Export';
 import { buildDatasetFactoryView } from './views/DatasetFactory';
 import {
+  API_BASE,
   checkBackend,
   fetchSyntheticCube, uploadCubeCSV,
   fetchStats, fetchSpatial,
@@ -528,6 +529,54 @@ function wireEvents() {
     initEncoderLossChart();
     refreshCatalog();
   });
+  document.getElementById('btn-save-model')?.addEventListener('click', async () => {
+    const nameInput = document.getElementById('save-model-name') as HTMLInputElement;
+    const descInput = document.getElementById('save-model-desc') as HTMLTextAreaElement;
+    const statusDiv = document.getElementById('save-model-status');
+    
+    if (!nameInput || !nameInput.value.trim()) {
+      alert('Please enter a name for the model.');
+      return;
+    }
+    
+    const name = nameInput.value.trim();
+    const description = descInput ? descInput.value.trim() : '';
+    
+    if (statusDiv) {
+      statusDiv.style.display = 'block';
+      statusDiv.style.color = 'var(--text-muted)';
+      statusDiv.textContent = 'Saving model...';
+    }
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/model/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (statusDiv) {
+          statusDiv.style.color = 'var(--green)';
+          statusDiv.textContent = `✓ Model saved as "${name}"`;
+        }
+        nameInput.value = '';
+        if (descInput) descInput.value = '';
+        refreshCatalog();
+      } else {
+        if (statusDiv) {
+          statusDiv.style.color = 'var(--red)';
+          statusDiv.textContent = `❌ Error: ${data.error}`;
+        }
+      }
+    } catch (err: any) {
+      if (statusDiv) {
+        statusDiv.style.color = 'var(--red)';
+        statusDiv.textContent = `❌ Error: ${err.message}`;
+      }
+    }
+  });
+
   document.getElementById('btn-reset-statespace')?.addEventListener('click', async () => {
     await resetDiscovery();
     state.discovery = null;

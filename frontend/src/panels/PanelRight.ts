@@ -139,7 +139,12 @@ export async function refreshCatalog() {
             <div style="margin-top: 8px; display:flex; gap:6px;">
               <button class="btn btn-sm btn-outline btn-remove-model" data-name="${m.name}" style="flex:1; font-size:10px; padding:4px 0; border-color:rgba(255,71,87,0.3); color:rgba(255,71,87,0.85);">Delete</button>
             </div>
-          ` : ''}
+          ` : (m.name !== 'cubenet_v1' ? `
+            <div style="margin-top: 8px; display:flex; gap:6px;">
+              <button class="btn btn-sm btn-load-model" data-name="${m.name}" style="flex:1; font-size:10px; padding:4px 0;">Load</button>
+              <button class="btn btn-sm btn-outline btn-remove-model" data-name="${m.name}" style="flex:1; font-size:10px; padding:4px 0; border-color:rgba(255,71,87,0.3); color:rgba(255,71,87,0.85);">Delete</button>
+            </div>
+          ` : '')}
         </div>
       `).join('');
     }
@@ -167,14 +172,36 @@ export async function refreshCatalog() {
     modelsContainer.querySelectorAll('.btn-remove-model').forEach(btn => {
       btn.addEventListener('click', async () => {
         const name = (btn as HTMLElement).dataset.name!;
-        if (!confirm(`Are you sure you want to remove model "${name}" and reset training weights?`)) return;
+        if (!confirm(`Are you sure you want to remove model "${name}"?`)) return;
         await api.removeModel(name);
-        alert(`Model "${name}" removed. Weights reset.`);
+        alert(`Model "${name}" removed.`);
         await refreshCatalog();
       });
     });
 
-    datasetsContainer.querySelectorAll('.btn-load-dataset').forEach(btn => {
+    modelsContainer.querySelectorAll('.btn-load-model').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const name = (btn as HTMLElement).dataset.name!;
+        if (!confirm(`Are you sure you want to load model "${name}" into the active workspace? This will overwrite the currently active model.`)) return;
+        
+        try {
+          const res = await fetch(`${api.API_BASE}/api/model/load`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          });
+          const result = await res.json();
+          if (res.ok) {
+            alert(`Model "${name}" successfully loaded!`);
+            location.reload();
+          } else {
+            alert(`Failed to load model: ${result.error}`);
+          }
+        } catch (err: any) {
+          alert(`Failed to load model: ${err.message}`);
+        }
+      });
+    });    datasetsContainer.querySelectorAll('.btn-load-dataset').forEach(btn => {
       btn.addEventListener('click', async () => {
         const name = (btn as HTMLElement).dataset.name!;
         const res = await fetch(`${api.API_BASE}/api/dataset/merge`, {

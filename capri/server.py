@@ -1120,27 +1120,175 @@ def get_cube_embedding():
 @app.route("/api/models", methods=["GET"])
 def list_models():
     models_list = []
-    # Check if active encoder.pt exists
-    if os.path.exists("encoder.pt"):
+    active_exists = os.path.exists("encoder.pt")
+    if active_exists:
         created_time = os.path.getctime("encoder.pt")
         import datetime
         date_str = datetime.datetime.fromtimestamp(created_time).isoformat()
+        description = "Currently trained relationship-aware ecological encoder."
+        if os.path.exists("model_metadata.json"):
+            try:
+                with open("model_metadata.json", "r") as f:
+                    meta = json.load(f)
+                    description = meta.get("description", description)
+            except Exception:
+                pass
         models_list.append({
             "name": "cubenet_active",
             "file": "encoder.pt",
             "created_at": date_str,
             "active": True,
-            "description": "Currently trained relationship-aware ecological encoder."
+            "description": description
         })
+        
+    # Scan saved_models directory
+    models_dir = Path("./saved_models")
+    models_dir.mkdir(exist_ok=True)
+    for model_path in sorted(models_dir.iterdir()):
+        if model_path.is_dir() and (model_path / "encoder.pt").exists():
+            mtime = os.path.getmtime(model_path / "encoder.pt")
+            import datetime
+            date_str = datetime.datetime.fromtimestamp(mtime).isoformat()
+            
+            description = "Saved trained model."
+            meta_file = model_path / "model_metadata.json"
+            if meta_file.exists():
+                try:
+                    with open(meta_file, "r") as f:
+                        meta = json.load(f)
+                        description = meta.get("description", description)
+                except Exception:
+                    pass
+            models_list.append({
+                "name": model_path.name,
+                "file": f"saved_models/{model_path.name}/encoder.pt",
+                "created_at": date_str,
+                "active": False,
+                "description": description
+            })
+
     # Always return a default model reference so the UI is populated
     models_list.append({
         "name": "cubenet_v1",
         "file": "cubenet_v1.pt",
         "created_at": "2026-06-11T12:00:00Z",
-        "active": not os.path.exists("encoder.pt"),
+        "active": not active_exists,
         "description": "Pre-trained baseline model."
     })
     return jsonify({"models": models_list}), 200
+
+@app.route("/api/model/save", methods=["POST"])
+def save_model():
+    """Saves the current active model into saved_models/ directory."""
+    if not os.path.exists("encoder.pt"):
+        return jsonify({"error": "No active trained model to save."}), 400
+        
+    data = request.get_json() or {}
+    name = data.get("name")
+    description = data.get("description", "User-saved CubeNet model")
+    
+    if not name:
+        return jsonify({"error": "Model name is required."}), 400
+        
+    # Sanitize name
+    import re
+    name = re.sub(r'[^a-zA-Z0-9_\-]', '', name)
+    if not name or name in ["cubenet_active", "cubenet_v1", "active"]:
+        return jsonify({"error": "Invalid model name."}), 400
+        
+    dest_dir = Path("./saved_models") / name
+    if dest_dir.exists():
+        import shutil
+        shutil.rmtree(dest_dir)
+        
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    
+    files_to_copy = [
+        "encoder.pt",
+        "decoder.pt",
+        "umap_reducer.pkl",
+        "hdbscan_model.pkl",
+        "embeddings.csv",
+        "embeddings.parquet",
+        "model_metadata.json",
+        "umap_projection.csv",
+        "cluster_assignments.csv",
+        "dependency_graph.json",
+        "relationship_tensor.npy"
+    ]
+    
+    copied = []
+    for f in files_to_copy:
+        if os.path.exists(f):
+            import shutil
+            shutil.copy2(f, dest_dir / f)
+            copied.append(f)
+            
+    import datetime
+    meta_path = dest_dir / "model_metadata.json"
+    meta_data = {
+        "name": name,
+        "description": description,
+        "saved_at": datetime.datetime.now().isoformat(),
+        "copied_files": copied
+    }
+    with open(meta_path, "w") as f:
+        json.dump(meta_data, f, indent=2)
+        
+    logger.info(f"Model saved as '{name}' containing {len(copied)} files.")
+    return jsonify({"status": "success", "message": f"Model saved as '{name}'.", "files": copied}), 200
+
+@app.route("/api/model/load", methods=["POST"])
+def load_model():
+    """Loads a saved model from saved_models/ and makes it active."""
+    data = request.get_json() or {}
+    name = data.get("name")
+    
+    if not name:
+        return jsonify({"error": "Model name is required."}), 400
+        
+    model_dir = Path("./saved_models") / name
+    if not model_dir.exists() or not model_dir.is_dir():
+        return jsonify({"error": f"Saved model '{name}' not found."}), 404
+        
+    files_to_load = [
+        "encoder.pt",
+        "decoder.pt",
+        "umap_reducer.pkl",
+        "hdbscan_model.pkl",
+        "embeddings.csv",
+        "embeddings.parquet",
+        "model_metadata.json",
+        "umap_projection.csv",
+        "cluster_assignments.csv",
+        "dependency_graph.json",
+        "relationship_tensor.npy"
+    ]
+    
+    loaded = []
+    # Clear active files first
+    for f in files_to_load:
+        if os.path.exists(f):
+            os.remove(f)
+            
+    for f in files_to_load:
+        src = model_dir / f
+        if src.exists():
+            import shutil
+            shutil.copy2(src, f)
+            loaded.append(f)
+            
+    # Reinitialize pipeline
+    global explorer
+    explorer = None
+    try:
+        init_eef_pipeline()
+    except Exception as reinit_err:
+        logger.error(f"Failed to reinitialize pipeline after loading model: {reinit_err}")
+        return jsonify({"error": f"Failed to reinitialize: {str(reinit_err)}"}), 500
+        
+    logger.info(f"Model '{name}' loaded as active model.")
+    return jsonify({"status": "success", "message": f"Model '{name}' loaded successfully.", "files": loaded}), 200
 
 @app.route("/api/dataset/remove", methods=["POST"])
 @app.route("/dataset/remove", methods=["POST"])
@@ -1169,20 +1317,28 @@ def remove_model():
         
     files_deleted = []
     if name == "cubenet_active" or name == "active":
-        if os.path.exists("encoder.pt"):
-            os.remove("encoder.pt")
-            files_deleted.append("encoder.pt")
-        if os.path.exists("model_metadata.json"):
-            os.remove("model_metadata.json")
-            files_deleted.append("model_metadata.json")
-        global training_pipeline
+        for f in ["encoder.pt", "decoder.pt", "umap_reducer.pkl", "hdbscan_model.pkl", "embeddings.csv", "embeddings.parquet", "model_metadata.json", "umap_projection.csv", "cluster_assignments.csv", "dependency_graph.json", "relationship_tensor.npy"]:
+            if os.path.exists(f):
+                os.remove(f)
+                files_deleted.append(f)
+        global training_pipeline, explorer
         training_pipeline = EcologicalTrainingPipeline(datasets_dir="./datasets")
+        explorer = None
+        init_eef_pipeline()
         logger.info("Active model removed and pipeline reinitialized.")
         return jsonify({"status": "success", "message": f"Active model removed. Deleted: {files_deleted}"}), 200
     else:
-        return jsonify({"error": f"Model {name} cannot be removed."}), 400
+        # Remove from saved_models
+        model_dir = Path("./saved_models") / name
+        if model_dir.exists() and model_dir.is_dir():
+            import shutil
+            shutil.rmtree(model_dir)
+            logger.info(f"Saved model '{name}' deleted from disk.")
+            return jsonify({"status": "success", "message": f"Saved model '{name}' deleted."}), 200
+        else:
+            return jsonify({"error": f"Model {name} not found."}), 404
 
-@app.route("/api/download/<filename>", methods=["GET"])
+@app.route("/api/download/<path:filename>", methods=["GET"])
 def download_artifact(filename):
     """Safely serves trained model files and representations for download."""
     allowed_files = [
@@ -1198,7 +1354,8 @@ def download_artifact(filename):
         "dependency_graph.json",
         "relationship_tensor.npy"
     ]
-    if filename not in allowed_files:
+    basename = os.path.basename(filename)
+    if basename not in allowed_files:
         logger.warning(f"Unauthorized file download request: {filename}")
         return jsonify({"error": "Forbidden"}), 403
         
