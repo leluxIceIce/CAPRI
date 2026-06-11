@@ -189,9 +189,9 @@ export class CubeRenderer {
       const labelSprite = new THREE.Sprite(labelMat);
       labelSprite.scale.set(0.6, 0.15, 1.0);
       
-      // Position labels in a 45 degree staggered diagonal array so they are always readable at once
+      // Position labels staggered vertically along Y to match the stacked planes (constant X offset) so they are always readable at once
       const staggerOffset = (v - 3.5) * 0.16;
-      labelSprite.position.set(1.35 + staggerOffset, staggerOffset, mesh.position.z);
+      labelSprite.position.set(1.35, staggerOffset, mesh.position.z);
       labelSprite.visible = this.layerVisible[v];
       
       this.cubeGroup.add(labelSprite);
