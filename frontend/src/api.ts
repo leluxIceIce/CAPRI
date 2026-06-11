@@ -519,3 +519,33 @@ function generateMockDiscovery(): DiscoveryData {
 
   return { umap_2d: umap2d, umap_3d: umap3d, hdbscan_labels: labels, cluster_names: NAMES.slice(0, 4), cluster_sizes: sizes, cluster_colors: COLORS.slice(0, 4), n_noise: 0 };
 }
+
+export async function dockMolecule(x: number, y: number, cube?: number[][][]): Promise<any> {
+  if (USE_MOCK) {
+    const mockMatches = [];
+    for (let i = 0; i < 3; i++) {
+      mockMatches.push({
+        cube_id: `reference_cube_${i}`,
+        dataset_id: 'coastal_sea_ref',
+        regime: ['coastal', 'shallow_sea', 'deep_sea'][i],
+        x: Math.floor(Math.random() * 20),
+        y: Math.floor(Math.random() * 20),
+        distance: 0.05 + i * 0.12,
+        values: Array.from({ length: 8 }, () => Math.random())
+      });
+    }
+    return {
+      selected_cell: { x, y, values: Array.from({ length: 8 }, () => Math.random()) },
+      matches: mockMatches
+    };
+  }
+  
+  const payload = cube ? { cube } : {};
+  const res = await fetch(`${API_BASE}/api/molecule/dock/${x}/${y}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error('Docking query failed');
+  return res.json();
+}

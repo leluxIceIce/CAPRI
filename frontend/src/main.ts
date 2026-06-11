@@ -8,7 +8,7 @@
 import './style.css';
 import { CubeRenderer } from './cube3d';
 import { buildLeftPanel, updateLeftPanel } from './panels/PanelLeft';
-import { buildRightPanel, initRightPanelTabs, showSpectralProfile, showClusterList, showSimilarityScores, refreshCatalog } from './panels/PanelRight';
+import { buildRightPanel, initRightPanelTabs, showSpectralProfile, showClusterList, showSimilarityScores, refreshCatalog, showDockingResults } from './panels/PanelRight';
 import { buildBottomPanel, initTrainingChart, updateTrainingProgress, trainingComplete, showUMAPChart, showTransferScores } from './panels/PanelBottom';
 import { buildStatisticsView, renderStatisticsView } from './views/Statistics';
 import { buildExplainabilityView, renderExplainabilityView } from './views/Explainability';
@@ -23,7 +23,7 @@ import {
   checkBackend,
   fetchSyntheticCube, uploadCubeCSV,
   fetchStats, fetchSpatial,
-  trainEncoder, embedCube,
+  trainEncoder, embedCube, dockMolecule,
   fetchDiscovery, assessTransfer,
   resetEncoder, resetDiscovery, resetDataset,
   type CubeData, type StatsData, type SpatialData, type DiscoveryData, type TransferData
@@ -468,10 +468,18 @@ function wireEvents() {
   document.getElementById('ctrl-reset')?.addEventListener('click', () => cubeRenderer?.resetCamera());
   document.getElementById('ctrl-show-all')?.addEventListener('click', () => cubeRenderer?.showAllLayers());
 
-  // Pixel click → spectral explorer
-  document.addEventListener('pixel-selected', (e: Event) => {
+  // Pixel click → spectral explorer + molecular docking
+  document.addEventListener('pixel-selected', async (e: Event) => {
     const { x, y, values } = (e as CustomEvent).detail;
-    if (state.cube) showSpectralProfile(x, y, values, state.cube.variables);
+    if (state.cube) {
+      showSpectralProfile(x, y, values, state.cube.variables);
+      try {
+        const dockData = await dockMolecule(x, y, state.cube.cube);
+        showDockingResults(dockData);
+      } catch (err) {
+        console.error('Failed to run molecular docking:', err);
+      }
+    }
   });
 
   // Train encoder buttons (both bottom panel and full encoder view)

@@ -19,6 +19,7 @@ export function buildRightPanel(): HTMLElement {
     <div class="panel-tabs">
       <button class="tab-btn active" data-tab="spectral" id="rtab-spectral">Spectral</button>
       <button class="tab-btn" data-tab="clusters" id="rtab-clusters">Clusters</button>
+      <button class="tab-btn" data-tab="docking" id="rtab-docking">Docking</button>
       <button class="tab-btn" data-tab="similarity" id="rtab-similarity">Similarity</button>
       <button class="tab-btn" data-tab="catalog" id="rtab-catalog">Catalog</button>
     </div>
@@ -38,6 +39,20 @@ export function buildRightPanel(): HTMLElement {
         <div id="spectral-bar-chart" style="height:140px;padding:0 8px;"></div>
         <div class="section-divider"></div>
         <div class="var-bars" id="spectral-var-bars"></div>
+      </div>
+    </div>
+
+    <!-- Docking tab -->
+    <div id="rtab-docking-content" style="display:none; overflow-y:auto; flex:1; padding: 16px;">
+      <div class="spectral-placeholder" id="docking-placeholder">
+        <div class="spectral-placeholder-icon">🧫</div>
+        <p>Click any cell on the 3D cube to<br>run molecular docking & retrieve<br>similar ecological analogs</p>
+      </div>
+      <div id="docking-content" style="display:none;">
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); margin-bottom:8px;">MOLECULAR DOCKING ANALOGS</div>
+        <div id="docking-matches-list" style="display:flex; flex-direction:column; gap:8px;">
+          <!-- Dynamic matches go here -->
+        </div>
       </div>
     </div>
 
@@ -192,10 +207,10 @@ export function initRightPanelTabs() {
   tabs.forEach(tab => {
     if (!tab.closest('#panel-right')) return;
     tab.addEventListener('click', () => {
-      const name = tab.dataset.tab!;
       tabs.forEach(t => { if (t.closest('#panel-right')) t.classList.remove('active'); });
       tab.classList.add('active');
-      ['spectral','clusters','similarity', 'catalog'].forEach(n => {
+      const name = tab.getAttribute('data-tab');
+      ['spectral', 'clusters', 'docking', 'similarity', 'catalog'].forEach(n => {
         const c = document.getElementById(`rtab-${n}-content`);
         if (c) c.style.display = n === name ? '' : 'none';
       });
@@ -298,17 +313,55 @@ export function showSimilarityScores(sim: number, nov: number, regime: string, c
   const scores = document.getElementById('similarity-scores');
   if (placeholder) placeholder.style.display = 'none';
   if (scores) scores.style.display = 'block';
+  
+  const simVal = document.getElementById('sim-score');
+  const novVal = document.getElementById('nov-score');
+  const regimeVal = document.getElementById('nearest-regime');
+  const confBar = document.getElementById('conf-bar');
+  const confVal = document.getElementById('conf-val');
+  
+  if (simVal) simVal.textContent = sim.toFixed(3);
+  if (novVal) novVal.textContent = nov.toFixed(3);
+  if (regimeVal) regimeVal.textContent = regime;
+  if (confBar) confBar.style.width = `${(conf * 100).toFixed(0)}%`;
+  if (confVal) confVal.textContent = `${(conf * 100).toFixed(1)}%`;
+}
 
-  // Switch to similarity tab
-  const tab = document.getElementById('rtab-similarity');
-  if (tab) tab.click();
+export function showDockingResults(data: any) {
+  const placeholder = document.getElementById('docking-placeholder');
+  const content = document.getElementById('docking-content');
+  if (placeholder) placeholder.style.display = 'none';
+  if (content) content.style.display = 'block';
 
-  setInner('sim-score', (sim * 100).toFixed(1) + '%');
-  setInner('nov-score', (nov * 100).toFixed(1) + '%');
-  setInner('nearest-regime', regime);
-  setInner('conf-val', (conf * 100).toFixed(1) + '%');
-  const bar = document.getElementById('conf-bar');
-  if (bar) bar.style.width = (conf * 100) + '%';
+  const list = document.getElementById('docking-matches-list');
+  if (!list) return;
+  
+  if (!data.matches || data.matches.length === 0) {
+    list.innerHTML = `<div style="font-size:11px; color:var(--text-muted); text-align:center; padding: 20px 0;">No analogous reference states found. Train model to index embeddings first.</div>`;
+    return;
+  }
+  
+  list.innerHTML = data.matches.map((m: any, idx: number) => `
+    <div class="card" style="margin-bottom:4px; border-left:3px solid var(--green);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <span style="font-weight:700; font-size:12px; color:var(--text);">Analog #${idx + 1}</span>
+        <span style="font-size:10px; background:rgba(0,255,157,0.1); color:var(--green); padding:2px 6px; border-radius:4px; font-family:var(--font-mono);">Dist: ${m.distance.toFixed(4)}</span>
+      </div>
+      <div style="font-size:10px; color:var(--text-muted);">Position: <strong>(${m.x}, ${m.y})</strong> in <code>${m.dataset_id}</code></div>
+      <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">Regime: <span class="pill" style="padding:1px 4px; font-size:9px;">${m.regime}</span></div>
+      <div style="margin-top:8px; display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; font-size:9px; font-family:var(--font-mono); text-align:center;">
+        ${['CHL', 'aphy', 'ADG', 'bbp', 'TSM', 'PAR', 'KD490', 'SST'].map((v, vi) => {
+          const val = m.values[vi];
+          return val != null ? `
+            <div style="background:var(--surface-3); padding:2px; border-radius:2px;">
+              <div style="color:var(--text-dim);">${v}</div>
+              <div style="color:var(--text); font-weight:bold;">${val.toFixed(2)}</div>
+            </div>
+          ` : '';
+        }).join('')}
+      </div>
+    </div>
+  `).join('');
 }
 
 function setInner(id: string, val: string) {
