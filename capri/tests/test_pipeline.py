@@ -208,19 +208,19 @@ class TestLayer4Encoding:
         
         # Test outputs
         tensor = encoding.to_tensor()
-        assert tensor.shape == (154, 20, 20)
+        assert tensor.shape == (282, 20, 20)
         assert not torch.isnan(tensor).any()
         
         # Manifest checks
-        assert len(encoding.channel_manifest) == 154
+        assert len(encoding.channel_manifest) == 282
         assert encoding.channel_manifest[0] == "CHL"
         assert encoding.channel_manifest[7] == "corr_CHL_aphy"
-        assert encoding.channel_manifest[-1] == "KD490_texture_contrast"
+        assert encoding.channel_manifest[-129] == "KD490_texture_contrast"
         
         # Inspect string check
         report = encoding.inspect()
         assert "ECOLOGICAL ENCODING INSPECTION REPORT" in report
-        assert "Total Input Channels   : 154" in report
+        assert "Total Input Channels   : 282" in report
 
 
 # ── Layer 5: Representation Learning ─────────────────────────────────────────
@@ -232,7 +232,7 @@ class TestLayer5Representation:
         V = 7
         V_pairs = 84                  # 21 (corr) + 21 (spearman) + 21 (mi) + 21 (cov)
         V_spatial = V * 9             # 63
-        return V + V_pairs + V_spatial  # 154
+        return V + V_pairs + V_spatial + 128  # 282
 
     def test_encoder_forward(self):
         in_ch = self._get_in_channels()
@@ -281,17 +281,17 @@ class TestLayer5Representation:
         # 1. Physical Perturbation
         ds_phys = EcologicalPairDataset(encodings, pair_strategy=PhysicalPerturbationPairs(), encoder=encoder)
         xi, xj = ds_phys[0]
-        assert xi.shape == (154, 20, 20)
+        assert xi.shape == (282, 20, 20)
         
         # 2. Spatial Adjacency
         ds_space = EcologicalPairDataset(encodings, pair_strategy=SpatialAdjacencyPairs(), encoder=encoder)
         xi, xj = ds_space[0]
-        assert xi.shape == (154, 20, 20)
+        assert xi.shape == (282, 20, 20)
         
         # 3. Temporal Neighbor
         ds_time = EcologicalPairDataset(encodings, pair_strategy=TemporalNeighborPairs(max_delta_days=2.0), encoder=encoder)
         xi, xj = ds_time[0]
-        assert xi.shape == (154, 20, 20)
+        assert xi.shape == (282, 20, 20)
         
         # 4. Seasonal Analog
         # Modify seasons for testing
@@ -299,7 +299,7 @@ class TestLayer5Representation:
         encodings[1].metadata.timestamp = "2026-06-12T12:00:00"  # Match June, different year
         ds_season = EcologicalPairDataset(encodings, pair_strategy=SeasonalAnalogPairs(), encoder=encoder)
         xi, xj = ds_season[0]
-        assert xi.shape == (154, 20, 20)
+        assert xi.shape == (282, 20, 20)
 
 
 # ── Layer 6–7: Regime Discovery & Exploration ─────────────────────────────────
@@ -407,7 +407,7 @@ class TestLayer6And7:
         
         encoder_pipeline = EcologicalEncoder(spatial_extractor, rel_extractor)
         
-        in_ch = 154
+        in_ch = 282
         model = EcologicalFingerprintEncoder(in_channels=in_ch, latent_dim=128)
         
         # Generate embeddings

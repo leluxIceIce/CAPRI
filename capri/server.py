@@ -508,6 +508,148 @@ def get_discovery_state():
         "variance": discovery_results.get("variance", 0.0)
     }), 200
 
+@app.route("/api/molecule/decompose", methods=["POST", "GET"])
+def decompose_molecule():
+    try:
+        cube = None
+        if request.method == "POST":
+            data = request.get_json(silent=True)
+            if data and "cube" in data:
+                cube = np.array(data["cube"], dtype=np.float32)
+                
+        if cube is None:
+            # Generate synthetic fallback
+            cube = cube_builder.generate_synthetic_cube()
+            # Append SST channel
+            H, W, _ = cube.shape
+            y_grad = np.linspace(0.8, 0.2, H)
+            SST = np.repeat(y_grad[:, np.newaxis], W, axis=1)
+            cube = np.concatenate([cube, SST[:, :, np.newaxis]], axis=2)
+            
+        from molecular_tensor import decompose_to_molecular_fingerprint, tensor_to_3d_voxels, detect_symmetry
+        
+        fingerprint = decompose_to_molecular_fingerprint(cube)
+        voxels = tensor_to_3d_voxels(cube)
+        symmetries = detect_symmetry(voxels)
+        
+        # Extract active points above a threshold for easy rendering
+        active_voxels = []
+        for c in range(7):
+            indices = np.argwhere(voxels[c] > 0.05)
+            for x_idx, y_idx, z_idx in indices:
+                val = float(voxels[c, x_idx, y_idx, z_idx])
+                active_voxels.append({
+                    "channel": c,
+                    "x": int(x_idx),
+                    "y": int(y_idx),
+                    "z": int(z_idx),
+                    "value": val
+                })
+                
+        return jsonify({
+            "fingerprint": fingerprint.tolist(),
+            "symmetries": symmetries,
+            "voxels": voxels.tolist(),
+            "active_voxels": active_voxels
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error in decompose query: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/molecule/dock/<int:x>/<int:y>", methods=["POST", "GET"])
+def dock_molecule(x, y):
+    try:
+        # Ingest cube from post or use synthetic fallback
+        cube = None
+        if request.method == "POST":
+            data = request.get_json(silent=True)
+            if data and "cube" in data:
+                cube = np.array(data["cube"], dtype=np.float32)
+        
+        if cube is None:
+            # Generate or use synthetic cube
+            cube = cube_builder.generate_synthetic_cube()
+            # Append SST channel
+            H, W, _ = cube.shape
+            y_grad = np.linspace(0.8, 0.2, H)
+            SST = np.repeat(y_grad[:, np.newaxis], W, axis=1)
+            cube = np.concatenate([cube, SST[:, :, np.newaxis]], axis=2)
+            
+        H, W, V = cube.shape
+        if not (0 <= x < W and 0 <= y < H):
+            return jsonify({"error": f"Coordinates out of bounds: x={x}, y={y} for shape {W}x{H}"}), 400
+            
+        # Get 3D molecular structure of selected cell (7, 20)
+        from molecular_tensor import tensor_to_3d_voxels
+        voxels = tensor_to_3d_voxels(cube) # Shape (7, 20, 20, 20)
+        selected_voxels = voxels[:, y, x, :] # Shape (7, 20)
+        selected_values = cube[y, x, :].tolist()
+        
+        # Now find top-k matching cells in database
+        matches = []
+        k = int(request.args.get("k", 5))
+        
+        global embedding_db
+        if embedding_db is not None and len(embedding_db.records) > 0:
+            # We will calculate distance between selected cell variables and all cells in DB
+            selected_vec = np.array(cube[y, x, :], dtype=np.float32)
+            
+            # Gather all cells
+            all_cells = []
+            for rec in embedding_db.records:
+                db_cube = rec.cube
+                if db_cube is None:
+                    continue
+                db_H, db_W, db_V = db_cube.shape
+                # Ensure same variable count
+                lim_V = min(V, db_V)
+                
+                # Compute distance using the overlapping variables
+                db_flat = db_cube.reshape(-1, db_V)
+                diff = db_flat[:, :lim_V] - selected_vec[:lim_V]
+                dists = np.linalg.norm(diff, axis=1)
+                
+                for idx, d in enumerate(dists):
+                    db_y = idx // db_W
+                    db_x = idx % db_W
+                    all_cells.append({
+                        "cube_id": rec.cube_id,
+                        "dataset_id": rec.dataset_id,
+                        "regime": rec.regime,
+                        "x": db_x,
+                        "y": db_y,
+                        "distance": float(d),
+                        "values": db_cube[db_y, db_x, :].tolist()
+                    })
+            
+            # Sort by distance
+            all_cells.sort(key=lambda c: c["distance"])
+            matches = all_cells[:k]
+            
+            # Compute voxels for matches
+            for m in matches:
+                parent_rec = next((r for r in embedding_db.records if r.cube_id == m["cube_id"]), None)
+                if parent_rec is not None and parent_rec.cube is not None:
+                    parent_voxels = tensor_to_3d_voxels(parent_rec.cube)
+                    m["voxels"] = parent_voxels[:, m["y"], m["x"], :].tolist()
+                else:
+                    m["voxels"] = None
+                    
+        return jsonify({
+            "selected_cell": {
+                "x": x,
+                "y": y,
+                "values": selected_values,
+                "voxels": selected_voxels.tolist()
+            },
+            "matches": matches
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error in docking query: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
 # ── Missing API Routes for 3D Cube Explorer ───────────────────────────────────
 
 @app.route("/api/cube/synthetic", methods=["GET"])

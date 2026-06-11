@@ -25,6 +25,7 @@ class EcologicalEncoding:
     cube: np.ndarray                            # Shape (H, W, V)
     spatial_descriptors: SpatialDescriptorSet  # Shape (H, W, V_spatial)
     relationship_descriptors: RelationshipDescriptorMatrix  # Shape (H, W, V_pairs)
+    molecular_fingerprint: np.ndarray           # Shape (H, W, 128)
     metadata: TileMetadata
     channel_manifest: List[str]                 # Names of all channels in concatenated order
 
@@ -36,7 +37,8 @@ class EcologicalEncoding:
         concat = np.concatenate([
             self.cube,
             self.relationship_descriptors.data,
-            self.spatial_descriptors.data
+            self.spatial_descriptors.data,
+            self.molecular_fingerprint
         ], axis=-1)
         # Convert to (C_total, H, W)
         return torch.from_numpy(concat).permute(2, 0, 1).float()
@@ -46,7 +48,8 @@ class EcologicalEncoding:
         concat = np.concatenate([
             self.cube,
             self.relationship_descriptors.data,
-            self.spatial_descriptors.data
+            self.spatial_descriptors.data,
+            self.molecular_fingerprint
         ], axis=-1)
         return concat.flatten()
 
@@ -65,6 +68,7 @@ class EcologicalEncoding:
         lines.append(f"  Observation Cube (C)   : shape {self.cube.shape}")
         lines.append(f"  Spatial Descriptors (P): shape {self.spatial_descriptors.data.shape}")
         lines.append(f"  Relationship Descr (R) : shape {self.relationship_descriptors.data.shape}")
+        lines.append(f"  Molecular Fingerprint  : shape {self.molecular_fingerprint.shape}")
         lines.append(f"  Total Input Channels   : {len(self.channel_manifest)}")
         lines.append("-" * 60)
         lines.append("CHANNEL MANIFEST:")
@@ -108,7 +112,14 @@ class EcologicalEncoder:
         Ingests a raw observation cube and constructs the full ecological encoding.
         """
         # Ensure correct variable names are configured
-        var_names = metadata.variables or ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490"]
+        var_names = metadata.variables
+        if not var_names or len(var_names) != cube.shape[-1]:
+            if cube.shape[-1] == 8:
+                var_names = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "SST"]
+            elif cube.shape[-1] == 7:
+                var_names = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490"]
+            else:
+                var_names = [f"var_{i}" for i in range(cube.shape[-1])]
         self.spatial_extractor.variables = var_names
         self.relationship_extractor.variables = var_names
         
@@ -136,13 +147,26 @@ class EcologicalEncoder:
                 f"{var_name}_texture_contrast"
             ])
             
+        # Compute molecular fingerprint
+        from molecular_tensor import decompose_to_molecular_fingerprint
+        fingerprint = decompose_to_molecular_fingerprint(cube)
+        H, W, _ = cube.shape
+        tiled_fingerprint = np.tile(fingerprint, (H, W, 1)).astype(np.float32)
+        
         # Build the channel manifest
-        channel_manifest = list(var_names) + list(relationship_desc.feature_names) + list(spatial_desc.feature_names)
+        mol_names = [f"molecular_fingerprint_d{i}" for i in range(128)]
+        channel_manifest = (
+            list(var_names) + 
+            list(relationship_desc.feature_names) + 
+            list(spatial_desc.feature_names) + 
+            mol_names
+        )
         
         return EcologicalEncoding(
             cube=cube,
             spatial_descriptors=spatial_desc,
             relationship_descriptors=relationship_desc,
+            molecular_fingerprint=tiled_fingerprint,
             metadata=metadata,
             channel_manifest=channel_manifest
         )

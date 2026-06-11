@@ -15,7 +15,8 @@ class EcologicalTrainingPipeline:
         self.base_dir = Path(datasets_dir)
         self.device = device
         self.pool = MultiDatasetPool(datasets_dir)
-        self.model = EcologicalFingerprintEncoder(in_channels=192, latent_dim=128)
+        # Default to 320 (original 192 + 128 molecular fingerprint)
+        self.model = EcologicalFingerprintEncoder(in_channels=320, latent_dim=128)
         self.dataset_cache: Optional[EcologicalPairDataset] = None
 
     def load_datasets(self, dataset_names: List[str]) -> int:
@@ -53,6 +54,12 @@ class EcologicalTrainingPipeline:
             raise ValueError("No datasets loaded")
             
         self._build_pair_dataset()
+        
+        # Dynamically recreate model if the in_channels from dataset encodings differs from current model
+        in_ch = len(self.dataset_cache.encodings[0].channel_manifest)
+        if self.model.conv1.in_channels != in_ch:
+            self.model = EcologicalFingerprintEncoder(in_channels=in_ch, latent_dim=128)
+            
         return train_contrastive_model(
             model=self.model,
             dataset=self.dataset_cache,
