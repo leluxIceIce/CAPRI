@@ -17,6 +17,7 @@ import { buildStateSpaceView, renderStateSpaceView } from './views/StateSpace';
 import { buildInterpretationView, renderInterpretationView } from './views/Interpretation';
 import { buildTransferView, renderTransferResults } from './views/Transfer';
 import { buildExportView, enableExports, initExportHandlers } from './views/Export';
+import { buildDatasetFactoryView } from './views/DatasetFactory';
 import {
   checkBackend,
   fetchSyntheticCube, uploadCubeCSV,
@@ -48,6 +49,7 @@ const NAV_ITEMS = [
   { id: 'statespace',     icon: '🌌', label: 'State Space',        section: null        },
   { id: 'interpretation', icon: '📖', label: 'Interpretation',     section: null        },
   { id: 'transfer',       icon: '🔁', label: 'Transferability',    section: 'Science'   },
+  { id: 'datasetfactory', icon: '🏭', label: 'Dataset Factory',    section: null        },
   { id: 'export',         icon: '📦', label: 'Export',             section: null        },
 ];
 
@@ -114,7 +116,7 @@ function buildApp() {
       <span id="tb-source" style="margin-right:12px; color:var(--text-muted);"></span>
       <span id="tb-regime" style="margin-right:12px;"></span>
     </div>
-    <div class="cube-dim-badge">16 × 16 × 8</div>
+    <div class="cube-dim-badge">20 × 20 × 8</div>
   `;
   mainArea.appendChild(topbar);
 
@@ -174,16 +176,26 @@ function buildApp() {
   viewContainer.appendChild(homeView);
 
   // ── Page views ──
-  const pageViews = [
-    buildStatisticsView(),
-    buildSpatialView(),
-    buildEncoderView(),
-    buildStateSpaceView(),
-    buildInterpretationView(),
-    buildTransferView(),
-    buildExportView(),
-  ];
-  pageViews.forEach(v => viewContainer.appendChild(v));
+  const statsView = buildStatisticsView();
+  const spatialView = buildSpatialView();
+  const encoderView = buildEncoderView();
+  const stateSpaceView = buildStateSpaceView();
+  const interpretationView = buildInterpretationView();
+  const transferView = buildTransferView();
+  const exportView = buildExportView();
+  const datasetFactoryView = buildDatasetFactoryView();
+
+  const views = {
+    statistics: statsView,
+    spatial: spatialView,
+    encoder: encoderView,
+    statespace: stateSpaceView,
+    interpretation: interpretationView,
+    transfer: transferView,
+    datasetfactory: datasetFactoryView,
+    export: exportView,
+  };
+  Object.values(views).forEach(v => viewContainer.appendChild(v));
 
   app.appendChild(mainArea);
 }
@@ -204,7 +216,7 @@ function switchView(viewId: string) {
   // Show/hide views
   document.getElementById('view-home')!.style.display = viewId === 'home' ? 'flex' : 'none';
 
-  const pageIds = ['statistics','spatial','encoder','statespace','interpretation','transfer','export'];
+  const pageIds = ['statistics','spatial','encoder','statespace','interpretation','transfer','datasetfactory','export'];
   pageIds.forEach(pid => {
     const el = document.getElementById(`view-${pid}`);
     if (el) el.style.display = pid === viewId ? 'flex' : 'none';

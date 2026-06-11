@@ -46,10 +46,12 @@
   --text-muted:   #6890b8;
   --text-dim:     #3a5a80;
 
-  /* Status */
+  /* Colors - Functional */
+  --primary: #00e5ff;
+  --primary-hover: #00b8cc;
+  --danger: #ff4757;
   --success: #00ff9d;
   --warning: #ffd700;
-  --error:   #ff4757;
   --info:    #00e5ff;
 
   /* Layout */
@@ -525,27 +527,75 @@ html, body {
 
 /* ── 16. Buttons ─────────────────────────────────────────────── */
 .btn {
-  display: inline-flex; align-items: center; gap: var(--s2);
-  padding: var(--s2) var(--s4);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--text); font: inherit; font-size: 13px; font-weight: 500;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-family: var(--font-sans);
+  font-size: 13px;
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: all 0.2s ease;
 }
 
-.btn:hover { background: var(--surface-2); border-color: var(--border-hover); }
+.btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 .btn-primary {
-  background: var(--cyan-dim);
-  border-color: rgba(0,229,255,.3);
-  color: var(--cyan);
+  background: var(--primary);
+  color: #000;
+  border-color: var(--primary);
+  font-weight: 600;
 }
 
-.btn-primary:hover {
-  background: rgba(0,229,255,.18);
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.loading-dots::after {
+  content: '';
+  animation: dots 1.5s infinite steps(4, end);
+}
+
+@keyframes dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+}
+
+.btn.active {
+  background: var(--cyan-dim);
   border-color: var(--cyan);
+  color: var(--cyan);
   box-shadow: 0 0 12px var(--cyan-glow);
 }
 

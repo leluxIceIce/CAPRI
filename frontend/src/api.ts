@@ -7,8 +7,28 @@
 export const API_BASE = 'http://localhost:8000';
 export let USE_MOCK = true; // auto-detected at startup
 
+export interface DatasetManifest {
+  dataset_name: string;
+  source_file: string;
+  n_cubes: number;
+  tile_shape: number[];
+  variables_present: string[];
+  variables_imputed: string[];
+  resolution: number | string;
+  completeness_threshold: number;
+  tiles: {
+    id: number;
+    file: string;
+    regime: string;
+    completeness: number;
+    lon_bounds: [number, number];
+    lat_bounds: [number, number];
+    field_position: [number, number];
+  }[];
+}
+
 export interface CubeData {
-  cube: number[][][];      // [16][16][8]
+  cube: number[][][];      // [20][20][8]
   variables: string[];     // ['CHL','TSM','APHY','ADG','BBP','PAR','KD490','SST']
   shape: [number, number, number];
   source: string;
@@ -70,7 +90,74 @@ export async function checkBackend(): Promise<boolean> {
   return false;
 }
 
-// ── Cube endpoints ──────────────────────────────────────────────
+// ── API: Dataset Factory ──────────────────────────────────────────────────────
+
+export async function compileDataset(file: File, completenessThreshold = 0.70): Promise<DatasetManifest> {
+  if (USE_MOCK) {
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve({
+          dataset_name: "mock_dataset_001",
+          source_file: file.name,
+          n_cubes: 24,
+          tile_shape: [20, 20, 8],
+          variables_present: ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"],
+          variables_imputed: [],
+          resolution: 0.01,
+          completeness_threshold: completenessThreshold,
+          tiles: Array.from({ length: 24 }, (_, i) => ({
+            id: i,
+            file: `cube_${i.toString().padStart(4, '0')}.npy`,
+            regime: ["productive_coastal", "shelf_sea", "open_ocean"][i % 3],
+            completeness: 0.85 + Math.random() * 0.15,
+            lon_bounds: [3.0 + (i % 6) * 0.20, 3.20 + (i % 6) * 0.20],
+            lat_bounds: [53.0 + Math.floor(i / 6) * 0.20, 53.20 + Math.floor(i / 6) * 0.20],
+            field_position: [Math.floor(i / 6) * 20, (i % 6) * 20]
+          }))
+        });
+      }, 1500);
+    });
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('completeness_threshold', completenessThreshold.toString());
+
+  const res = await fetch(`${API_BASE}/api/dataset/compile`, {
+    method: 'POST',
+    body: formData
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to compile dataset');
+  }
+  return res.json();
+}
+
+export async function listDatasets(): Promise<DatasetManifest[]> {
+  if (USE_MOCK) {
+    return [
+      {
+        dataset_name: "north_sea_2023",
+        source_file: "NS_2023_summer.csv",
+        n_cubes: 42,
+        tile_shape: [20, 20, 8],
+        variables_present: ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"],
+        variables_imputed: [],
+        resolution: 0.01,
+        completeness_threshold: 0.70,
+        tiles: []
+      }
+    ];
+  }
+
+  const res = await fetch(`${API_BASE}/api/dataset/list`);
+  if (!res.ok) throw new Error('Failed to list datasets');
+  const data = await res.json();
+  return data.datasets || [];
+}
+
+// ── API: Cube Construction ───────────────────────────────────────────────────
 export async function fetchSyntheticCube(): Promise<CubeData> {
   if (!USE_MOCK) {
     const r = await fetch(`${API_BASE}/api/cube/synthetic`);
@@ -115,13 +202,13 @@ export async function fetchSpatial(cube: CubeData): Promise<SpatialData> {
 
 // ── Encoder ─────────────────────────────────────────────────────
 export async function trainEncoder(
-  cubes: number[][][][],
+  datasets: string[],
   onProgress: (e: TrainEvent) => void
-): Promise<EmbedData[]> {
+): Promise<any> {
   if (!USE_MOCK) {
     const r = await fetch(`${API_BASE}/api/encoder/train`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cubes, epochs: 10 })
+      body: JSON.stringify({ datasets, epochs: 10, batch_size: 8 })
     });
     return r.json();
   }
@@ -131,7 +218,7 @@ export async function trainEncoder(
     const loss = 0.82 * Math.pow(0.88, epoch) + 0.02 * Math.random();
     onProgress({ epoch, loss: parseFloat(loss.toFixed(4)), elapsed: epoch * 0.3 });
   }
-  return cubes.map((_cube) => ({
+  return Array.from({ length: 42 }, () => ({
     z: Array.from({ length: 128 }, () => (Math.random() - 0.5) * 2),
     norm: 1 + Math.random()
   }));
@@ -212,7 +299,7 @@ function addNoise2d(arr: number[][], std = 0.04): number[][] {
 }
 
 export function generateMockCube(source = 'synthetic'): CubeData {
-  const H = 16, W = 16, V = 8;
+  const H = 20, W = 20, V = 8;
   const plume  = gaussian(0.4, 0.3, 0.3, 0.25, H, W);
   const front  = sigmoid2d(H, W, Math.PI / 6);
   const patchy = Array.from({ length: H }, (_, r) =>
@@ -278,7 +365,7 @@ function generateMockStats(cube: CubeData): StatsData {
 }
 
 function generateMockSpatial(cube: CubeData): SpatialData {
-  const H = 16, W = 16;
+  const H = 20, W = 20;
   const make = () => Array.from({ length: H }, () =>
     Array.from({ length: W }, () => parseFloat((Math.random()).toFixed(4)))
   );

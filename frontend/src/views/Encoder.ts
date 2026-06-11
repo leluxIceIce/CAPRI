@@ -22,13 +22,15 @@ export function buildEncoderView(): HTMLElement {
             <div style="color:var(--cyan); font-size:13px; font-weight:700; margin-bottom:8px;">CubeNet</div>
             <div style="display:flex; flex-direction:column; gap:6px;">
               ${[
-                ['Input', '16 × 16 × 8', 'var(--text)'],
-                ['Conv3D', '32 filters, 3×3×3', 'var(--cyan)'],
-                ['BN + ReLU', '', 'var(--text-dim)'],
-                ['Conv3D', '64 filters, 3×3×3', 'var(--cyan)'],
-                ['GlobalAvgPool', '→ 64-dim', 'var(--text-muted)'],
-                ['FC', '128-dim', 'var(--green)'],
-                ['Output z', 'ℝ¹²⁸', 'var(--green)'],
+                ['Input', '20 × 20 × 8', 'var(--text)'],
+                ['Conv2D', '64 filters, 3×3', 'var(--cyan)'],
+                ['ResBlock 1', '2 blocks, 64-dim', 'var(--cyan)'],
+                ['CBAM', 'Channel+Spatial Attention', 'var(--purple)'],
+                ['ResBlock 2', '2 blocks, 128-dim', 'var(--cyan)'],
+                ['ResBlock 3', '2 blocks, 256-dim', 'var(--cyan)'],
+                ['ResBlock 4', '2 blocks, 256-dim', 'var(--cyan)'],
+                ['AdaptivePool', '→ 2×2', 'var(--text-muted)'],
+                ['FC', '128-dim latent space', 'var(--green)'],
               ].map(([name, detail, color]) => `
                 <div style="display:flex; align-items:center; gap:12px;">
                   <span style="color:${color}; font-weight:600; min-width:110px;">${name}</span>
@@ -48,7 +50,7 @@ export function buildEncoderView(): HTMLElement {
             </div>
             <div class="info-row" style="padding:0;">
               <span class="info-row-key">Parameters</span>
-              <span class="info-row-val">~42K</span>
+              <span class="info-row-val">5.7M</span>
             </div>
           </div>
         </div>
