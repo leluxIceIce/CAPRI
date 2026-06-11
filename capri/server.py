@@ -18,6 +18,7 @@ from typing import Dict, Any, List, Optional
 import tempfile
 import uuid
 import json
+from pathlib import Path
 
 # Import our modular components
 from cube_builder import EcologicalCubeBuilder, TileMetadata
@@ -136,8 +137,8 @@ def init_eef_pipeline():
             
             if not loaded_real_db:
                 logger.info("No reference database loaded. Initializing with dummy defaults.")
-                dummy_cubes = [cube_builder.generate_synthetic_cube() for _ in range(5)]
-                dummy_embeddings = np.random.randn(5, 128).astype(np.float32)
+                dummy_cubes = [cube_builder.generate_synthetic_cube() for _ in range(30)]
+                dummy_embeddings = np.random.randn(30, 128).astype(np.float32)
                 
                 disc = RegimeDiscoverer(n_regimes=3)
                 disc.fit_transform_latent_space(dummy_embeddings)
@@ -147,7 +148,7 @@ def init_eef_pipeline():
                 ret.fit(dummy_embeddings)
                 
                 interpreter = EcologicalInterpreter(variable_names=cube_builder.variables)
-                interpreter.auto_name_regimes(dummy_cubes, np.array([0, 0, 1, 1, 2]))
+                interpreter.auto_name_regimes(dummy_cubes, np.array([0]*10 + [1]*10 + [2]*10))
                 
                 explorer = EcologicalExplorer(
                     encoder_model=model,
