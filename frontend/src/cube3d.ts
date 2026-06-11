@@ -160,12 +160,18 @@ export class CubeRenderer {
       labelCanvas.height = 32;
       const lctx = labelCanvas.getContext('2d');
       if (lctx) {
-        lctx.fillStyle = 'rgba(10, 10, 16, 0.7)';
+        lctx.font = 'bold 18px monospace';
+        const textWidth = lctx.measureText(varName).width;
+        const padding = 10;
+        const boxW = textWidth + padding * 2;
+        const boxH = 24;
+        
+        // Draw tight background box matching the text length exactly
+        lctx.fillStyle = 'rgba(10, 10, 16, 0.75)';
         lctx.beginPath();
-        lctx.roundRect(0, 0, 128, 32, 6);
+        lctx.roundRect((128 - boxW) / 2, (32 - boxH) / 2, boxW, boxH, 4);
         lctx.fill();
         
-        lctx.font = 'bold 16px monospace';
         lctx.fillStyle = '#' + colorHex.toString(16).padStart(6, '0');
         lctx.textAlign = 'center';
         lctx.textBaseline = 'middle';
@@ -182,7 +188,10 @@ export class CubeRenderer {
       });
       const labelSprite = new THREE.Sprite(labelMat);
       labelSprite.scale.set(0.6, 0.15, 1.0);
-      labelSprite.position.set(1.35, 0, mesh.position.z);
+      
+      // Position labels in a 45 degree staggered diagonal array so they are always readable at once
+      const staggerOffset = (v - 3.5) * 0.16;
+      labelSprite.position.set(1.35 + staggerOffset, staggerOffset, mesh.position.z);
       labelSprite.visible = this.layerVisible[v];
       
       this.cubeGroup.add(labelSprite);
