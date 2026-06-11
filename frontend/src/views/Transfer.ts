@@ -18,13 +18,11 @@ export function buildTransferView(): HTMLElement {
         <!-- Upload external cube -->
         <div class="card">
           <div class="card-label" style="margin-bottom:12px;">External Cube Input</div>
-          <div class="upload-zone" id="transfer-drop-zone" role="button" tabindex="0"
-               aria-label="Upload external CSV for transfer assessment" style="margin:0 0 12px 0;">
-            <input type="file" id="transfer-file-input" accept=".csv,text/csv" />
-            <span class="upload-icon" style="font-size:24px;">🌍</span>
-            <div class="upload-title">Upload external region</div>
-            <div class="upload-sub">CSV with 256 rows (16×16 grid)</div>
-          </div>
+          <div class="upload-zone" id="tr-drop-zone">
+          <span class="upload-icon">Upload</span>
+          <div class="upload-title">Drop Target Cube</div>
+          <div class="upload-sub">CSV with 400 rows (20×20 grid)</div>
+        </div>
           <button class="btn btn-primary" id="btn-assess-transfer-full" style="width:100%; justify-content:center;" disabled>
             Assess Transferability
           </button>

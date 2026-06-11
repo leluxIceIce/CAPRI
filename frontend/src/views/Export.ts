@@ -8,7 +8,7 @@ export function buildExportView(): HTMLElement {
   el.id = 'view-export';
   el.innerHTML = `
     <div class="page-header">
-      <h1>📦 Export & Deployment</h1>
+      <h1>Export & Deployment</h1>
       <p>Download trained model artifacts for use outside the EPS platform</p>
     </div>
     <div class="page-scroll">
@@ -20,7 +20,7 @@ export function buildExportView(): HTMLElement {
             Download all artifacts as a complete deployment bundle.
           </p>
           <button class="btn btn-primary" id="btn-export-bundle" style="width:100%; justify-content:center;" disabled>
-            📦 Download Bundle (.zip)
+            Download Bundle (.zip)
           </button>
           <div id="export-status" style="margin-top:12px; font-size:12px; color:var(--text-muted); display:none;"></div>
         </div>
@@ -45,21 +45,23 @@ z = model.predict(cube)   <span style="color:var(--text-dim);"># (128,)</span>
 
       <!-- Individual artifacts -->
       <div class="card">
-        <div class="card-label" style="margin-bottom:12px;">Individual Artifacts</div>
-        <div id="export-items">
+        <div class="card-label">Model Weights & Architectures</div>
+        <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
           ${[
-            ['encoder.pt',          'PyTorch encoder weights',              '🧠', 'Core CubeNet model weights (16×16×8 → R^128)'],
-            ['metadata.json',       'Model metadata and config',            '📋', 'Architecture, training params, variable schema'],
-            ['normalization.json',  'Normalization parameters',             '📐', 'Per-variable min/max used during training'],
-            ['feature_schema.json', 'Variable definitions and ordering',    '📄', 'Canonical variable names, units, ordering'],
-          ].map(([name, label, icon, desc]) => `
-            <div class="export-item">
-              <span class="export-icon">${icon}</span>
-              <div class="export-info">
-                <div class="export-name">${name}</div>
-                <div class="export-desc">${desc}</div>
+            ['encoder.pt',          'PyTorch encoder weights',              'Core CubeNet model weights (16×16×8 → R^128)'],
+            ['decoder.pt',          'Optional decoder weights',             'Used for generative tasks or masked autoencoding'],
+            ['umap_reducer.pkl',    'UMAP manifold projection',             'Maps 128-dim to 2D visualization space'],
+            ['hdbscan_model.pkl',   'HDBSCAN clustering model',             'Density-based regime assignments']
+          ].map(([file, desc, detail]) => `
+            <div style="display:flex; align-items:flex-start; gap:12px; padding:12px; background:var(--surface-3); border-radius:var(--r-sm); border:1px solid var(--border);">
+              <div style="flex:1;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                  <span style="font-family:var(--font-mono); font-size:12px; color:var(--text); font-weight:600;">${file}</span>
+                  <button class="btn btn-sm">Download</button>
+                </div>
+                <div style="font-size:11px; color:var(--text-muted);">${desc}</div>
+                <div style="font-size:10px; color:var(--text-dim); margin-top:4px;">${detail}</div>
               </div>
-              <button class="btn btn-sm" id="btn-dl-${name.replace(/\./g,'-')}" disabled>Download</button>
             </div>
           `).join('')}
         </div>

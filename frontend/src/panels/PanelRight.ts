@@ -20,6 +20,7 @@ export function buildRightPanel(): HTMLElement {
       <button class="tab-btn active" data-tab="spectral" id="rtab-spectral">Spectral</button>
       <button class="tab-btn" data-tab="clusters" id="rtab-clusters">Clusters</button>
       <button class="tab-btn" data-tab="similarity" id="rtab-similarity">Similarity</button>
+      <button class="tab-btn" data-tab="catalog" id="rtab-catalog">Catalog</button>
     </div>
 
     <!-- Spectral tab -->
@@ -81,8 +82,109 @@ export function buildRightPanel(): HTMLElement {
         </div>
       </div>
     </div>
+    <!-- Catalog tab -->
+    <div id="rtab-catalog-content" style="display:none; overflow-y:auto; flex:1; padding: 16px;">
+      <div class="panel-title" style="margin-bottom: 12px; font-size: 11px;">MODELS</div>
+      <div id="catalog-models-list">
+        <!-- Dynamic models go here -->
+      </div>
+      <div class="section-divider" style="margin: 16px 0;"></div>
+      <div class="panel-title" style="margin-bottom: 12px; font-size: 11px;">COMPILED DATASETS</div>
+      <div id="catalog-datasets-list">
+        <!-- Dynamic datasets go here -->
+      </div>
+    </div>
   `;
   return el;
+}
+
+export async function refreshCatalog() {
+  const modelsContainer = document.getElementById('catalog-models-list');
+  const datasetsContainer = document.getElementById('catalog-datasets-list');
+  if (!modelsContainer || !datasetsContainer) return;
+
+  try {
+    const api = await import('../api');
+    const models = await api.fetchModels();
+    const datasets = await api.listDatasets();
+
+    // Render Models
+    if (models.length === 0) {
+      modelsContainer.innerHTML = `<div style="font-size: 11px; color: var(--text-muted);">No models saved yet.</div>`;
+    } else {
+      modelsContainer.innerHTML = models.map(m => `
+        <div class="card" style="margin-bottom: 12px; border-left: 3px solid ${m.active ? 'var(--cyan)' : 'transparent'};">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:600; font-size:12px; color:var(--text);">${m.name}</div>
+            ${m.active ? `<span style="font-size:9px; background:rgba(0, 229, 255, 0.1); color:var(--cyan); padding:2px 6px; border-radius:4px;">Active</span>` : ''}
+          </div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">File: ${m.file}</div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">Description: ${m.description}</div>
+          ${m.name === 'cubenet_active' ? `
+            <div style="margin-top: 8px; display:flex; gap:6px;">
+              <button class="btn btn-sm btn-outline btn-remove-model" data-name="${m.name}" style="flex:1; font-size:10px; padding:4px 0; border-color:rgba(255,71,87,0.3); color:rgba(255,71,87,0.85);">Delete</button>
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+    }
+
+    // Render Datasets
+    if (datasets.length === 0) {
+      datasetsContainer.innerHTML = `<div style="font-size: 11px; color: var(--text-muted);">No datasets compiled yet.</div>`;
+    } else {
+      datasetsContainer.innerHTML = datasets.map(d => `
+        <div class="card" style="margin-bottom: 12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:600; font-size:12px; color:var(--text);">${d.dataset_name}</div>
+            <span style="font-size:10px; color:var(--text-muted);">${d.n_cubes} tiles</span>
+          </div>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Source: ${d.source_file}</div>
+          <div style="margin-top: 8px; display:flex; gap:6px;">
+            <button class="btn btn-sm btn-load-dataset" data-name="${d.dataset_name}" style="flex:1; font-size:10px; padding:4px 0;">Load Pool</button>
+            <button class="btn btn-sm btn-outline btn-remove-dataset" data-name="${d.dataset_name}" style="flex:1; font-size:10px; padding:4px 0; border-color:rgba(255,71,87,0.3); color:rgba(255,71,87,0.85);">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Bind Listeners
+    modelsContainer.querySelectorAll('.btn-remove-model').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const name = (btn as HTMLElement).dataset.name!;
+        if (!confirm(`Are you sure you want to remove model "${name}" and reset training weights?`)) return;
+        await api.removeModel(name);
+        alert(`Model "${name}" removed. Weights reset.`);
+        await refreshCatalog();
+      });
+    });
+
+    datasetsContainer.querySelectorAll('.btn-load-dataset').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const name = (btn as HTMLElement).dataset.name!;
+        const res = await fetch(`${api.API_BASE}/api/dataset/merge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ datasets: [name] })
+        });
+        const poolData = await res.json();
+        alert(`Loaded dataset "${name}" into Active Pool. Pool contains ${poolData.merged_count} cubes.`);
+      });
+    });
+
+    datasetsContainer.querySelectorAll('.btn-remove-dataset').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const name = (btn as HTMLElement).dataset.name!;
+        if (!confirm(`Are you sure you want to delete dataset "${name}" from disk?`)) return;
+        await api.removeDataset(name);
+        alert(`Dataset "${name}" deleted.`);
+        await refreshCatalog();
+      });
+    });
+
+  } catch (e: any) {
+    console.error('Failed to refresh catalog:', e);
+  }
 }
 
 export function initRightPanelTabs() {
@@ -93,10 +195,13 @@ export function initRightPanelTabs() {
       const name = tab.dataset.tab!;
       tabs.forEach(t => { if (t.closest('#panel-right')) t.classList.remove('active'); });
       tab.classList.add('active');
-      ['spectral','clusters','similarity'].forEach(n => {
+      ['spectral','clusters','similarity', 'catalog'].forEach(n => {
         const c = document.getElementById(`rtab-${n}-content`);
         if (c) c.style.display = n === name ? '' : 'none';
       });
+      if (name === 'catalog') {
+        refreshCatalog();
+      }
     });
   });
 }

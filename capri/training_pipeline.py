@@ -1,5 +1,5 @@
 import torch
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Tuple
 import numpy as np
 from pathlib import Path
 
@@ -15,7 +15,7 @@ class EcologicalTrainingPipeline:
         self.base_dir = Path(datasets_dir)
         self.device = device
         self.pool = MultiDatasetPool(datasets_dir)
-        self.model = EcologicalFingerprintEncoder(in_channels=8, latent_dim=128)
+        self.model = EcologicalFingerprintEncoder(in_channels=192, latent_dim=128)
         self.dataset_cache: Optional[EcologicalPairDataset] = None
 
     def load_datasets(self, dataset_names: List[str]) -> int:
@@ -23,37 +23,32 @@ class EcologicalTrainingPipeline:
 
     def _build_pair_dataset(self):
         cubes = self.pool.cubes
-        # Convert (H, W, V) to (V, H, W) for PyTorch
-        pt_cubes = [np.transpose(c, (2, 0, 1)).astype(np.float32) for c in cubes]
-        
         from cube_builder import TileMetadata
-        from ecological_encoder import EcologicalEncoding
+        from ecological_encoder import EcologicalEncoder
+        
+        encoder = EcologicalEncoder()
         
         encodings = []
-        for i, c in enumerate(pt_cubes):
+        for i, cube in enumerate(cubes):
             meta = self.pool.metadata[i]
             t_meta = TileMetadata(source_file=meta["dataset"], regime=meta["regime"])
-            t_meta.coordinates = meta.get("lon_bounds", [0,0]) # simplify
+            lon_b = meta.get("lon_bounds")
+            lat_b = meta.get("lat_bounds")
+            if lon_b:
+                t_meta.lon_bounds = tuple(lon_b)
+            if lat_b:
+                t_meta.lat_bounds = tuple(lat_b)
             
-            # Create a mock encoding wrapper to satisfy ContrastiveLearner
-            # (which usually expects EcologicalEncoder outputs)
-            class MockEncoding(EcologicalEncoding):
-                def __init__(self, tensor, m):
-                    self.tensor = tensor
-                    self.metadata = m
-                    self.cube = np.transpose(tensor.numpy(), (1, 2, 0)) # back to H,W,V for augmentation
-                def to_tensor(self):
-                    return self.tensor
-            
-            t = torch.tensor(c)
-            encodings.append(MockEncoding(t, t_meta))
+            enc = encoder.encode(cube, t_meta)
+            encodings.append(enc)
             
         self.dataset_cache = EcologicalPairDataset(
             encodings=encodings,
-            pair_strategy=PhysicalPerturbationPairs()
+            pair_strategy=PhysicalPerturbationPairs(),
+            encoder=encoder
         )
 
-    def train(self, epochs: int = 10, batch_size: int = 8, lr: float = 1e-3) -> List[float]:
+    def train(self, epochs: int = 10, batch_size: int = 8, lr: float = 1e-3) -> Tuple[List[float], List[float], List[float]]:
         if not self.pool.cubes:
             raise ValueError("No datasets loaded")
             
@@ -72,20 +67,29 @@ class EcologicalTrainingPipeline:
         self.model.to(self.device)
         self.model.use_projection = False # want latent space, not contrastive projection
         
+        from ecological_encoder import EcologicalEncoder
+        from cube_builder import TileMetadata
+        encoder = EcologicalEncoder()
+        
         db = EmbeddingDatabase()
         
         with torch.no_grad():
             for i, cube in enumerate(self.pool.cubes):
                 meta = self.pool.metadata[i]
+                t_meta = TileMetadata(source_file=meta["dataset"], regime=meta["regime"])
+                lon_b = meta.get("lon_bounds")
+                lat_b = meta.get("lat_bounds")
+                if lon_b:
+                    t_meta.lon_bounds = tuple(lon_b)
+                if lat_b:
+                    t_meta.lat_bounds = tuple(lat_b)
                 
-                # (H,W,V) -> (1, V, H, W)
-                c_t = torch.tensor(np.transpose(cube, (2,0,1))).unsqueeze(0).float().to(self.device)
+                enc = encoder.encode(cube, t_meta)
+                c_t = enc.to_tensor().unsqueeze(0).to(self.device)
                 emb = self.model.encode(c_t).cpu().numpy()[0]
                 
                 cube_id = f"{meta['dataset']}_{meta['tile_id']}"
-                
-                lon_b = meta.get("lon_bounds")
-                lat_b = meta.get("lat_bounds")
+                timestamp_val = meta.get("timestamp", "")
                 
                 rec = EmbeddingRecord(
                     embedding_id=i,
@@ -94,7 +98,9 @@ class EcologicalTrainingPipeline:
                     lon_bounds=tuple(lon_b) if lon_b else None,
                     lat_bounds=tuple(lat_b) if lat_b else None,
                     regime=meta["regime"],
-                    embedding=emb
+                    embedding=emb,
+                    timestamp=timestamp_val,
+                    cube=cube
                 )
                 db.add(rec)
                 
@@ -105,13 +111,41 @@ class EcologicalTrainingPipeline:
             return None
             
         Z = np.stack([r.embedding for r in db.records])
+        
+        # Calculate pre-UMAP debug stats
+        num_embeddings = Z.shape[0]
+        embedding_dim = Z.shape[1]
+        nan_count = int(np.isnan(Z).sum())
+        variance = float(np.var(Z))
+        
         discoverer = RegimeDiscoverer(n_components=3, reduction_method="umap")
         Z_proj = discoverer.fit_transform_latent_space(Z)
         hdb_labels, gmm_probs, gmm_labels = discoverer.discover_regimes(Z)
+        
+        # Write umap_projection.csv
+        with open("umap_projection.csv", "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["embedding_id", "umap_x", "umap_y", "umap_z"])
+            for idx, record in enumerate(db.records):
+                x = float(Z_proj[idx, 0])
+                y = float(Z_proj[idx, 1])
+                z = float(Z_proj[idx, 2]) if Z_proj.shape[1] > 2 else 0.0
+                writer.writerow([record.embedding_id, x, y, z])
+                
+        # Write cluster_assignments.csv
+        with open("cluster_assignments.csv", "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["embedding_id", "hdbscan_label", "gmm_label"])
+            for idx, record in enumerate(db.records):
+                writer.writerow([record.embedding_id, int(hdb_labels[idx]), int(gmm_labels[idx])])
         
         return {
             "umap": Z_proj,
             "hdbscan_labels": hdb_labels,
             "gmm_probs": gmm_probs,
-            "gmm_labels": gmm_labels
+            "gmm_labels": gmm_labels,
+            "num_embeddings": num_embeddings,
+            "embedding_dim": embedding_dim,
+            "nan_count": nan_count,
+            "variance": variance
         }

@@ -91,7 +91,7 @@ def run_pipeline():
     
     # Train contrastively
     logger.info("Training Ecological Fingerprint Encoder contrastively (InfoNCE loss)...")
-    losses = train_contrastive_model(
+    losses, _, _ = train_contrastive_model(
         model=encoder_model,
         dataset=pair_dataset,
         epochs=5,

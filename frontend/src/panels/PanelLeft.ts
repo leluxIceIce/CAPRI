@@ -12,7 +12,7 @@ export function buildLeftPanel(): HTMLElement {
   el.id = 'panel-left';
   el.innerHTML = `
     <div class="panel-header">
-      <div class="panel-title"><span class="panel-title-icon">📊</span> Data & Cube</div>
+      <div class="panel-title">Data & Cube</div>
       <div id="cube-status-pill" class="pill pill-idle">No Cube</div>
     </div>
 
@@ -21,13 +21,13 @@ export function buildLeftPanel(): HTMLElement {
       <div class="upload-zone" id="upload-drop-zone" role="button" tabindex="0"
            aria-label="Upload CSV — drag and drop or click">
         <input type="file" id="cube-file-input" accept=".csv,text/csv" />
-        <span class="upload-icon">🌊</span>
+        <span class="upload-icon">Load</span>
         <div class="upload-title">Drop ecological CSV</div>
-        <div class="upload-sub">or click to browse · 256 rows (16×16)</div>
+        <div class="upload-sub">or click to browse · any CSV with lon/lat</div>
       </div>
       <div style="padding: 0 16px 12px; display:flex; gap:8px;">
         <button class="btn btn-primary" id="btn-load-synthetic" style="flex:1; justify-content:center;">
-          ⚡ Load Synthetic Cube
+          Load Synthetic Cube
         </button>
       </div>
     </div>
@@ -36,7 +36,7 @@ export function buildLeftPanel(): HTMLElement {
     <div id="cube-meta-section" style="display:none;">
       <div class="section-divider"></div>
       <div class="info-row"><span class="info-row-key">Source</span><span class="info-row-val" id="meta-source">—</span></div>
-      <div class="info-row"><span class="info-row-key">Dimensions</span><span class="info-row-val">16 × 16 × 8</span></div>
+      <div class="info-row"><span class="info-row-key">Dimensions</span><span class="info-row-val">20 × 20 × 8</span></div>
       <div class="info-row"><span class="info-row-key">Regime</span><span class="info-row-val" id="meta-regime">—</span></div>
       <div class="info-row"><span class="info-row-key">Completeness</span><span class="info-row-val" id="meta-completeness">—</span></div>
       <div class="info-row" id="meta-bounds-row" style="display:none;">

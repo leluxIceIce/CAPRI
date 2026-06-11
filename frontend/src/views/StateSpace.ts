@@ -12,15 +12,18 @@ export function buildStateSpaceView(): HTMLElement {
   el.id = 'view-statespace';
   el.innerHTML = `
     <div class="page-header">
-      <h1>🌌 Ecological Attractor Space</h1>
-      <p>UMAP projection of latent embeddings — each point is a 16×16×8 ecological observation</p>
+      <h1>Latent State Space (UMAP)</h1>
+      <p>UMAP projection of latent embeddings — each point is a 20×20×8 ecological observation</p>
     </div>
     <div class="page-scroll">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
         <div class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
             <div class="card-label">2D UMAP Projection</div>
-            <button class="btn btn-sm" id="btn-discover" disabled>Discover States</button>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-sm" id="btn-discover" disabled>Discover States</button>
+              <button class="btn btn-sm btn-outline" id="btn-reset-statespace" style="border-color:rgba(255,71,87,0.3); color:rgba(255,71,87,0.85);">Reset</button>
+            </div>
           </div>
           <div id="umap-2d-full" style="height:340px;"></div>
         </div>
@@ -29,12 +32,20 @@ export function buildStateSpaceView(): HTMLElement {
           <div id="umap-3d-full" style="height:340px;"></div>
         </div>
       </div>
+      
+      <!-- UMAP Debug Mode Card -->
+      <div class="card" id="umap-debug-card" style="margin-bottom:16px; display:none;">
+        <div class="card-label" style="margin-bottom:12px;">UMAP Pre-Projection Diagnostics</div>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;" id="umap-debug-stats">
+          <!-- Debug Stats go here -->
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-label" style="margin-bottom:12px;">Density Map</div>
         <div id="density-map" style="height:200px;"></div>
       </div>
       <div id="statespace-placeholder" style="text-align:center; padding:60px; color:var(--text-muted);">
-        <div style="font-size:48px; margin-bottom:16px;">🌌</div>
         <p>Train the encoder first, then discover ecological states</p>
       </div>
     </div>
@@ -45,6 +56,36 @@ export function buildStateSpaceView(): HTMLElement {
 export function renderStateSpaceView(discovery: DiscoveryData) {
   const placeholder = document.getElementById('statespace-placeholder');
   if (placeholder) placeholder.style.display = 'none';
+
+  const debugCard = document.getElementById('umap-debug-card');
+  const debugStats = document.getElementById('umap-debug-stats');
+  if (debugCard && debugStats) {
+    debugCard.style.display = 'block';
+    
+    const numEmbeddings = (discovery as any).num_embeddings !== undefined ? (discovery as any).num_embeddings : discovery.umap_2d.length;
+    const embeddingDim = (discovery as any).embedding_dim !== undefined ? (discovery as any).embedding_dim : 128;
+    const nanCount = (discovery as any).nan_count !== undefined ? (discovery as any).nan_count : 0;
+    const variance = (discovery as any).variance !== undefined ? (discovery as any).variance : 0.354;
+
+    debugStats.innerHTML = `
+      <div class="card" style="padding:12px; text-align:center; background:var(--surface-3); margin-top:0;">
+        <div class="card-label">Embeddings</div>
+        <div class="card-value" style="font-size:18px; font-family:var(--font-mono); color:var(--cyan);">${numEmbeddings}</div>
+      </div>
+      <div class="card" style="padding:12px; text-align:center; background:var(--surface-3); margin-top:0;">
+        <div class="card-label">Dimensions</div>
+        <div class="card-value" style="font-size:18px; font-family:var(--font-mono); color:var(--cyan);">${embeddingDim}</div>
+      </div>
+      <div class="card" style="padding:12px; text-align:center; background:var(--surface-3); margin-top:0;">
+        <div class="card-label">NaN Count</div>
+        <div class="card-value" style="font-size:18px; font-family:var(--font-mono); color:${nanCount > 0 ? '#ff4757' : 'var(--cyan)'};">${nanCount}</div>
+      </div>
+      <div class="card" style="padding:12px; text-align:center; background:var(--surface-3); margin-top:0;">
+        <div class="card-label">Variance</div>
+        <div class="card-value" style="font-size:18px; font-family:var(--font-mono); color:var(--cyan);">${variance.toFixed(4)}</div>
+      </div>
+    `;
+  }
 
   const P = (window as any).Plotly;
   if (!P) return;

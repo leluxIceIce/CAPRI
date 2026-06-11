@@ -11,10 +11,12 @@ class EmbeddingRecord:
     embedding_id: int
     cube_id: str          
     dataset_id: str
-    lon_bounds: Tuple[float, float]
-    lat_bounds: Tuple[float, float]
+    lon_bounds: Optional[Tuple[float, float]]
+    lat_bounds: Optional[Tuple[float, float]]
     regime: str
     embedding: np.ndarray
+    timestamp: str = ""
+    cube: Optional[np.ndarray] = None
 
 class EmbeddingDatabase:
     def __init__(self):
@@ -22,6 +24,39 @@ class EmbeddingDatabase:
         
     def add(self, rec: EmbeddingRecord):
         self.records.append(rec)
+
+    def to_parquet(self, path: str):
+        import pandas as pd
+        records_data = []
+        for r in self.records:
+            lon_min, lon_max = r.lon_bounds if r.lon_bounds else (None, None)
+            lat_min, lat_max = r.lat_bounds if r.lat_bounds else (None, None)
+            
+            row = {
+                "embedding_id": r.embedding_id,
+                "cube_id": r.cube_id,
+                "dataset_id": r.dataset_id,
+                "lon_min": lon_min,
+                "lon_max": lon_max,
+                "lat_min": lat_min,
+                "lat_max": lat_max,
+                "regime": r.regime,
+                "timestamp": getattr(r, "timestamp", ""),
+                "embedding_vector": r.embedding.tolist(),
+            }
+            if getattr(r, "cube", None) is not None:
+                # Add individual variable means for easy query
+                var_names = ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"]
+                cube_data = r.cube
+                for idx, var in enumerate(var_names):
+                    if idx < cube_data.shape[-1]:
+                        row[f"{var}_mean"] = float(cube_data[:, :, idx].mean())
+                # Full flattened cube for reversibility
+                row["original_measurements"] = cube_data.flatten().tolist()
+            records_data.append(row)
+            
+        df = pd.DataFrame(records_data)
+        df.to_parquet(path, engine="pyarrow")
         
     def to_csv(self, path: str):
         with open(path, 'w', newline='') as f:

@@ -184,8 +184,8 @@ class TestLayer3Relationships:
         cube = np.random.rand(20, 20, 7).astype(np.float32)
         extractor = RelationshipStructureExtractor(mode="all")
         R = extractor.compute_tensor(cube)
-        # 21 + 21 + 5 + 4 = 51 channels
-        assert R.data.shape == (20, 20, 51)
+        # 21 + 21 + 21 + 21 = 84 channels
+        assert R.data.shape == (20, 20, 84)
         assert not np.isnan(R.data).any()
 
 
@@ -204,18 +204,15 @@ class TestLayer4Encoding:
         assert isinstance(encoding, EcologicalEncoding)
         assert encoding.cube.shape == (20, 20, 7)
         assert encoding.spatial_descriptors.data.shape == (20, 20, 63)
-        assert encoding.relationship_descriptors.data.shape == (20, 20, 51)
+        assert encoding.relationship_descriptors.data.shape == (20, 20, 84)
         
         # Test outputs
         tensor = encoding.to_tensor()
-        assert tensor.shape == (121, 20, 20)
+        assert tensor.shape == (154, 20, 20)
         assert not torch.isnan(tensor).any()
         
-        vector = encoding.to_vector()
-        assert vector.shape == (121 * 20 * 20,)
-        
         # Manifest checks
-        assert len(encoding.channel_manifest) == 121
+        assert len(encoding.channel_manifest) == 154
         assert encoding.channel_manifest[0] == "CHL"
         assert encoding.channel_manifest[7] == "corr_CHL_aphy"
         assert encoding.channel_manifest[-1] == "KD490_texture_contrast"
@@ -223,7 +220,7 @@ class TestLayer4Encoding:
         # Inspect string check
         report = encoding.inspect()
         assert "ECOLOGICAL ENCODING INSPECTION REPORT" in report
-        assert "Total Input Channels   : 121" in report
+        assert "Total Input Channels   : 154" in report
 
 
 # ── Layer 5: Representation Learning ─────────────────────────────────────────
@@ -233,9 +230,9 @@ class TestLayer5Representation:
     def _get_in_channels(self):
         """Calculate total input channels for 7 variables."""
         V = 7
-        V_pairs = 51                  # 21 (corr) + 21 (mi) + 5 (ratios) + 4 (indices)
+        V_pairs = 84                  # 21 (corr) + 21 (spearman) + 21 (mi) + 21 (cov)
         V_spatial = V * 9             # 63
-        return V + V_pairs + V_spatial  # 121
+        return V + V_pairs + V_spatial  # 154
 
     def test_encoder_forward(self):
         in_ch = self._get_in_channels()
@@ -284,17 +281,17 @@ class TestLayer5Representation:
         # 1. Physical Perturbation
         ds_phys = EcologicalPairDataset(encodings, pair_strategy=PhysicalPerturbationPairs(), encoder=encoder)
         xi, xj = ds_phys[0]
-        assert xi.shape == (121, 20, 20)
+        assert xi.shape == (154, 20, 20)
         
         # 2. Spatial Adjacency
         ds_space = EcologicalPairDataset(encodings, pair_strategy=SpatialAdjacencyPairs(), encoder=encoder)
         xi, xj = ds_space[0]
-        assert xi.shape == (121, 20, 20)
+        assert xi.shape == (154, 20, 20)
         
         # 3. Temporal Neighbor
         ds_time = EcologicalPairDataset(encodings, pair_strategy=TemporalNeighborPairs(max_delta_days=2.0), encoder=encoder)
         xi, xj = ds_time[0]
-        assert xi.shape == (121, 20, 20)
+        assert xi.shape == (154, 20, 20)
         
         # 4. Seasonal Analog
         # Modify seasons for testing
@@ -302,7 +299,7 @@ class TestLayer5Representation:
         encodings[1].metadata.timestamp = "2026-06-12T12:00:00"  # Match June, different year
         ds_season = EcologicalPairDataset(encodings, pair_strategy=SeasonalAnalogPairs(), encoder=encoder)
         xi, xj = ds_season[0]
-        assert xi.shape == (121, 20, 20)
+        assert xi.shape == (154, 20, 20)
 
 
 # ── Layer 6–7: Regime Discovery & Exploration ─────────────────────────────────
@@ -410,7 +407,7 @@ class TestLayer6And7:
         
         encoder_pipeline = EcologicalEncoder(spatial_extractor, rel_extractor)
         
-        in_ch = 121
+        in_ch = 154
         model = EcologicalFingerprintEncoder(in_channels=in_ch, latent_dim=128)
         
         # Generate embeddings

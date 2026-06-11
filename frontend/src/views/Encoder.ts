@@ -10,8 +10,8 @@ export function buildEncoderView(): HTMLElement {
   el.id = 'view-encoder';
   el.innerHTML = `
     <div class="page-header">
-      <h1>🧠 Neural Cube Encoder</h1>
-      <p>CubeNet learns ecological representations from the 16×16×8 observation space</p>
+      <h1>Neural Cube Encoder</h1>
+      <p>CubeNet learns ecological representations from the 20×20×8 observation space</p>
     </div>
     <div class="page-scroll">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
@@ -73,7 +73,10 @@ export function buildEncoderView(): HTMLElement {
               </select>
             </div>
             <button class="btn btn-primary" id="btn-train-full" style="width:100%; justify-content:center;" disabled>
-              ▶ Train CubeNet
+              Train CubeNet
+            </button>
+            <button class="btn btn-outline" id="btn-reset-encoder" style="width:100%; justify-content:center; border-color:rgba(255,71,87,0.3); color:rgba(255,71,87,0.85);">
+              Reset Model
             </button>
             <div id="enc-status-msg" style="font-size:12px; color:var(--text-muted); text-align:center; display:none;"></div>
           </div>
@@ -82,8 +85,8 @@ export function buildEncoderView(): HTMLElement {
 
       <!-- Loss chart -->
       <div class="card" style="margin-top:16px;">
-        <div class="card-label">Training Loss Curve</div>
-        <div id="enc-loss-chart" style="height:200px; margin-top:8px;"></div>
+        <div class="card-label">Contrastive Training Validation</div>
+        <div id="enc-loss-chart" style="height:220px; margin-top:8px;"></div>
       </div>
 
       <!-- Embedding diagnostics -->
@@ -101,26 +104,55 @@ export function buildEncoderView(): HTMLElement {
 export function initEncoderLossChart() {
   const el = document.getElementById('enc-loss-chart');
   if (!el || !(window as any).Plotly) return;
-  (window as any).Plotly.newPlot(el, [{
+  
+  const traceLoss = {
     x: [], y: [], type: 'scatter', mode: 'lines+markers',
     line: { color: '#00e5ff', width: 2 },
     marker: { color: '#00e5ff', size: 5 },
-    fill: 'tozeroy', fillcolor: 'rgba(0,229,255,0.05)',
-    name: 'Training Loss',
-  }], {
-    margin: { l: 48, r: 16, t: 16, b: 40 },
+    name: 'InfoNCE Loss',
+    yaxis: 'y'
+  };
+  
+  const tracePos = {
+    x: [], y: [], type: 'scatter', mode: 'lines+markers',
+    line: { color: '#00ff9d', width: 2 },
+    marker: { color: '#00ff9d', size: 5 },
+    name: 'Positive Similarity',
+    yaxis: 'y2'
+  };
+
+  const traceNeg = {
+    x: [], y: [], type: 'scatter', mode: 'lines+markers',
+    line: { color: '#ff4757', width: 2 },
+    marker: { color: '#ff4757', size: 5 },
+    name: 'Negative Similarity',
+    yaxis: 'y2'
+  };
+
+  (window as any).Plotly.newPlot(el, [traceLoss, tracePos, traceNeg], {
+    margin: { l: 48, r: 48, t: 24, b: 40 },
     paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
     font: { color: '#6890b8', size: 10, family: 'JetBrains Mono' },
     xaxis: { title: 'Epoch', gridcolor: 'rgba(100,160,255,.06)' },
-    yaxis: { title: 'Loss', rangemode: 'tozero', gridcolor: 'rgba(100,160,255,.06)' },
-    showlegend: false,
+    yaxis: { title: 'InfoNCE Loss', rangemode: 'tozero', gridcolor: 'rgba(100,160,255,.06)' },
+    yaxis2: {
+      title: 'Cosine Similarity',
+      overlaying: 'y',
+      side: 'right',
+      range: [0.0, 1.0],
+      gridcolor: 'rgba(100,255,160,.03)'
+    },
+    legend: { font: { size: 9 }, bgcolor: 'transparent', orientation: 'h', y: 1.15 }
   }, { responsive: true, displayModeBar: false });
 }
 
-export function appendEncoderLoss(epoch: number, loss: number) {
+export function appendEncoderLoss(epoch: number, loss: number, posSim = 0.5, negSim = 0.2) {
   const el = document.getElementById('enc-loss-chart');
   if (!el || !(window as any).Plotly) return;
-  (window as any).Plotly.extendTraces(el, { x: [[epoch]], y: [[loss]] }, [0]);
+  (window as any).Plotly.extendTraces(el, { 
+    x: [[epoch], [epoch], [epoch]], 
+    y: [[loss], [posSim], [negSim]] 
+  }, [0, 1, 2]);
 }
 
 export function showEncoderDiagnostics(z: number[]) {

@@ -5,54 +5,54 @@
 
 /* ── 1. Design Tokens ─────────────────────────────────────────── */
 :root {
-  /* Deep ocean background */
-  --bg:           #04080f;
-  --bg-2:         #080f1a;
-  --surface:      #0a1628;
-  --surface-2:    #0e1e35;
-  --surface-3:    #122440;
-  --border:       rgba(100,160,255,.1);
-  --border-hover: rgba(100,160,255,.22);
+  /* Clean Apple-like White */
+  --bg:           #f5f5f7;
+  --bg-2:         #ffffff;
+  --surface:      rgba(255, 255, 255, 0.7);
+  --surface-2:    rgba(255, 255, 255, 0.9);
+  --surface-3:    #f0f0f5;
+  --border:       rgba(0, 0, 0, 0.08);
+  --border-hover: rgba(0, 0, 0, 0.15);
 
-  /* Primary accent — bioluminescent cyan */
-  --cyan:         #00e5ff;
-  --cyan-dim:     rgba(0,229,255,.1);
-  --cyan-glow:    rgba(0,229,255,.4);
-  --cyan-mid:     rgba(0,229,255,.6);
+  /* Primary accent — clean blue instead of cyan glow */
+  --cyan:         #0071e3;
+  --cyan-dim:     rgba(0, 113, 227, 0.1);
+  --cyan-glow:    rgba(0, 113, 227, 0.2);
+  --cyan-mid:     rgba(0, 113, 227, 0.6);
 
-  /* Secondary — ecological green */
-  --green:        #00ff9d;
-  --green-dim:    rgba(0,255,157,.08);
-  --green-glow:   rgba(0,255,157,.35);
+  /* Secondary */
+  --green:        #34c759;
+  --green-dim:    rgba(52, 199, 89, 0.1);
+  --green-glow:   rgba(52, 199, 89, 0.2);
 
-  /* Tertiary — deep violet for UMAP */
-  --violet:       #a855f7;
-  --violet-dim:   rgba(168,85,247,.1);
-  --orange:       #ff7c29;
-  --orange-dim:   rgba(255,124,41,.1);
+  /* Tertiary */
+  --violet:       #af52de;
+  --violet-dim:   rgba(175, 82, 222, 0.1);
+  --orange:       #ff9500;
+  --orange-dim:   rgba(255, 149, 0, 0.1);
 
   /* Ecological variable colors */
-  --var-chl:     #00ff9d;
-  --var-tsm:     #ffd700;
-  --var-aphy:    #00e5ff;
-  --var-adg:     #ff7c29;
-  --var-bbp:     #a855f7;
-  --var-par:     #ffec3d;
-  --var-kd490:   #4dabf7;
-  --var-sst:     #ff4757;
+  --var-chl:     #34c759;
+  --var-tsm:     #ffcc00;
+  --var-aphy:    #5ac8fa;
+  --var-adg:     #ff9500;
+  --var-bbp:     #af52de;
+  --var-par:     #ffcc00;
+  --var-kd490:   #007aff;
+  --var-sst:     #ff3b30;
 
   /* Text */
-  --text:         #e0eeff;
-  --text-muted:   #6890b8;
-  --text-dim:     #3a5a80;
+  --text:         #1d1d1f;
+  --text-muted:   #86868b;
+  --text-dim:     #a1a1a6;
 
   /* Colors - Functional */
-  --primary: #00e5ff;
-  --primary-hover: #00b8cc;
-  --danger: #ff4757;
-  --success: #00ff9d;
-  --warning: #ffd700;
-  --info:    #00e5ff;
+  --primary: #0071e3;
+  --primary-hover: #0077ed;
+  --danger: #ff3b30;
+  --success: #34c759;
+  --warning: #ffcc00;
+  --info:    #5ac8fa;
 
   /* Layout */
   --sidebar-w:   220px;
@@ -69,13 +69,13 @@
   --r-sm: 6px; --r-md: 10px; --r-lg: 16px; --r-xl: 24px;
 
   /* Typography */
-  --font:      'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font:      'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* Glass surface */
-  --glass: rgba(8,15,26,.65);
-  --glass-blur: blur(20px);
-  --glass-border: 1px solid rgba(100,160,255,.1);
+  --glass: rgba(255, 255, 255, 0.75);
+  --glass-blur: blur(24px);
+  --glass-border: 1px solid rgba(0, 0, 0, 0.06);
 
   /* Transitions */
   --t-fast:   120ms ease;
@@ -130,12 +130,12 @@ html, body {
 
 .logo-glyph {
   width: 36px; height: 36px;
-  background: linear-gradient(135deg, var(--cyan-dim), var(--cyan-glow));
-  border: 1px solid var(--cyan-mid);
-  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
   font-size: 18px;
-  box-shadow: 0 0 12px var(--cyan-glow), inset 0 0 8px var(--cyan-dim);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .logo-text strong {
@@ -178,8 +178,7 @@ html, body {
 .nav-item.active {
   background: var(--cyan-dim);
   color: var(--cyan);
-  border: 1px solid rgba(0,229,255,.2);
-  box-shadow: 0 0 8px var(--cyan-glow);
+  border: 1px solid rgba(0, 113, 227, 0.2);
 }
 
 .nav-icon { font-size: 15px; width: 20px; text-align: center; }
@@ -197,7 +196,6 @@ html, body {
 .badge-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 6px var(--green-glow);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -430,6 +428,7 @@ html, body {
   width: 100%; height: 100%;
   position: relative;
   background: radial-gradient(ellipse at center, #0a1628 0%, #04080f 100%);
+  color: #e0eeff;
 }
 
 #cube-canvas { width: 100% !important; height: 100% !important; display: block; }
@@ -437,35 +436,35 @@ html, body {
 .cube-controls-overlay {
   position: absolute; bottom: var(--s4); left: 50%; transform: translateX(-50%);
   display: flex; gap: var(--s2);
-  background: var(--glass);
-  backdrop-filter: var(--glass-blur);
-  border: var(--glass-border);
+  background: rgba(8,15,26,.65);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(100,160,255,.1);
   border-radius: var(--r-xl);
   padding: var(--s2) var(--s4);
 }
 
 .ctrl-btn {
   background: transparent; border: none;
-  color: var(--text-muted); font-size: 13px; cursor: pointer;
+  color: #6890b8; font-size: 13px; cursor: pointer;
   padding: var(--s1) var(--s2); border-radius: var(--r-sm);
   transition: color var(--t-fast), background var(--t-fast);
   display: flex; align-items: center; gap: 6px;
   font: inherit;
 }
 
-.ctrl-btn:hover { color: var(--cyan); background: var(--cyan-dim); }
+.ctrl-btn:hover { color: #00e5ff; background: rgba(0,229,255,.1); }
 
-.ctrl-sep { width: 1px; background: var(--border); margin: 0 var(--s1); }
+.ctrl-sep { width: 1px; background: rgba(100,160,255,.1); margin: 0 var(--s1); }
 
 .pixel-coords {
   position: absolute; top: var(--s4); right: var(--s4);
-  background: var(--glass);
-  backdrop-filter: var(--glass-blur);
-  border: var(--glass-border);
+  background: rgba(8,15,26,.65);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(100,160,255,.1);
   border-radius: var(--r-md);
   padding: var(--s2) var(--s3);
   font-family: var(--font-mono); font-size: 11px;
-  color: var(--cyan);
+  color: #00e5ff;
   display: none;
 }
 
@@ -475,14 +474,15 @@ html, body {
   align-items: center; justify-content: center;
   gap: var(--s4);
   background: radial-gradient(ellipse at center, #0a1628 0%, #04080f 100%);
+  color: #e0eeff;
 }
 
 .cube-loading-title {
-  font-size: 15px; font-weight: 600; color: var(--text);
+  font-size: 15px; font-weight: 600; color: #e0eeff;
 }
 
 .cube-loading-sub {
-  font-size: 12px; color: var(--text-muted);
+  font-size: 12px; color: #6890b8;
 }
 
 /* ── 14. Spectral Explorer ───────────────────────────────────── */
@@ -527,43 +527,47 @@ html, body {
 
 /* ── 16. Buttons ─────────────────────────────────────────────── */
 .btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-color);
-  color: var(--text-color);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
   padding: 8px 16px;
-  border-radius: 4px;
-  font-family: var(--font-sans);
+  border-radius: 6px;
+  font-family: var(--font);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: var(--surface-3);
+  border-color: rgba(0, 0, 0, 0.15);
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-primary {
   background: var(--primary);
-  color: #000;
+  color: #fff;
   border-color: var(--primary);
-  font-weight: 600;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(0, 113, 227, 0.2);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
+  color: #fff;
 }
 
 .progress-bar {
   width: 100%;
   height: 4px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--surface-3);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -596,7 +600,7 @@ html, body {
   background: var(--cyan-dim);
   border-color: var(--cyan);
   color: var(--cyan);
-  box-shadow: 0 0 12px var(--cyan-glow);
+  box-shadow: none;
 }
 
 .btn-sm { padding: 4px 10px; font-size: 12px; }
@@ -674,11 +678,11 @@ html, body {
   font-size: 11px; font-weight: 600; letter-spacing: .03em;
 }
 
-.pill-idle    { background: rgba(107,114,128,.15); color: #9ca3af; border: 1px solid rgba(107,114,128,.25); }
-.pill-ready   { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,255,157,.25); }
-.pill-running { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(0,229,255,.25); }
-.pill-done    { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(0,229,255,.25); }
-.pill-error   { background: rgba(255,71,87,.1); color: var(--error); border: 1px solid rgba(255,71,87,.25); }
+.pill-idle    { background: rgba(0,0,0,0.05); color: var(--text-muted); border: 1px solid rgba(0,0,0,0.1); }
+.pill-ready   { background: var(--green-dim); color: var(--green); border: 1px solid rgba(52, 199, 89, 0.2); }
+.pill-running { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(0, 113, 227, 0.2); }
+.pill-done    { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(0, 113, 227, 0.2); }
+.pill-error   { background: rgba(255,59,48,0.1); color: var(--danger); border: 1px solid rgba(255,59,48,0.25); }
 
 /* ── 22. Progress bar ────────────────────────────────────────── */
 .progress-track {
@@ -689,9 +693,8 @@ html, body {
 
 .progress-fill {
   height: 100%; border-radius: 2px;
-  background: linear-gradient(90deg, var(--cyan), var(--green));
+  background: var(--primary);
   transition: width .4s ease;
-  box-shadow: 0 0 8px var(--cyan-glow);
 }
 
 /* ── 23. State cards ─────────────────────────────────────────── */
@@ -704,7 +707,7 @@ html, body {
   transition: all var(--t-fast);
 }
 
-.state-card:hover { border-color: var(--cyan); box-shadow: 0 0 16px var(--cyan-dim); }
+.state-card:hover { border-color: var(--cyan); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
 .state-card.active { border-color: var(--cyan); background: var(--cyan-dim); }
 
 .state-card-header {
@@ -734,11 +737,10 @@ html, body {
 .score-circle {
   width: 80px; height: 80px;
   border-radius: 50%;
-  border: 3px solid var(--cyan);
-  box-shadow: 0 0 20px var(--cyan-glow), inset 0 0 20px var(--cyan-dim);
+  border: 3px solid var(--primary);
   display: flex; align-items: center; justify-content: center;
   margin: 0 auto var(--s3);
-  font-size: 20px; font-weight: 800; color: var(--cyan);
+  font-size: 20px; font-weight: 700; color: var(--primary);
   font-family: var(--font-mono);
 }
 

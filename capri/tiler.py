@@ -276,24 +276,23 @@ def reconstruct_field(
         full_field[:, :, v_idx] = grid_z
         variables_present.append(canonical)
 
-    # ── Fill missing variables from spatial-neighbor median ──
-    # "multi-polarize from neighbours" — for each missing channel,
-    # compute the median of all present channels at each pixel,
-    # then smooth with a 3×3 median filter for spatial coherence.
+    # ── Fill missing variables with synthetic textures ──
     variables_imputed: List[str] = []
     missing_vars = [v for v in CANONICAL_VARIABLES if v not in variables_present]
 
-    if missing_vars and variables_present:
-        # Compute per-pixel median across present channels
-        present_indices = [CANONICAL_VARIABLES.index(v) for v in variables_present]
-        present_stack = full_field[:, :, present_indices]
-        neighbor_median = np.nanmedian(present_stack, axis=2)
-        # Smooth with 3×3 median filter for spatial coherence
-        neighbor_median = median_filter(neighbor_median, size=3)
-
+    if missing_vars:
+        import sys
+        import os
+        from cube_builder import EcologicalCubeBuilder
+        builder = EcologicalCubeBuilder(grid_shape=(H, W))
+        synthetic_fallback = builder.generate_synthetic_cube()
+        
         for v_name in missing_vars:
             v_idx = CANONICAL_VARIABLES.index(v_name)
-            full_field[:, :, v_idx] = neighbor_median
+            if v_idx < 7:
+                full_field[:, :, v_idx] = synthetic_fallback[:, :, v_idx]
+            else:
+                full_field[:, :, 7] = np.linspace(1.0, 0.0, W).reshape(-1, 1).repeat(H, axis=1).T
             variables_imputed.append(v_name)
 
     return SpatialField(

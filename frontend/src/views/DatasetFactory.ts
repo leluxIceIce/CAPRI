@@ -15,8 +15,8 @@ export function buildDatasetFactoryView(): HTMLElement {
       <h3>Compile New Dataset</h3>
       <p style="color: var(--text-muted); margin-bottom: var(--space-3); font-size: 0.9em;">
         Upload a spatial CSV with lon/lat and ecological variables.
-        The pipeline will reconstruct the continuous field, apply 16×16 non-overlapping tiling,
-        fill missing variables via spatial-neighbor median, and filter low-quality tiles.
+        The pipeline will reconstruct the continuous field, apply 20×20 non-overlapping tiling,
+        and yield a collection of distinct observations.
       </p>
       
       <div style="display: flex; gap: var(--space-3); align-items: center; margin-bottom: var(--space-3);">
@@ -114,7 +114,43 @@ export function buildDatasetFactoryView(): HTMLElement {
       <div style="font-size: 0.85em; color: var(--text-muted); margin-bottom: 4px;">Source: ${m.source_file}</div>
       <div style="font-size: 0.85em; color: var(--text-muted); margin-bottom: 4px;">Vars present: ${m.variables_present.join(', ')}</div>
       ${m.variables_imputed.length > 0 ? `<div style="font-size: 0.85em; color: var(--variable-sst);">Vars imputed: ${m.variables_imputed.join(', ')}</div>` : ''}
+      <div style="margin-top: 12px; display:flex; gap: 8px;">
+        <button id="btn-load-pool" class="btn btn-sm" style="flex:1; font-size:11px; padding:6px 0;">Load into Active Pool</button>
+        <button id="btn-remove-dataset" class="btn btn-sm btn-outline" style="border-color:rgba(255,71,87,0.3); color:rgba(255,71,87,0.85); flex:1; font-size:11px; padding:6px 0;">Remove</button>
+      </div>
     `;
+
+    document.getElementById('btn-load-pool')?.addEventListener('click', async () => {
+      try {
+        const api = await import('../api');
+        if (!api.USE_MOCK) {
+          const res = await fetch(`${api.API_BASE}/api/dataset/merge`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ datasets: [m.dataset_name] })
+          });
+          const poolData = await res.json();
+          alert(`Successfully loaded dataset into active pool! (Pool contains ${poolData.merged_count} cubes)`);
+        } else {
+          alert(`Loaded ${m.dataset_name} into Active Pool (Mock Mode).`);
+        }
+      } catch (e: any) {
+        alert(`Failed to load dataset: ${e.message}`);
+      }
+    });
+
+    document.getElementById('btn-remove-dataset')?.addEventListener('click', async () => {
+      if (!confirm(`Are you sure you want to delete dataset "${m.dataset_name}" from disk?`)) return;
+      try {
+        const api = await import('../api');
+        await api.removeDataset(m.dataset_name);
+        alert(`Dataset "${m.dataset_name}" deleted.`);
+        datasetsDetails.style.display = 'none';
+        await renderDatasets();
+      } catch (e: any) {
+        alert(`Failed to delete dataset: ${e.message}`);
+      }
+    });
   });
 
   compileBtn.addEventListener('click', async () => {

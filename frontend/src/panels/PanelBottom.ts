@@ -30,12 +30,19 @@ export function buildBottomPanel(): HTMLElement {
     <!-- Training Section -->
     <div class="bottom-section" id="training-section">
       <div class="panel-header">
-        <div class="panel-title"><span class="panel-title-icon">🧠</span> Encoder Training</div>
+        <div class="panel-title" style="display:flex; flex-direction:column; gap:2px;">
+          <span>Encoder Training</span>
+          <span style="font-size:9px; color:var(--text-dim); text-transform:none; letter-spacing:0; font-weight:500;">Contrastive Latent Embedding</span>
+        </div>
         <div class="pill pill-idle" id="train-pill">Idle</div>
       </div>
       <div class="bottom-section-body" style="padding: 8px 12px; display:flex; flex-direction:column; gap:8px; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <label style="font-size:10px; color:var(--text-muted);">Generations (Epochs)</label>
+          <input type="number" id="enc-epochs-bottom" value="10" min="1" max="100" style="width:50px; padding:2px 4px; background:var(--surface-3); border:1px solid var(--border); border-radius:var(--r-sm); color:var(--text); font:inherit; font-size:11px; text-align:center;" />
+        </div>
         <button class="btn btn-primary" id="btn-train-encoder" style="width:100%; justify-content:center;" disabled>
-          ▶ Train CubeNet Encoder
+          Train CubeNet Encoder
         </button>
         <div>
           <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-bottom:4px;">
@@ -56,6 +63,13 @@ export function buildBottomPanel(): HTMLElement {
         <div class="pill pill-idle" id="transfer-pill">Not assessed</div>
       </div>
       <div class="bottom-section-body" style="padding:8px 12px; display:flex; flex-direction:column; gap:8px; overflow-y:auto;">
+        <div style="margin-bottom:2px;">
+          <label style="font-size:10px; color:var(--text-muted); display:block; margin-bottom:4px;">Target Model</label>
+          <select id="transfer-model-select" style="width:100%; padding:4px 8px; background:var(--surface-3); border:1px solid var(--border); border-radius:var(--r-sm); color:var(--text); font:inherit; font-size:11px;">
+            <option value="cubenet_v1">CubeNet v1 (Loaded)</option>
+            <option value="cubenet_global">CubeNet Global Base</option>
+          </select>
+        </div>
         <button class="btn" id="btn-assess-transfer" style="width:100%; justify-content:center;" disabled>
           Assess Current Cube
         </button>
@@ -98,15 +112,15 @@ export function initTrainingChart() {
 
 const lossHistory: { epoch: number[]; loss: number[] } = { epoch: [], loss: [] };
 
-export function updateTrainingProgress(event: TrainEvent) {
+export function updateTrainingProgress(event: TrainEvent, totalEpochs: number = 10) {
   lossHistory.epoch.push(event.epoch);
   lossHistory.loss.push(event.loss);
 
-  const progress = (event.epoch / 10) * 100;
+  const progress = (event.epoch / totalEpochs) * 100;
   const bar = document.getElementById('train-progress');
   if (bar) bar.style.width = progress + '%';
   setInner('train-loss-val', event.loss.toFixed(4));
-  setInner('train-epoch-val', `Epoch ${event.epoch} / 10`);
+  setInner('train-epoch-val', `Epoch ${event.epoch} / ${totalEpochs}`);
 
   const pill = document.getElementById('train-pill');
   if (pill) { pill.className = 'pill pill-running'; pill.textContent = 'Training…'; }

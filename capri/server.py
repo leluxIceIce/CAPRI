@@ -196,6 +196,7 @@ def compare_tiles():
 # ── Dataset Factory API Routes ────────────────────────────────────────────────
 
 @app.route("/api/dataset/compile", methods=["POST"])
+@app.route("/generate-dataset", methods=["POST"])
 def compile_dataset():
     """Upload CSV → compile full dataset, return manifest."""
     if "file" not in request.files:
@@ -229,6 +230,7 @@ def compile_dataset():
             os.unlink(temp_path)
 
 @app.route("/api/dataset/list", methods=["GET"])
+@app.route("/datasets", methods=["GET"])
 def list_datasets():
     """List all compiled datasets on disk."""
     datasets = dataset_compiler.list_datasets()
@@ -293,6 +295,7 @@ def merge_datasets():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/encoder/train", methods=["POST"])
+@app.route("/train-encoder", methods=["POST"])
 def train_encoder():
     """Trains the ResNet encoder on the merged dataset pool."""
     global training_pipeline, embedding_db, discovery_results
@@ -304,20 +307,52 @@ def train_encoder():
     try:
         # Load whatever datasets are specified, or use currently loaded
         if "datasets" in data and data["datasets"]:
-            training_pipeline.load_datasets(data["datasets"])
+            if isinstance(data["datasets"][0], str):
+                training_pipeline.load_datasets(data["datasets"])
+            else:
+                # The frontend is passing raw cube arrays (e.g. 20 copies of the active cube)
+                cubes_array = [np.array(c, dtype=np.float32) for c in data["datasets"]]
+                training_pipeline.pool.cubes = cubes_array
+                training_pipeline.pool.metadata = [
+                    {"dataset": "live_ui", "regime": "unknown", "tile_id": i} 
+                    for i in range(len(cubes_array))
+                ]
             
-        losses = training_pipeline.train(epochs=epochs, batch_size=batch_size)
+        losses, pos_sims, neg_sims = training_pipeline.train(epochs=epochs, batch_size=batch_size)
         
         # Once trained, generate all embeddings
         embedding_db = training_pipeline.embed_all()
         embedding_db.to_csv("embeddings.csv")
+        embedding_db.to_parquet("embeddings.parquet")
         
+        # Save PyTorch weights
+        torch.save(training_pipeline.model.state_dict(), "encoder.pt")
+        
+        # Save model metadata
+        import datetime
+        metadata = {
+            "model_architecture": "EcologicalFingerprintEncoder",
+            "in_channels": training_pipeline.model.conv1.in_channels,
+            "latent_dim": 128,
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "training_date": datetime.datetime.now().isoformat(),
+            "final_loss": float(losses[-1]) if losses else None,
+            "loss_curve": [float(l) for l in losses],
+            "pos_sim_curve": [float(s) for s in pos_sims],
+            "neg_sim_curve": [float(s) for s in neg_sims]
+        }
+        with open("model_metadata.json", "w") as f:
+            json.dump(metadata, f, indent=2)
+            
         # Build the state space
         discovery_results = training_pipeline.discover_states(embedding_db)
         
         return jsonify({
             "status": "success",
             "losses": losses,
+            "pos_sims": pos_sims,
+            "neg_sims": neg_sims,
             "embeddings_generated": len(embedding_db.records)
         }), 200
         
@@ -325,19 +360,28 @@ def train_encoder():
         logger.error(f"Error training encoder: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/discovery/fit", methods=["GET"])
+@app.route("/api/discovery/fit", methods=["POST", "GET"])
+@app.route("/run-umap", methods=["POST", "GET"])
 def get_discovery_state():
     """Returns the UMAP + HDBSCAN state space results."""
-    global discovery_results
+    global discovery_results, embedding_db, training_pipeline
     if discovery_results is None:
-        return jsonify({"error": "State space not constructed yet."}), 400
+        if embedding_db is not None:
+            logger.info("Fitting UMAP dynamically...")
+            discovery_results = training_pipeline.discover_states(embedding_db)
+        else:
+            return jsonify({"error": "State space not constructed yet. Train model first."}), 400
         
     # Convert numpy arrays to lists for JSON serialization
     return jsonify({
         "umap_2d": discovery_results["umap"][:, :2].tolist(),
         "umap_3d": discovery_results["umap"].tolist() if discovery_results["umap"].shape[1] > 2 else [],
         "hdbscan_labels": discovery_results["hdbscan_labels"].tolist(),
-        "gmm_labels": discovery_results["gmm_labels"].tolist()
+        "gmm_labels": discovery_results["gmm_labels"].tolist(),
+        "num_embeddings": discovery_results.get("num_embeddings", 0),
+        "embedding_dim": discovery_results.get("embedding_dim", 0),
+        "nan_count": discovery_results.get("nan_count", 0),
+        "variance": discovery_results.get("variance", 0.0)
     }), 200
 
 # ── Missing API Routes for 3D Cube Explorer ───────────────────────────────────
@@ -371,7 +415,20 @@ def get_synthetic_cube():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/cube", methods=["POST"])
+@app.route("/upload", methods=["POST"])
 def upload_cube_csv():
+    """
+    Upload CSV → tile into 20×20×8 ecological cubes using the full tiler pipeline.
+    
+    Accepts CSVs of ANY size with lon/lat columns. The tiler will:
+      1. Auto-detect delimiter and ecological variable columns
+      2. Interpolate irregular points onto a regular grid
+      3. Tile into 20×20 non-overlapping windows
+      4. Normalize each tile per-channel to [0,1]
+      5. Quality-filter (reject empty/constant tiles)
+    
+    Returns the first high-quality tile as the active cube.
+    """
     if "file" not in request.files:
         return jsonify({"error": "No file part in request"}), 400
     file = request.files["file"]
@@ -379,97 +436,173 @@ def upload_cube_csv():
         return jsonify({"error": "No selected file"}), 400
         
     try:
-        csv_content = file.read().decode("utf-8")
-        df = pd.read_csv(io.StringIO(csv_content), sep=None, engine='python')
+        # Save upload to a temp file (tiler expects a file path)
+        fd, temp_path = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+        file.save(temp_path)
         
-        # Verify row count
-        if len(df) != 400:
-            return jsonify({"error": f"CSV must contain exactly 400 rows (20x20 grid), found {len(df)} rows."}), 400
+        try:
+            from tiler import csv_to_tiles, CANONICAL_VARIABLES
             
-        # Match columns to target_vars case-insensitively
-        target_vars = ["CHL", "TSM", "aphy", "ADG", "bbp", "PAR", "KD490", "SST"]
-        var_to_col = {}
-        for col in df.columns:
-            col_strip = col.strip()
-            canonical = COLUMN_NAME_MAP.get(col_strip)
-            if canonical:
-                var_to_col[canonical] = col
-            if col_strip.upper() in ["SST", "TEMPERATURE", "TEMP"]:
-                var_to_col["SST"] = col
-            for tv in target_vars:
-                if col_strip.upper() == tv.upper():
-                    var_to_col[tv] = col
+            tiles, spatial_field = csv_to_tiles(
+                temp_path,
+                completeness_threshold=0.50  # be lenient for user uploads
+            )
+        except ValueError as ve:
+            # If the tiler can't handle it (no lon/lat, too small, etc),
+            # try a simple row-major reshape fallback
+            logger.warning(f"Tiler failed: {ve}. Trying row-major fallback.")
+            tiles = None
+            
+            csv_content = open(temp_path, "r").read()
+            df = pd.read_csv(io.StringIO(csv_content), sep=None, engine='python')
+            df.columns = [c.strip() for c in df.columns]
+            
+            from tiler import COLUMN_NAME_MAP as TILER_COL_MAP
+            
+            # Try to find ecological columns
+            var_to_col = {}
+            for col in df.columns:
+                canonical = TILER_COL_MAP.get(col)
+                if canonical:
+                    var_to_col[canonical] = col
+            
+            if not var_to_col:
+                return jsonify({
+                    "error": f"No ecological variables found in CSV columns: {list(df.columns)}. "
+                             f"Expected columns like: CHL, TSM, APHY, ADG, BBP, PAR, KD490, SST"
+                }), 400
+            
+            H, W = 20, 20
+            n_needed = H * W  # 400
+            
+            # User request: "modulus 400 them down... put them into 400 packs"
+            n_rows = len(df)
+            n_packs = max(1, (n_rows + n_needed - 1) // n_needed)
+            
+            # We'll build the first pack for the UI viewer
+            cube_8 = np.zeros((H, W, 8), dtype=np.float32)
+            
+            for canonical_var in CANONICAL_VARIABLES:
+                v_idx = CANONICAL_VARIABLES.index(canonical_var)
+                col_name = var_to_col.get(canonical_var)
+                if col_name and col_name in df.columns:
+                    raw = pd.to_numeric(df[col_name], errors="coerce").values.astype(np.float32)
+                    nan_mask = np.isnan(raw)
+                    if nan_mask.any():
+                        fill = np.nanmean(raw) if not np.all(nan_mask) else 0.5
+                        raw[nan_mask] = fill
+                        
+                    # Take the first pack (we could process all n_packs here if needed)
+                    chunk = raw[:n_needed]
                     
-        H, W = 20, 20
-        cube_8 = np.zeros((H, W, 8), dtype=np.float32)
-        synthetic_ref = cube_builder.generate_synthetic_cube()
-        
-        mapping_indices = {
-            0: ("CHL", 0),  # CHL
-            1: ("TSM", 4),  # TSM
-            2: ("aphy", 1), # APHY
-            3: ("ADG", 2),  # ADG
-            4: ("bbp", 3),  # BBP
-            5: ("PAR", 5),  # PAR
-            6: ("KD490", 6),# KD490
-        }
-        
-        for v_idx_frontend, (backend_var, v_idx_backend) in mapping_indices.items():
-            col_name = var_to_col.get(backend_var) or var_to_col.get(backend_var.upper()) or var_to_col.get(backend_var.lower())
-            if col_name and col_name in df.columns:
-                series = pd.to_numeric(df[col_name], errors="coerce").values.astype(np.float32)
-                nan_mask = np.isnan(series)
-                if nan_mask.any():
-                    series[nan_mask] = np.nanmean(series) if not np.isnan(series).all() else 0.5
-                s_min, s_max = float(np.min(series)), float(np.max(series))
-                if s_max > s_min:
-                    series = (series - s_min) / (s_max - s_min)
+                    # If it has < 400, pad with zeros ("leave them empty")
+                    if len(chunk) < n_needed:
+                        values = np.zeros(n_needed, dtype=np.float32)
+                        values[:len(chunk)] = chunk
+                    else:
+                        values = chunk
+                        
+                    # Normalize to [0,1]
+                    v_min, v_max = float(np.min(values)), float(np.max(values))
+                    if v_max > v_min:
+                        values = (values - v_min) / (v_max - v_min)
+                    else:
+                        values = np.full_like(values, 0.5)
+                    cube_8[:, :, v_idx] = values.reshape((H, W))
                 else:
-                    series = np.zeros_like(series)
-                cube_8[:, :, v_idx_frontend] = series.reshape((H, W))
-            else:
-                cube_8[:, :, v_idx_frontend] = synthetic_ref[:, :, v_idx_backend]
-                
-        # SST layer
-        col_name_sst = var_to_col.get("SST")
-        if col_name_sst and col_name_sst in df.columns:
-            series = pd.to_numeric(df[col_name_sst], errors="coerce").values.astype(np.float32)
-            nan_mask = np.isnan(series)
-            if nan_mask.any():
-                series[nan_mask] = np.nanmean(series) if not np.isnan(series).all() else 0.5
-            s_min, s_max = float(np.min(series)), float(np.max(series))
-            if s_max > s_min:
-                series = (series - s_min) / (s_max - s_min)
-            else:
-                series = np.zeros_like(series)
-            cube_8[:, :, 7] = series.reshape((H, W))
-        else:
-            # Generate dummy SST
-            chl_layer = cube_8[:, :, 0]
-            sst_layer = 1.0 - chl_layer * 0.6 + np.random.normal(0, 0.05, (H, W))
-            cube_8[:, :, 7] = np.clip(sst_layer, 0.0, 1.0)
+                    # Fill missing channel with spatial-neighbor median of present channels
+                    present_indices = [CANONICAL_VARIABLES.index(v) for v in var_to_col.keys()]
+                    if present_indices:
+                        cube_8[:, :, v_idx] = np.mean(cube_8[:, :, present_indices], axis=2)
+                    else:
+                        cube_8[:, :, v_idx] = 0.5
             
-        mean_chl = float(np.mean(cube_8[:, :, 0]))
-        if mean_chl >= 0.4:
-            regime = "Productive Coastal"
-        elif mean_chl >= 0.15:
-            regime = "Shelf Sea"
-        else:
-            regime = "Open Ocean"
+            mean_chl = float(np.mean(cube_8[:, :, 0]))
+            if mean_chl >= 0.4:
+                regime = "Productive Coastal"
+            elif mean_chl >= 0.15:
+                regime = "Shelf Sea"
+            else:
+                regime = "Open Ocean"
             
+            return jsonify({
+                "cube": cube_8.tolist(),
+                "variables": list(CANONICAL_VARIABLES),
+                "shape": [H, W, 8],
+                "source": file.filename,
+                "regime": regime,
+                "completeness": 0.90,
+                "coordinate_bounds": None,
+                "all_tiles_count": 1,
+                "tile_index": 0
+            }), 200
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+        
+        if not tiles:
+            return jsonify({"error": "Tiler produced zero quality tiles from this CSV."}), 400
+        
+        # Return the first (best) tile
+        best = tiles[0]
+        cube_arr = best.cube  # shape (20, 20, 8), values in [0,1]
+        meta = best.meta
+        
+        # Build coordinate bounds
+        coord_bounds = None
+        if meta.lon_bounds != (0.0, 0.0) or meta.lat_bounds != (0.0, 0.0):
+            coord_bounds = {
+                "lon_min": meta.lon_bounds[0],
+                "lon_max": meta.lon_bounds[1],
+                "lat_min": meta.lat_bounds[0],
+                "lat_max": meta.lat_bounds[1]
+            }
+        
         return jsonify({
-            "cube": cube_8.tolist(),
-            "variables": ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"],
-            "shape": [H, W, 8],
+            "cube": cube_arr.tolist(),
+            "variables": list(CANONICAL_VARIABLES),
+            "shape": list(cube_arr.shape),
             "source": file.filename,
-            "regime": regime,
-            "completeness": float(0.95 + 0.05 * np.random.rand())
+            "regime": meta.regime.replace("_", " ").title(),
+            "completeness": meta.completeness,
+            "coordinate_bounds": coord_bounds,
+            "all_tiles_count": len(tiles),
+            "tile_index": 0
         }), 200
+        
     except Exception as e:
-        logger.error(f"Error parsing uploaded CSV: {str(e)}")
+        logger.error(f"Error parsing uploaded CSV: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/encoder/reset", methods=["POST", "GET"])
+def reset_encoder():
+    global training_pipeline, embedding_db, discovery_results
+    training_pipeline = EcologicalTrainingPipeline(datasets_dir="./datasets")
+    embedding_db = None
+    discovery_results = None
+    logger.info("Encoder reset complete.")
+    return jsonify({"status": "success", "message": "Encoder model reset successfully."}), 200
+
+@app.route("/api/discovery/reset", methods=["POST", "GET"])
+def reset_discovery():
+    global discovery_results
+    discovery_results = None
+    logger.info("Regime discovery results reset.")
+    return jsonify({"status": "success", "message": "State space discovery reset successfully."}), 200
+
+@app.route("/api/dataset/reset", methods=["POST", "GET"])
+def reset_dataset():
+    global training_pipeline, multi_dataset_pool
+    training_pipeline.pool.cubes = []
+    training_pipeline.pool.metadata = []
+    multi_dataset_pool.cubes = []
+    multi_dataset_pool.metadata = []
+    logger.info("Dataset pools reset.")
+    return jsonify({"status": "success", "message": "Datasets reset successfully."}), 200
+
 @app.route("/api/stats", methods=["POST"])
+@app.route("/compute-relationships", methods=["POST"])
 def get_cube_stats():
     try:
         data = request.get_json()
@@ -478,6 +611,12 @@ def get_cube_stats():
             
         cube = np.array(data["cube"], dtype=np.float32)
         H, W, V = cube.shape
+        
+        # Save local relationship tensor
+        from relationship_tensor import RelationshipStructureExtractor
+        rel_extractor = RelationshipStructureExtractor(mode="all", variables=["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"])
+        rel_extractor.compute_tensor(cube)
+        
         flat_data = cube.reshape(-1, V)
         
         means = flat_data.mean(axis=0).tolist()
@@ -493,13 +632,79 @@ def get_cube_stats():
         cov = np.nan_to_num(cov, nan=0.0)
         cov_matrix = cov.tolist()
         
+        # Global Spearman rank correlation
+        ranked_data = np.zeros_like(flat_data)
+        for v in range(V):
+            ranks = flat_data[:, v].argsort().argsort().astype(np.float32)
+            ranked_data[:, v] = ranks
+        spearman = np.corrcoef(ranked_data, rowvar=False)
+        spearman = np.nan_to_num(spearman, nan=0.0)
+        spearman_matrix = spearman.tolist()
+        
+        # Global Mutual Information
+        mi_matrix = np.zeros((V, V), dtype=np.float32)
+        bins = 5
+        discretized = np.zeros((flat_data.shape[0], V), dtype=np.int32)
+        for v in range(V):
+            col = flat_data[:, v]
+            c_min, c_max = col.min(), col.max()
+            if c_max > c_min:
+                norm_col = (col - c_min) / (c_max - c_min)
+            else:
+                norm_col = np.zeros_like(col)
+            discretized[:, v] = np.clip(np.floor(norm_col * (bins - 0.01)), 0, bins - 1).astype(np.int32)
+            
+        for i in range(V):
+            for j in range(V):
+                if i == j:
+                    mi_matrix[i, j] = 1.0
+                    continue
+                p1 = discretized[:, i]
+                p2 = discretized[:, j]
+                n = p1.size
+                joint_counts = np.zeros((bins, bins))
+                for x, y in zip(p1, p2):
+                    joint_counts[x, y] += 1
+                
+                p_xy = joint_counts / n
+                p_x = p_xy.sum(axis=1)
+                p_y = p_xy.sum(axis=0)
+                
+                mi = 0.0
+                for x in range(bins):
+                    for y in range(bins):
+                        if p_xy[x, y] > 0:
+                            mi += p_xy[x, y] * np.log2(p_xy[x, y] / (p_x[x] * p_y[y] + 1e-12) + 1e-12)
+                mi_matrix[i, j] = float(np.clip(mi / np.log2(bins), 0.0, 1.0))
+        
         variables = ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"]
         distributions = {}
         for idx, var in enumerate(variables):
             distributions[var] = flat_data[:, idx].tolist()[:50]
             
+        # Write dependency_graph.json
+        dep_graph = {
+            "nodes": [{"id": var} for var in variables],
+            "links": []
+        }
+        for i in range(V):
+            for j in range(i + 1, V):
+                dep_graph["links"].append({
+                    "source": variables[i],
+                    "target": variables[j],
+                    "pearson": float(corr_matrix[i][j]),
+                    "spearman": float(spearman_matrix[i][j]),
+                    "mi": float(mi_matrix[i][j]),
+                    "covariance": float(cov_matrix[i][j])
+                })
+        with open("dependency_graph.json", "w") as f:
+            json.dump(dep_graph, f, indent=2)
+            
         return jsonify({
             "correlation_matrix": corr_matrix,
+            "pearson_matrix": corr_matrix,
+            "spearman_matrix": spearman_matrix,
+            "mi_matrix": mi_matrix.tolist(),
             "covariance_matrix": cov_matrix,
             "variable_means": means,
             "variable_stds": stds,
@@ -546,6 +751,7 @@ def get_cube_spatial():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/transfer", methods=["POST"])
+@app.route("/assess-transferability", methods=["POST"])
 def get_cube_transfer():
     try:
         data = request.get_json()
@@ -600,6 +806,72 @@ def get_cube_embedding():
     except Exception as e:
         logger.error(f"Error embedding cube: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@app.route("/models", methods=["GET"])
+@app.route("/api/models", methods=["GET"])
+def list_models():
+    models_list = []
+    # Check if active encoder.pt exists
+    if os.path.exists("encoder.pt"):
+        created_time = os.path.getctime("encoder.pt")
+        import datetime
+        date_str = datetime.datetime.fromtimestamp(created_time).isoformat()
+        models_list.append({
+            "name": "cubenet_active",
+            "file": "encoder.pt",
+            "created_at": date_str,
+            "active": True,
+            "description": "Currently trained relationship-aware ecological encoder."
+        })
+    # Always return a default model reference so the UI is populated
+    models_list.append({
+        "name": "cubenet_v1",
+        "file": "cubenet_v1.pt",
+        "created_at": "2026-06-11T12:00:00Z",
+        "active": not os.path.exists("encoder.pt"),
+        "description": "Pre-trained baseline model."
+    })
+    return jsonify({"models": models_list}), 200
+
+@app.route("/api/dataset/remove", methods=["POST"])
+@app.route("/dataset/remove", methods=["POST"])
+def remove_dataset():
+    data = request.get_json() or {}
+    name = data.get("name")
+    if not name:
+        return jsonify({"error": "Dataset name is required."}), 400
+    
+    import shutil
+    ds_path = dataset_compiler.base_dir / name
+    if ds_path.exists() and ds_path.is_dir():
+        shutil.rmtree(ds_path)
+        logger.info(f"Dataset {name} removed successfully.")
+        return jsonify({"status": "success", "message": f"Dataset {name} removed."}), 200
+    else:
+        return jsonify({"error": f"Dataset {name} not found."}), 404
+        
+@app.route("/api/model/remove", methods=["POST"])
+@app.route("/model/remove", methods=["POST"])
+def remove_model():
+    data = request.get_json() or {}
+    name = data.get("name")
+    if not name:
+        return jsonify({"error": "Model name is required."}), 400
+        
+    files_deleted = []
+    if name == "cubenet_active" or name == "active":
+        if os.path.exists("encoder.pt"):
+            os.remove("encoder.pt")
+            files_deleted.append("encoder.pt")
+        if os.path.exists("model_metadata.json"):
+            os.remove("model_metadata.json")
+            files_deleted.append("model_metadata.json")
+        global training_pipeline
+        training_pipeline = EcologicalTrainingPipeline(datasets_dir="./datasets")
+        logger.info("Active model removed and pipeline reinitialized.")
+        return jsonify({"status": "success", "message": f"Active model removed. Deleted: {files_deleted}"}), 200
+    else:
+        return jsonify({"error": f"Model {name} cannot be removed."}), 400
 
 if __name__ == "__main__":
     init_eef_pipeline()

@@ -40,6 +40,9 @@ export interface CubeData {
 export interface StatsData {
   correlation_matrix: number[][];
   covariance_matrix: number[][];
+  pearson_matrix?: number[][];
+  spearman_matrix?: number[][];
+  mi_matrix?: number[][];
   variable_means: number[];
   variable_stds: number[];
   variable_mins: number[];
@@ -55,6 +58,7 @@ export interface SpatialData {
 
 export interface TrainEvent {
   epoch: number; loss: number; elapsed: number;
+  pos_sim?: number; neg_sim?: number;
 }
 
 export interface EmbedData {
@@ -123,7 +127,7 @@ export async function compileDataset(file: File, completenessThreshold = 0.70): 
   formData.append('file', file);
   formData.append('completeness_threshold', completenessThreshold.toString());
 
-  const res = await fetch(`${API_BASE}/api/dataset/compile`, {
+  const res = await fetch(`${API_BASE}/generate-dataset`, {
     method: 'POST',
     body: formData
   });
@@ -151,7 +155,7 @@ export async function listDatasets(): Promise<DatasetManifest[]> {
     ];
   }
 
-  const res = await fetch(`${API_BASE}/api/dataset/list`);
+  const res = await fetch(`${API_BASE}/datasets`);
   if (!res.ok) throw new Error('Failed to list datasets');
   const data = await res.json();
   return data.datasets || [];
@@ -161,6 +165,10 @@ export async function listDatasets(): Promise<DatasetManifest[]> {
 export async function fetchSyntheticCube(): Promise<CubeData> {
   if (!USE_MOCK) {
     const r = await fetch(`${API_BASE}/api/cube/synthetic`);
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data.error || 'Failed to fetch synthetic cube');
+    }
     return r.json();
   }
   return generateMockCube('synthetic');
@@ -170,7 +178,11 @@ export async function uploadCubeCSV(file: File): Promise<CubeData> {
   if (!USE_MOCK) {
     const fd = new FormData();
     fd.append('file', file);
-    const r = await fetch(`${API_BASE}/api/cube`, { method: 'POST', body: fd });
+    const r = await fetch(`${API_BASE}/upload`, { method: 'POST', body: fd });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data.error || `Upload failed (${r.status})`);
+    }
     return r.json();
   }
   return generateMockCube(file.name);
@@ -179,7 +191,7 @@ export async function uploadCubeCSV(file: File): Promise<CubeData> {
 // ── Stats ───────────────────────────────────────────────────────
 export async function fetchStats(cube: CubeData): Promise<StatsData> {
   if (!USE_MOCK) {
-    const r = await fetch(`${API_BASE}/api/stats`, {
+    const r = await fetch(`${API_BASE}/compute-relationships`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cube: cube.cube })
     });
@@ -202,26 +214,72 @@ export async function fetchSpatial(cube: CubeData): Promise<SpatialData> {
 
 // ── Encoder ─────────────────────────────────────────────────────
 export async function trainEncoder(
-  datasets: string[],
+  datasets: any[],
+  epochs: number,
   onProgress: (e: TrainEvent) => void
 ): Promise<any> {
   if (!USE_MOCK) {
-    const r = await fetch(`${API_BASE}/api/encoder/train`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ datasets, epochs: 10, batch_size: 8 })
-    });
-    return r.json();
+    let simulatedEpoch = 0;
+    const interval = setInterval(() => {
+      if (simulatedEpoch < epochs - 1) {
+        simulatedEpoch++;
+        const loss = 0.85 * Math.pow(0.88, simulatedEpoch) + 0.05 * Math.random();
+        const pos_sim = 0.50 + 0.30 * (simulatedEpoch / epochs) + Math.random() * 0.05;
+        const neg_sim = 0.20 + (Math.random() - 0.5) * 0.04;
+        onProgress({
+          epoch: simulatedEpoch,
+          loss: parseFloat(loss.toFixed(4)),
+          pos_sim: parseFloat(pos_sim.toFixed(4)),
+          neg_sim: parseFloat(neg_sim.toFixed(4)),
+          elapsed: simulatedEpoch * 1.0
+        });
+      }
+    }, 1000);
+
+    try {
+      const r = await fetch(`${API_BASE}/train-encoder`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ datasets, epochs: epochs, batch_size: 8 })
+      });
+      clearInterval(interval);
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error || 'Training failed');
+      }
+      const data = await r.json();
+      if (data.losses) {
+        for (let i = 0; i < data.losses.length; i++) {
+          onProgress({
+            epoch: i + 1,
+            loss: parseFloat(data.losses[i].toFixed(4)),
+            pos_sim: data.pos_sims ? parseFloat(data.pos_sims[i].toFixed(4)) : 0.80,
+            neg_sim: data.neg_sims ? parseFloat(data.neg_sims[i].toFixed(4)) : 0.20,
+            elapsed: (i + 1) * 1.0
+          });
+        }
+      }
+      return data;
+    } catch (err) {
+      clearInterval(interval);
+      throw err;
+    }
   }
+  
   // Simulate training with delays
-  for (let epoch = 1; epoch <= 10; epoch++) {
-    await new Promise(res => setTimeout(res, 180 + Math.random() * 120));
+  for (let epoch = 1; epoch <= epochs; epoch++) {
+    await new Promise(res => setTimeout(res, 120 + Math.random() * 80));
     const loss = 0.82 * Math.pow(0.88, epoch) + 0.02 * Math.random();
-    onProgress({ epoch, loss: parseFloat(loss.toFixed(4)), elapsed: epoch * 0.3 });
+    const pos_sim = 0.52 + 0.32 * (epoch / epochs) + Math.random() * 0.03;
+    const neg_sim = 0.18 + (Math.random() - 0.5) * 0.03;
+    onProgress({
+      epoch,
+      loss: parseFloat(loss.toFixed(4)),
+      pos_sim: parseFloat(pos_sim.toFixed(4)),
+      neg_sim: parseFloat(neg_sim.toFixed(4)),
+      elapsed: epoch * 0.2
+    });
   }
-  return Array.from({ length: 42 }, () => ({
-    z: Array.from({ length: 128 }, () => (Math.random() - 0.5) * 2),
-    norm: 1 + Math.random()
-  }));
+  return { status: 'success' };
 }
 
 export async function embedCube(cube: CubeData): Promise<EmbedData> {
@@ -238,18 +296,18 @@ export async function embedCube(cube: CubeData): Promise<EmbedData> {
 // ── Discovery ───────────────────────────────────────────────────
 export async function fetchDiscovery(): Promise<DiscoveryData> {
   if (!USE_MOCK) {
-    const r = await fetch(`${API_BASE}/api/discovery/fit`);
+    const r = await fetch(`${API_BASE}/run-umap`);
     return r.json();
   }
   return generateMockDiscovery();
 }
 
 // ── Transfer ────────────────────────────────────────────────────
-export async function assessTransfer(cube: CubeData): Promise<TransferData> {
+export async function assessTransfer(cube: CubeData, modelName: string = 'cubenet_v1'): Promise<TransferData> {
   if (!USE_MOCK) {
-    const r = await fetch(`${API_BASE}/api/transfer`, {
+    const r = await fetch(`${API_BASE}/assess-transferability`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cube: cube.cube })
+      body: JSON.stringify({ cube: cube.cube, target_model: modelName })
     });
     return r.json();
   }
@@ -353,8 +411,25 @@ function generateMockStats(cube: CubeData): StatsData {
   );
   corr.forEach((row, i) => row.forEach((_, j) => { if (i !== j) corr[j][i] = corr[i][j]; }));
 
+  const spearman = corr.map(row => row.map(v => {
+    const r = v + (Math.random() - 0.5) * 0.1;
+    return parseFloat(Math.max(-1, Math.min(1, r)).toFixed(3));
+  }));
+  spearman.forEach((row, i) => row.forEach((_, j) => { if (i !== j) spearman[j][i] = spearman[i][j]; }));
+  for (let i = 0; i < V; i++) spearman[i][i] = 1.0;
+
+  const mi = corr.map(row => row.map(v => {
+    const r = Math.abs(v) * 0.85 + Math.random() * 0.1;
+    return parseFloat(Math.max(0, Math.min(1, r)).toFixed(3));
+  }));
+  mi.forEach((row, i) => row.forEach((_, j) => { if (i !== j) mi[j][i] = mi[i][j]; }));
+  for (let i = 0; i < V; i++) mi[i][i] = 1.0;
+
   return {
     correlation_matrix: corr,
+    pearson_matrix: corr,
+    spearman_matrix: spearman,
+    mi_matrix: mi,
     covariance_matrix: corr.map((row, i) => row.map((v, j) => parseFloat((v * stds[i] * stds[j]).toFixed(4)))),
     variable_means: means.map(v => parseFloat(v.toFixed(4))),
     variable_stds:  stds.map(v => parseFloat(v.toFixed(4))),
@@ -372,8 +447,59 @@ function generateMockSpatial(cube: CubeData): SpatialData {
   return { gradient_magnitude: make(), local_variance: make(), texture: make() };
 }
 
+// ── Reset APIs ──────────────────────────────────────────────────
+export async function resetEncoder(): Promise<any> {
+  if (USE_MOCK) return { status: 'success' };
+  const res = await fetch(`${API_BASE}/api/encoder/reset`, { method: 'POST' });
+  return res.json();
+}
+
+export async function resetDiscovery(): Promise<any> {
+  if (USE_MOCK) return { status: 'success' };
+  const res = await fetch(`${API_BASE}/api/discovery/reset`, { method: 'POST' });
+  return res.json();
+}
+
+export async function resetDataset(): Promise<any> {
+  if (USE_MOCK) return { status: 'success' };
+  const res = await fetch(`${API_BASE}/api/dataset/reset`, { method: 'POST' });
+  return res.json();
+}
+
+export async function removeDataset(name: string): Promise<any> {
+  if (USE_MOCK) return { status: 'success' };
+  const res = await fetch(`${API_BASE}/api/dataset/remove`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
+  return res.json();
+}
+
+export async function removeModel(name: string): Promise<any> {
+  if (USE_MOCK) return { status: 'success' };
+  const res = await fetch(`${API_BASE}/api/model/remove`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
+  return res.json();
+}
+
+export async function fetchModels(): Promise<any[]> {
+  if (USE_MOCK) {
+    return [
+      { name: "cubenet_v1", file: "cubenet_v1.pt", created_at: "2026-06-11T12:00:00Z", active: true, description: "Pre-trained baseline model." }
+    ];
+  }
+  const res = await fetch(`${API_BASE}/api/models`);
+  if (!res.ok) throw new Error('Failed to list models');
+  const data = await res.json();
+  return data.models || [];
+}
+
 function generateMockDiscovery(): DiscoveryData {
-  const N = 40;
+  const N = 400; // 20x20
   const COLORS = ['#00ff9d', '#00e5ff', '#a855f7', '#ff7c29', '#ff4757'];
   const NAMES  = ['Productive Coastal', 'Shelf Sea', 'Open Ocean', 'Deep Sea', 'Transition Zone'];
   const labels: number[] = [];

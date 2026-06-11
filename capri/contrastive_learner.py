@@ -274,7 +274,7 @@ def train_contrastive_model(
     batch_size: int = 8,
     lr: float = 1e-3,
     device: str = "cpu"
-) -> List[float]:
+) -> Tuple[List[float], List[float], List[float]]:
     """Helper to train the ecological encoder contrastively with projection head enabled."""
     model.to(device)
     
@@ -288,10 +288,14 @@ def train_contrastive_model(
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     
     losses = []
+    pos_sims = []
+    neg_sims = []
     model.train()
     
     for epoch in range(epochs):
         epoch_loss = 0.0
+        epoch_pos_sim = 0.0
+        epoch_neg_sim = 0.0
         for step, (x_i, x_j) in enumerate(dataloader):
             x_i, x_j = x_i.to(device), x_j.to(device)
             
@@ -305,11 +309,36 @@ def train_contrastive_model(
             
             epoch_loss += loss.item()
             
+            # Calculate similarities for verification
+            with torch.no_grad():
+                z_i_norm = F.normalize(z_i, dim=1)
+                z_j_norm = F.normalize(z_j, dim=1)
+                pos_sim = (z_i_norm * z_j_norm).sum(dim=1).mean().item()
+                
+                b = z_i.shape[0]
+                representations = torch.cat([z_i_norm, z_j_norm], dim=0)
+                sim_matrix = torch.matmul(representations, representations.T)
+                
+                mask = torch.eye(2 * b, device=z_i.device).bool()
+                for k in range(b):
+                    mask[k, k + b] = True
+                    mask[k + b, k] = True
+                    
+                neg_sim = sim_matrix[~mask].mean().item()
+                
+                epoch_pos_sim += pos_sim
+                epoch_neg_sim += neg_sim
+                
         avg_loss = epoch_loss / len(dataloader)
+        avg_pos_sim = epoch_pos_sim / len(dataloader)
+        avg_neg_sim = epoch_neg_sim / len(dataloader)
+        
         losses.append(avg_loss)
+        pos_sims.append(avg_pos_sim)
+        neg_sims.append(avg_neg_sim)
         
     # Restore model's original projection head state
     if hasattr(model, "use_projection"):
         model.use_projection = was_projection
         
-    return losses
+    return losses, pos_sims, neg_sims
