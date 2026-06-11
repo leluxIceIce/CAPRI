@@ -1,0 +1,475 @@
+{
+  "dataset_name": "test_ds",
+  "source_file": "test_data.csv",
+  "n_cubes": 25,
+  "tile_shape": [
+    20,
+    20,
+    8
+  ],
+  "variables_present": [
+    "CHL",
+    "TSM",
+    "APHY",
+    "ADG",
+    "BBP",
+    "PAR",
+    "KD490",
+    "SST"
+  ],
+  "variables_imputed": [],
+  "resolution": "auto",
+  "completeness_threshold": 0.5,
+  "tiles": [
+    {
+      "id": 0,
+      "file": "cube_0000.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        3.0,
+        3.5757575757575752
+      ],
+      "lat_bounds": [
+        53.0,
+        53.57575757575759
+      ],
+      "field_position": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": 1,
+      "file": "cube_0001.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        3.6060606060606055,
+        4.181818181818181
+      ],
+      "lat_bounds": [
+        53.0,
+        53.57575757575759
+      ],
+      "field_position": [
+        0,
+        20
+      ]
+    },
+    {
+      "id": 2,
+      "file": "cube_0002.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        4.212121212121211,
+        4.787878787878786
+      ],
+      "lat_bounds": [
+        53.0,
+        53.57575757575759
+      ],
+      "field_position": [
+        0,
+        40
+      ]
+    },
+    {
+      "id": 3,
+      "file": "cube_0003.npy",
+      "regime": "shelf_sea",
+      "completeness": 1.0,
+      "lon_bounds": [
+        4.818181818181817,
+        5.393939393939392
+      ],
+      "lat_bounds": [
+        53.0,
+        53.57575757575759
+      ],
+      "field_position": [
+        0,
+        60
+      ]
+    },
+    {
+      "id": 4,
+      "file": "cube_0004.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        5.424242424242422,
+        5.999999999999997
+      ],
+      "lat_bounds": [
+        53.0,
+        53.57575757575759
+      ],
+      "field_position": [
+        0,
+        80
+      ]
+    },
+    {
+      "id": 5,
+      "file": "cube_0005.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        3.0,
+        3.5757575757575752
+      ],
+      "lat_bounds": [
+        53.60606060606062,
+        54.181818181818215
+      ],
+      "field_position": [
+        20,
+        0
+      ]
+    },
+    {
+      "id": 6,
+      "file": "cube_0006.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        3.6060606060606055,
+        4.181818181818181
+      ],
+      "lat_bounds": [
+        53.60606060606062,
+        54.181818181818215
+      ],
+      "field_position": [
+        20,
+        20
+      ]
+    },
+    {
+      "id": 7,
+      "file": "cube_0007.npy",
+      "regime": "shelf_sea",
+      "completeness": 1.0,
+      "lon_bounds": [
+        4.212121212121211,
+        4.787878787878786
+      ],
+      "lat_bounds": [
+        53.60606060606062,
+        54.181818181818215
+      ],
+      "field_position": [
+        20,
+        40
+      ]
+    },
+    {
+      "id": 8,
+      "file": "cube_0008.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        4.818181818181817,
+        5.393939393939392
+      ],
+      "lat_bounds": [
+        53.60606060606062,
+        54.181818181818215
+      ],
+      "field_position": [
+        20,
+        60
+      ]
+    },
+    {
+      "id": 9,
+      "file": "cube_0009.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        5.424242424242422,
+        5.999999999999997
+      ],
+      "lat_bounds": [
+        53.60606060606062,
+        54.181818181818215
+      ],
+      "field_position": [
+        20,
+        80
+      ]
+    },
+    {
+      "id": 10,
+      "file": "cube_0010.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        3.0,
+        3.5757575757575752
+      ],
+      "lat_bounds": [
+        54.21212121212125,
+        54.78787878787884
+      ],
+      "field_position": [
+        40,
+        0
+      ]
+    },
+    {
+      "id": 11,
+      "file": "cube_0011.npy",
+      "regime": "shelf_sea",
+      "completeness": 1.0,
+      "lon_bounds": [
+        3.6060606060606055,
+        4.181818181818181
+      ],
+      "lat_bounds": [
+        54.21212121212125,
+        54.78787878787884
+      ],
+      "field_position": [
+        40,
+        20
+      ]
+    },
+    {
+      "id": 12,
+      "file": "cube_0012.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        4.212121212121211,
+        4.787878787878786
+      ],
+      "lat_bounds": [
+        54.21212121212125,
+        54.78787878787884
+      ],
+      "field_position": [
+        40,
+        40
+      ]
+    },
+    {
+      "id": 13,
+      "file": "cube_0013.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        4.818181818181817,
+        5.393939393939392
+      ],
+      "lat_bounds": [
+        54.21212121212125,
+        54.78787878787884
+      ],
+      "field_position": [
+        40,
+        60
+      ]
+    },
+    {
+      "id": 14,
+      "file": "cube_0014.npy",
+      "regime": "shelf_sea",
+      "completeness": 1.0,
+      "lon_bounds": [
+        5.424242424242422,
+        5.999999999999997
+      ],
+      "lat_bounds": [
+        54.21212121212125,
+        54.78787878787884
+      ],
+      "field_position": [
+        40,
+        80
+      ]
+    },
+    {
+      "id": 15,
+      "file": "cube_0015.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        3.0,
+        3.5757575757575752
+      ],
+      "lat_bounds": [
+        54.81818181818187,
+        55.39393939393946
+      ],
+      "field_position": [
+        60,
+        0
+      ]
+    },
+    {
+      "id": 16,
+      "file": "cube_0016.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        3.6060606060606055,
+        4.181818181818181
+      ],
+      "lat_bounds": [
+        54.81818181818187,
+        55.39393939393946
+      ],
+      "field_position": [
+        60,
+        20
+      ]
+    },
+    {
+      "id": 17,
+      "file": "cube_0017.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        4.212121212121211,
+        4.787878787878786
+      ],
+      "lat_bounds": [
+        54.81818181818187,
+        55.39393939393946
+      ],
+      "field_position": [
+        60,
+        40
+      ]
+    },
+    {
+      "id": 18,
+      "file": "cube_0018.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        4.818181818181817,
+        5.393939393939392
+      ],
+      "lat_bounds": [
+        54.81818181818187,
+        55.39393939393946
+      ],
+      "field_position": [
+        60,
+        60
+      ]
+    },
+    {
+      "id": 19,
+      "file": "cube_0019.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        5.424242424242422,
+        5.999999999999997
+      ],
+      "lat_bounds": [
+        54.81818181818187,
+        55.39393939393946
+      ],
+      "field_position": [
+        60,
+        80
+      ]
+    },
+    {
+      "id": 20,
+      "file": "cube_0020.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        3.0,
+        3.5757575757575752
+      ],
+      "lat_bounds": [
+        55.42424242424249,
+        56.000000000000085
+      ],
+      "field_position": [
+        80,
+        0
+      ]
+    },
+    {
+      "id": 21,
+      "file": "cube_0021.npy",
+      "regime": "shelf_sea",
+      "completeness": 1.0,
+      "lon_bounds": [
+        3.6060606060606055,
+        4.181818181818181
+      ],
+      "lat_bounds": [
+        55.42424242424249,
+        56.000000000000085
+      ],
+      "field_position": [
+        80,
+        20
+      ]
+    },
+    {
+      "id": 22,
+      "file": "cube_0022.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        4.212121212121211,
+        4.787878787878786
+      ],
+      "lat_bounds": [
+        55.42424242424249,
+        56.000000000000085
+      ],
+      "field_position": [
+        80,
+        40
+      ]
+    },
+    {
+      "id": 23,
+      "file": "cube_0023.npy",
+      "regime": "productive_coastal",
+      "completeness": 1.0,
+      "lon_bounds": [
+        4.818181818181817,
+        5.393939393939392
+      ],
+      "lat_bounds": [
+        55.42424242424249,
+        56.000000000000085
+      ],
+      "field_position": [
+        80,
+        60
+      ]
+    },
+    {
+      "id": 24,
+      "file": "cube_0024.npy",
+      "regime": "shelf_sea",
+      "completeness": 1.0,
+      "lon_bounds": [
+        5.424242424242422,
+        5.999999999999997
+      ],
+      "lat_bounds": [
+        55.42424242424249,
+        56.000000000000085
+      ],
+      "field_position": [
+        80,
+        80
+      ]
+    }
+  ]
+}
