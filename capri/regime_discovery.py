@@ -54,6 +54,7 @@ class RegimeDiscoverer:
 
     def fit_transform_latent_space(self, Z: np.ndarray) -> np.ndarray:
         """Projects high-dim embeddings into 2D/3D representation space."""
+        import pickle
         if self.reduction_method == "umap":
             UMAP_class = get_umap()
             if UMAP_class is not None:
@@ -63,11 +64,25 @@ class RegimeDiscoverer:
                     n_neighbors=15,
                     min_dist=0.1
                 )
-                return self.reducer.fit_transform(Z)
+                Z_proj = self.reducer.fit_transform(Z)
+                try:
+                    with open("umap_reducer.pkl", "wb") as f:
+                        pickle.dump(self.reducer, f)
+                    logger.info("UMAP reducer pickled and saved to umap_reducer.pkl")
+                except Exception as e:
+                    logger.error(f"Failed to pickle UMAP reducer: {str(e)}")
+                return Z_proj
             
         # Fallback/Default to PCA
         self.reducer = PCA(n_components=self.n_components, random_state=self.random_state)
-        return self.reducer.fit_transform(Z)
+        Z_proj = self.reducer.fit_transform(Z)
+        try:
+            with open("umap_reducer.pkl", "wb") as f:
+                pickle.dump(self.reducer, f)
+            logger.info("PCA reducer pickled and saved to umap_reducer.pkl")
+        except Exception as e:
+            logger.error(f"Failed to pickle PCA reducer: {str(e)}")
+        return Z_proj
 
     def discover_regimes(
         self,
@@ -87,6 +102,7 @@ class RegimeDiscoverer:
         N = Z.shape[0]
         
         # 1. Density-Based Clustering (HDBSCAN)
+        import pickle
         HDBSCAN_class = get_hdbscan()
         if HDBSCAN_class.__name__ == 'HDBSCAN':
             # Use smaller min_cluster_size if dataset is small
@@ -96,10 +112,22 @@ class RegimeDiscoverer:
                 prediction_data=True
             )
             hdbscan_labels = self.hdbscan_clusterer.fit_predict(Z)
+            try:
+                with open("hdbscan_model.pkl", "wb") as f:
+                    pickle.dump(self.hdbscan_clusterer, f)
+                logger.info("HDBSCAN model pickled and saved to hdbscan_model.pkl")
+            except Exception as e:
+                logger.error(f"Failed to pickle HDBSCAN model: {str(e)}")
         else:
             # DBSCAN fallback
             self.hdbscan_clusterer = HDBSCAN_class(eps=0.5, min_samples=2)
             hdbscan_labels = self.hdbscan_clusterer.fit_predict(Z)
+            try:
+                with open("hdbscan_model.pkl", "wb") as f:
+                    pickle.dump(self.hdbscan_clusterer, f)
+                logger.info("DBSCAN model pickled and saved to hdbscan_model.pkl")
+            except Exception as e:
+                logger.error(f"Failed to pickle DBSCAN model: {str(e)}")
             
         # 2. Probabilistic Clustering (GMM)
         # Handle case where dataset has fewer samples than n_regimes
@@ -107,9 +135,21 @@ class RegimeDiscoverer:
         self.gmm = GaussianMixture(
             n_components=k,
             random_state=self.random_state,
-            covariance_type="full"
+            covariance_type="full",
+            reg_covar=1e-3
         )
-        self.gmm.fit(Z)
+        try:
+            self.gmm.fit(Z)
+        except ValueError as e:
+            logger.warning(f"GMM fit with full covariance failed ({str(e)}), falling back to diagonal covariance.")
+            self.gmm = GaussianMixture(
+                n_components=k,
+                random_state=self.random_state,
+                covariance_type="diag",
+                reg_covar=1e-3
+            )
+            self.gmm.fit(Z)
+            
         gmm_probs = self.gmm.predict_proba(Z)
         gmm_labels = self.gmm.predict(Z)
         

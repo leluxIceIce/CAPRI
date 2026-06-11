@@ -1182,6 +1182,33 @@ def remove_model():
     else:
         return jsonify({"error": f"Model {name} cannot be removed."}), 400
 
+@app.route("/api/download/<filename>", methods=["GET"])
+def download_artifact(filename):
+    """Safely serves trained model files and representations for download."""
+    allowed_files = [
+        "encoder.pt",
+        "decoder.pt",
+        "umap_reducer.pkl",
+        "hdbscan_model.pkl",
+        "embeddings.csv",
+        "embeddings.parquet",
+        "model_metadata.json",
+        "umap_projection.csv",
+        "cluster_assignments.csv",
+        "dependency_graph.json",
+        "relationship_tensor.npy"
+    ]
+    if filename not in allowed_files:
+        logger.warning(f"Unauthorized file download request: {filename}")
+        return jsonify({"error": "Forbidden"}), 403
+        
+    if os.path.exists(filename):
+        logger.info(f"Serving file for download: {filename}")
+        return send_file(filename, as_attachment=True)
+    else:
+        logger.warning(f"File download requested but not found: {filename}")
+        return jsonify({"error": f"File {filename} not found"}), 404
+
 if __name__ == "__main__":
     init_eef_pipeline()
     # Run server on port 8000

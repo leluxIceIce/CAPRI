@@ -2,6 +2,8 @@
  * views/Export.ts — Model export view.
  */
 
+import { API_BASE } from '../api';
+
 export function buildExportView(): HTMLElement {
   const el = document.createElement('div');
   el.className = 'page-view';
@@ -57,7 +59,7 @@ z = model.predict(cube)   <span style="color:var(--text-dim);"># (128,)</span>
               <div style="flex:1;">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
                   <span style="font-family:var(--font-mono); font-size:12px; color:var(--text); font-weight:600;">${file}</span>
-                  <button class="btn btn-sm">Download</button>
+                  <a href="${API_BASE}/api/download/${file}" download="${file}" class="btn btn-sm" style="text-decoration:none; display:inline-flex; align-items:center; justify-content:center; color:inherit;">Download</a>
                 </div>
                 <div style="font-size:11px; color:var(--text-muted);">${desc}</div>
                 <div style="font-size:10px; color:var(--text-dim); margin-top:4px;">${detail}</div>

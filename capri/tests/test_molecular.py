@@ -65,3 +65,16 @@ def test_augmented_encoder_channels():
     
     vector = encoding.to_vector()
     assert len(vector) == 20 * 20 * manifest_len
+
+def test_rotational_invariance():
+    cube = np.random.rand(20, 20, 8).astype(np.float32)
+    
+    # Get fingerprint of original cube
+    fp_orig = decompose_to_molecular_fingerprint(cube)
+    
+    # Rotate the cube by 90 degrees in the XY plane
+    rotated_cube = np.rot90(cube, k=1, axes=(0, 1))
+    fp_rot = decompose_to_molecular_fingerprint(rotated_cube)
+    
+    # They should be identical due to group-symmetric pooling!
+    assert np.allclose(fp_orig, fp_rot, atol=0.02)

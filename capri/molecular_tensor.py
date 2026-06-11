@@ -52,6 +52,9 @@ def tensor_to_3d_voxels(cube: np.ndarray) -> np.ndarray:
     SST (8th variable, if present) is used as a local conformational expansion factor
     that distorts the z-coordinates: alpha = 1.0 + 0.1 * SST.
     
+    Additionally, active neighboring cells are physically connected via a 3D
+    tubular root grid system for each channel.
+    
     Returns:
         np.ndarray of shape (7, 20, 20, 20), values in [0, 1].
     """
@@ -87,7 +90,10 @@ def tensor_to_3d_voxels(cube: np.ndarray) -> np.ndarray:
     sigma = 0.6
     sigma_sq = 2.0 * (sigma ** 2)
     
-    # Accumulate localized contributions from each cell (xc, yc) to build the 3D volume
+    # Base Z centers for each variable layer
+    base_z_centers = [4.0, 8.0, 12.0, 15.0, 17.5, 10.0, 19.0]
+    
+    # 1. Accumulate localized cell-level structures
     for xc in range(H):
         for yc in range(W):
             v_chl = val_chl[xc, yc]
@@ -106,13 +112,13 @@ def tensor_to_3d_voxels(cube: np.ndarray) -> np.ndarray:
             a = alpha[xc, yc]
             
             # Z centers for each variable
-            z_chl = 4.0 * a
-            z_tsm = 8.0 * a
-            z_aphy = 12.0 * a
-            z_adg = 15.0 * a
-            z_bbp = 17.5 * a
-            z_par = 10.0 * a
-            z_kd = 19.0 * a
+            z_chl = base_z_centers[0] * a
+            z_tsm = base_z_centers[1] * a
+            z_aphy = base_z_centers[2] * a
+            z_adg = base_z_centers[3] * a
+            z_bbp = base_z_centers[4] * a
+            z_par = base_z_centers[5] * a
+            z_kd = base_z_centers[6] * a
             
             # Define local bounding box (radius = 5) to keep execution fast
             r_limit = 5
@@ -186,6 +192,63 @@ def tensor_to_3d_voxels(cube: np.ndarray) -> np.ndarray:
                 dist_z = np.maximum(0.0, z_kd - sub_z)
                 kd_density = v_kd * np.exp(-(dx_sq + dy_sq) / sigma_sq) * np.exp(-dist_z / 3.0)
                 voxels[6, x_min:x_max, y_min:y_max, :] = np.maximum(voxels[6, x_min:x_max, y_min:y_max, :], kd_density)
+
+    # 2. Add tubular root grid system (connecting adjacent active cells in 3D space)
+    sigma_root = 0.6
+    sigma_root_sq = 2.0 * (sigma_root ** 2)
+    
+    connections = []
+    # Horizontal neighbors: (x, y) <-> (x+1, y)
+    for x in range(H - 1):
+        for y in range(W):
+            connections.append(((x, y), (x + 1, y)))
+    # Vertical neighbors: (x, y) <-> (x, y+1)
+    for x in range(H):
+        for y in range(W - 1):
+            connections.append(((x, y), (x, y + 1)))
+            
+    for A_coord, B_coord in connections:
+        x_A, y_A = A_coord
+        x_B, y_B = B_coord
+        a_A = alpha[x_A, y_A]
+        a_B = alpha[x_B, y_B]
+        
+        for c in range(7):
+            val_A = cube[x_A, y_A, c]
+            val_B = cube[x_B, y_B, c]
+            if val_A > 0 and val_B > 0:
+                z_A = base_z_centers[c] * a_A
+                z_B = base_z_centers[c] * a_B
+                v_avg = 0.5 * (val_A + val_B)
+                
+                # Dynamic localized bounding box to optimize calculation speed
+                x_min = max(0, min(x_A, x_B) - 2)
+                x_max = min(H, max(x_A, x_B) + 3)
+                y_min = max(0, min(y_A, y_B) - 2)
+                y_max = min(W, max(y_A, y_B) + 3)
+                z_min = max(0, int(min(z_A, z_B) - 2))
+                z_max = min(20, int(max(z_A, z_B) + 3))
+                
+                sub_x = x_indices[x_min:x_max][:, np.newaxis, np.newaxis]
+                sub_y = y_indices[y_min:y_max][np.newaxis, :, np.newaxis]
+                sub_z = z_indices[z_min:z_max][np.newaxis, np.newaxis, :]
+                
+                vx, vy, vz = x_B - x_A, y_B - y_A, z_B - z_A
+                v_sq = vx**2 + vy**2 + vz**2
+                if v_sq > 0:
+                    dot = (sub_x - x_A) * vx + (sub_y - y_A) * vy + (sub_z - z_A) * vz
+                    t = np.clip(dot / v_sq, 0.0, 1.0)
+                    cx = x_A + t * vx
+                    cy = y_A + t * vy
+                    cz = z_A + t * vz
+                    
+                    d_sq = (sub_x - cx)**2 + (sub_y - cy)**2 + (sub_z - cz)**2
+                    root_density = v_avg * np.exp(-d_sq / sigma_root_sq)
+                    
+                    voxels[c, x_min:x_max, y_min:y_max, z_min:z_max] = np.maximum(
+                        voxels[c, x_min:x_max, y_min:y_max, z_min:z_max],
+                        root_density
+                    )
                 
     return voxels
 
@@ -222,6 +285,9 @@ def decompose_to_molecular_fingerprint(cube: np.ndarray) -> np.ndarray:
     """
     Voxelizes the input cube, runs it through the 3D CNN,
     and returns a 128-dimensional molecular fingerprint vector.
+    
+    Applies XY group-symmetric pooling (averaging over all 8 rotations and reflections)
+    to ensure the resulting fingerprint is perfectly rotationally invariant.
     """
     global _molecular_cnn
     if _molecular_cnn is None:
@@ -233,9 +299,17 @@ def decompose_to_molecular_fingerprint(cube: np.ndarray) -> np.ndarray:
     # Convert cube (20, 20, V) to voxels (7, 20, 20, 20)
     voxels = tensor_to_3d_voxels(cube)
     
-    # Add batch dimension: shape (1, 7, 20, 20, 20)
-    x = torch.from_numpy(voxels).unsqueeze(0)
-    with torch.no_grad():
-        z = _molecular_cnn(x)
-        
-    return z.squeeze(0).numpy()
+    # Aggregate over all 8 symmetric configurations in the XY plane to achieve rotational invariance
+    embeddings = []
+    for rot in range(4):
+        for flip in [False, True]:
+            v_curr = np.rot90(voxels, k=rot, axes=(1, 2))
+            if flip:
+                v_curr = np.flip(v_curr, axis=1)
+                
+            x = torch.from_numpy(v_curr.copy()).unsqueeze(0)
+            with torch.no_grad():
+                z = _molecular_cnn(x)
+            embeddings.append(z.squeeze(0).numpy())
+            
+    return np.mean(embeddings, axis=0)

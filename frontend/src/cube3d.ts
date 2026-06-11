@@ -34,6 +34,7 @@ export class CubeRenderer {
   private layerMaterials: THREE.MeshBasicMaterial[] = [];
   private layerOpacities: number[] = new Array(8).fill(0.85);
   private layerVisible: boolean[] = new Array(8).fill(true);
+  private labelSprites: THREE.Sprite[] = [];
 
   private isDragging = false;
   private prevMouse = { x: 0, y: 0 };
@@ -92,6 +93,7 @@ export class CubeRenderer {
     this.layerMeshes = [];
     this.layerMaterials = [];
     this.clickPlanes = [];
+    this.labelSprites = [];
 
     const H = cube.shape[0]; // 16
     const W = cube.shape[1]; // 16
@@ -149,6 +151,43 @@ export class CubeRenderer {
       this.cubeGroup.add(mesh);
       this.layerMeshes.push(mesh);
 
+      // Build text label sprite
+      const varName = cube.variables[v] || `Layer ${v}`;
+      const colorHex = VAR_COLORS[v % VAR_COLORS.length];
+      
+      const labelCanvas = document.createElement('canvas');
+      labelCanvas.width = 128;
+      labelCanvas.height = 32;
+      const lctx = labelCanvas.getContext('2d');
+      if (lctx) {
+        lctx.fillStyle = 'rgba(10, 10, 16, 0.7)';
+        lctx.beginPath();
+        lctx.roundRect(0, 0, 128, 32, 6);
+        lctx.fill();
+        
+        lctx.font = 'bold 16px monospace';
+        lctx.fillStyle = '#' + colorHex.toString(16).padStart(6, '0');
+        lctx.textAlign = 'center';
+        lctx.textBaseline = 'middle';
+        lctx.fillText(varName, 64, 16);
+      }
+      
+      const labelTex = new THREE.CanvasTexture(labelCanvas);
+      const labelMat = new THREE.SpriteMaterial({
+        map: labelTex,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        depthTest: false
+      });
+      const labelSprite = new THREE.Sprite(labelMat);
+      labelSprite.scale.set(0.6, 0.15, 1.0);
+      labelSprite.position.set(1.35, 0, mesh.position.z);
+      labelSprite.visible = this.layerVisible[v];
+      
+      this.cubeGroup.add(labelSprite);
+      this.labelSprites.push(labelSprite);
+
       // Invisible click plane
       const clickGeo = new THREE.PlaneGeometry(planeW, planeH);
       const clickMat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
@@ -184,6 +223,9 @@ export class CubeRenderer {
     if (this.layerMeshes[layerIdx]) {
       this.layerMeshes[layerIdx].visible = visible;
     }
+    if (this.labelSprites[layerIdx]) {
+      this.labelSprites[layerIdx].visible = visible;
+    }
   }
 
   setAutoRotate(on: boolean) { this.autoRotate = on; }
@@ -207,6 +249,9 @@ export class CubeRenderer {
     if (this.autoRotate && !this.isDragging) {
       this.rotY += 0.003;
       this.cubeGroup.rotation.y = this.rotY;
+    }
+    for (const sprite of this.labelSprites) {
+      sprite.quaternion.copy(this.camera.quaternion);
     }
     this.renderer.render(this.scene, this.camera);
   };
