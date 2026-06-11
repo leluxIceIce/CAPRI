@@ -285,7 +285,12 @@ def train_contrastive_model(
         
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
     criterion = ContrastiveLoss(temperature=0.5)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+    bs = min(batch_size, len(dataset))
+    if bs < 2:
+        raise ValueError(f"Dataset has only {len(dataset)} samples. At least 2 samples are required for contrastive learning.")
+    drop_last = (len(dataset) % bs == 1)
+    dataloader = DataLoader(dataset, batch_size=bs, shuffle=True, drop_last=drop_last)
+
     
     losses = []
     pos_sims = []
