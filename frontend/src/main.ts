@@ -19,6 +19,7 @@ import { buildInterpretationView, renderInterpretationView } from './views/Inter
 import { buildTransferView, renderTransferResults } from './views/Transfer';
 import { buildExportView, enableExports, initExportHandlers } from './views/Export';
 import { buildDatasetFactoryView } from './views/DatasetFactory';
+import { buildTemporalView, renderTemporalView } from './views/Temporal';
 import {
   API_BASE,
   checkBackend,
@@ -49,6 +50,7 @@ const NAV_ITEMS = [
   { id: 'statistics',     icon: '📊', label: 'Statistics',         section: null        },
   { id: 'explainability', icon: '🔍', label: 'Explainability',     section: null        },
   { id: 'spatial',        icon: '🗺️', label: 'Spatial Layer',      section: null        },
+  { id: 'temporal',       icon: '⏳', label: 'Temporal Batches',   section: null        },
   { id: 'encoder',        icon: '🧠', label: 'Encoder Training',   section: 'Analysis'  },
   { id: 'statespace',     icon: '🌌', label: 'State Space',        section: null        },
   { id: 'interpretation', icon: '📖', label: 'Interpretation',     section: null        },
@@ -189,6 +191,7 @@ function buildApp() {
   const statsView = buildStatisticsView();
   const explainabilityView = buildExplainabilityView();
   const spatialView = buildSpatialView();
+  const temporalView = buildTemporalView();
   const encoderView = buildEncoderView();
   const stateSpaceView = buildStateSpaceView();
   const interpretationView = buildInterpretationView();
@@ -200,6 +203,7 @@ function buildApp() {
     statistics: statsView,
     explainability: explainabilityView,
     spatial: spatialView,
+    temporal: temporalView,
     encoder: encoderView,
     statespace: stateSpaceView,
     interpretation: interpretationView,
@@ -228,7 +232,7 @@ function switchView(viewId: string) {
   // Show/hide views
   document.getElementById('view-home')!.style.display = viewId === 'home' ? 'flex' : 'none';
 
-  const pageIds = ['statistics','explainability','spatial','encoder','statespace','interpretation','transfer','datasetfactory','export'];
+  const pageIds = ['statistics','explainability','spatial','temporal','encoder','statespace','interpretation','transfer','datasetfactory','export'];
   pageIds.forEach(pid => {
     const el = document.getElementById(`view-${pid}`);
     if (el) el.style.display = pid === viewId ? 'flex' : 'none';
@@ -243,6 +247,9 @@ function switchView(viewId: string) {
   }
   if (viewId === 'spatial' && state.cube && state.spatial) {
     renderSpatialView(state.cube, state.spatial);
+  }
+  if (viewId === 'temporal') {
+    renderTemporalView();
   }
   if (viewId === 'statespace' && state.discovery) {
     renderStateSpaceView(state.discovery);

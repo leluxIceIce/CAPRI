@@ -549,3 +549,256 @@ export async function dockMolecule(x: number, y: number, cube?: number[][][]): P
   if (!res.ok) throw new Error('Docking query failed');
   return res.json();
 }
+
+// ── Temporal Batches API ────────────────────────────────────────
+
+export interface TemporalBatchInfo {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  itemCount: number;
+  description: string;
+}
+
+export interface TemporalBatchItem {
+  id: string;
+  timestamp: string;
+  regime: string;
+  selected: boolean;
+}
+
+export interface TemporalBatchDetail {
+  id: string;
+  name: string;
+  description: string;
+  items: TemporalBatchItem[];
+  trajectory: {
+    x: number[];
+    y: number[];
+    t: string[];
+  };
+  band_time_series: {
+    time: string[];
+    bands: { [bandName: string]: number[] };
+  };
+  correlation_delta: {
+    matrix: number[][];
+    variables: string[];
+    closest_analog_name: string;
+    closest_analog_distance: number;
+  };
+  dynamics: {
+    time: string[];
+    velocity: number[];
+    acceleration: number[];
+  };
+}
+
+export async function fetchTemporalBatches(): Promise<TemporalBatchInfo[]> {
+  if (USE_MOCK) {
+    return [
+      {
+        id: "bloom_north_sea_2024",
+        name: "North Sea Spring Bloom 2024",
+        startDate: "2024-03-01",
+        endDate: "2024-05-15",
+        itemCount: 15,
+        description: "Chronological sequence tracing the transition from winter oligotrophy to spring diatom bloom."
+      },
+      {
+        id: "upwelling_atlantic_2023",
+        name: "Atlantic Upwelling Cycle 2023",
+        startDate: "2023-06-01",
+        endDate: "2023-08-30",
+        itemCount: 18,
+        description: "Coastal upwelling dynamics off West Africa, characterized by rapid sea surface temperature drops."
+      },
+      {
+        id: "heatwave_med_2023",
+        name: "Mediterranean Heatwave Event 2023",
+        startDate: "2023-07-01",
+        endDate: "2023-09-15",
+        itemCount: 12,
+        description: "Extreme marine heatwave anomalies leading to secondary thermal regimes and stratification shifts."
+      }
+    ];
+  }
+
+  const res = await fetch(`${API_BASE}/api/temporal/list`);
+  if (!res.ok) throw new Error('Failed to list temporal batches');
+  const data = await res.json();
+  return data.batches || [];
+}
+
+export async function fetchTemporalBatch(id: string): Promise<TemporalBatchDetail> {
+  if (USE_MOCK) {
+    return generateMockTemporalBatchDetail(id);
+  }
+
+  const res = await fetch(`${API_BASE}/api/temporal/${id}`);
+  if (!res.ok) throw new Error(`Failed to fetch temporal batch ${id}`);
+  return res.json();
+}
+
+export async function updateTemporalManifest(batchId: string, selectedIds: string[]): Promise<{ status: string; message: string }> {
+  if (USE_MOCK) {
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve({
+          status: 'success',
+          message: `Successfully updated training manifest with ${selectedIds.length} items from batch ${batchId}.`
+        });
+      }, 800);
+    });
+  }
+
+  const res = await fetch(`${API_BASE}/api/temporal/manifest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ batch_id: batchId, selected_ids: selectedIds })
+  });
+  if (!res.ok) throw new Error('Failed to update training manifest');
+  return res.json();
+}
+
+function generateMockTemporalBatchDetail(id: string): TemporalBatchDetail {
+  const steps = id === 'bloom_north_sea_2024' ? 15 : id === 'upwelling_atlantic_2023' ? 18 : 12;
+  const name = id === 'bloom_north_sea_2024' 
+    ? "North Sea Spring Bloom 2024"
+    : id === 'upwelling_atlantic_2023'
+    ? "Atlantic Upwelling Cycle 2023"
+    : "Mediterranean Heatwave Event 2023";
+  const description = id === 'bloom_north_sea_2024'
+    ? "Chronological sequence tracing the transition from winter oligotrophy to spring diatom bloom."
+    : id === 'upwelling_atlantic_2023'
+    ? "Coastal upwelling dynamics off West Africa, characterized by rapid sea surface temperature drops."
+    : "Extreme marine heatwave anomalies leading to secondary thermal regimes and stratification shifts.";
+
+  const startDate = new Date(id === 'bloom_north_sea_2024' ? '2024-03-01' : id === 'upwelling_atlantic_2023' ? '2023-06-01' : '2023-07-01');
+  const timeStrings: string[] = [];
+  for (let i = 0; i < steps; i++) {
+    const d = new Date(startDate.getTime() + i * 5 * 24 * 60 * 60 * 1000);
+    timeStrings.push(d.toISOString().slice(0, 10));
+  }
+
+  const x: number[] = [];
+  const y: number[] = [];
+  let currentX = id === 'bloom_north_sea_2024' ? -2.5 : id === 'upwelling_atlantic_2023' ? 3.0 : 0.0;
+  let currentY = id === 'bloom_north_sea_2024' ? 2.0 : id === 'upwelling_atlantic_2023' ? -1.0 : -3.0;
+  const targetX = id === 'bloom_north_sea_2024' ? 2.0 : id === 'upwelling_atlantic_2023' ? -1.0 : 4.0;
+  const targetY = id === 'bloom_north_sea_2024' ? -1.5 : id === 'upwelling_atlantic_2023' ? 3.0 : 1.0;
+
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1);
+    const noiseX = (Math.random() - 0.5) * 0.4;
+    const noiseY = (Math.random() - 0.5) * 0.4;
+    x.push(parseFloat((currentX + (targetX - currentX) * t + noiseX).toFixed(3)));
+    y.push(parseFloat((currentY + (targetY - currentY) * t + noiseY).toFixed(3)));
+  }
+
+  const velocities: number[] = [0];
+  for (let i = 1; i < steps; i++) {
+    const dx = x[i] - x[i - 1];
+    const dy = y[i] - y[i - 1];
+    velocities.push(parseFloat(Math.sqrt(dx * dx + dy * dy).toFixed(3)));
+  }
+  const accelerations: number[] = [0, 0];
+  for (let i = 2; i < steps; i++) {
+    accelerations.push(parseFloat((velocities[i] - velocities[i - 1]).toFixed(3)));
+  }
+
+  const variables = ['CHL', 'TSM', 'APHY', 'ADG', 'BBP', 'PAR', 'KD490', 'SST'];
+  const bands: { [key: string]: number[] } = {};
+  variables.forEach(v => {
+    bands[v] = [];
+  });
+
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1);
+    variables.forEach(v => {
+      let val = 0.5;
+      if (v === 'SST') {
+        val = id === 'bloom_north_sea_2024' 
+          ? 6.0 + 8.0 * t + Math.random() * 0.5 
+          : id === 'upwelling_atlantic_2023'
+          ? 22.0 - 6.0 * t - 3.0 * Math.sin(t * Math.PI) + Math.random() * 0.4
+          : 24.0 + 5.0 * Math.sin(t * Math.PI) + Math.random() * 0.5;
+      } else if (v === 'CHL') {
+        val = id === 'bloom_north_sea_2024'
+          ? 0.2 + 8.0 * Math.exp(-Math.pow((t - 0.5) / 0.18, 2)) + Math.random() * 0.3
+          : id === 'upwelling_atlantic_2023'
+          ? 0.5 + 4.5 * t + Math.random() * 0.4
+          : 0.1 + 0.8 * t + Math.random() * 0.1;
+      } else if (v === 'TSM') {
+        val = id === 'bloom_north_sea_2024'
+          ? 1.5 - 0.8 * t + Math.random() * 0.2
+          : id === 'upwelling_atlantic_2023'
+          ? 0.3 + 1.2 * t + Math.random() * 0.2
+          : 0.2 + 0.4 * t + Math.random() * 0.1;
+      } else if (v === 'PAR') {
+        val = id === 'bloom_north_sea_2024'
+          ? 10.0 + 35.0 * t + Math.random() * 2.0
+          : id === 'upwelling_atlantic_2023'
+          ? 40.0 - 10.0 * t + Math.random() * 3.0
+          : 45.0 + 5.0 * Math.random();
+      } else {
+        val = 0.2 + 0.6 * Math.sin(t * Math.PI) + Math.random() * 0.15;
+      }
+      bands[v].push(parseFloat(val.toFixed(3)));
+    });
+  }
+
+  const items: TemporalBatchItem[] = [];
+  const regimes = ['Productive Coastal', 'Shelf Sea', 'Open Ocean', 'Deep Sea', 'Transition Zone'];
+  for (let i = 0; i < steps; i++) {
+    let regime = regimes[i % 2];
+    if (id === 'bloom_north_sea_2024') {
+      regime = i < 5 ? 'Open Ocean' : i < 10 ? 'Transition Zone' : 'Productive Coastal';
+    } else if (id === 'upwelling_atlantic_2023') {
+      regime = i < 6 ? 'Shelf Sea' : i < 12 ? 'Productive Coastal' : 'Transition Zone';
+    } else {
+      regime = i < 4 ? 'Shelf Sea' : 'Open Ocean';
+    }
+    items.push({
+      id: `${id}_item_${i}`,
+      timestamp: timeStrings[i],
+      regime: regime,
+      selected: Math.random() > 0.4
+    });
+  }
+
+  const matrix: number[][] = [];
+  for (let i = 0; i < 8; i++) {
+    const row: number[] = [];
+    for (let j = 0; j < 8; j++) {
+      if (i === j) {
+        row.push(0);
+      } else {
+        const val = (Math.sin(i * 1.5 + j) * 0.25) + (Math.random() - 0.5) * 0.1;
+        row.push(parseFloat(val.toFixed(3)));
+      }
+    }
+    matrix.push(row);
+  }
+
+  return {
+    id,
+    name,
+    description,
+    items,
+    trajectory: { x, y, t: timeStrings },
+    band_time_series: { time: timeStrings, bands },
+    correlation_delta: {
+      matrix,
+      variables,
+      closest_analog_name: id === 'bloom_north_sea_2024' ? 'North Sea Climatology 2018-2022' : id === 'upwelling_atlantic_2023' ? 'Canary Upwelling Reference' : 'West Med Stratified Basin',
+      closest_analog_distance: id === 'bloom_north_sea_2024' ? 0.245 : id === 'upwelling_atlantic_2023' ? 0.312 : 0.189
+    },
+    dynamics: {
+      time: timeStrings,
+      velocity: velocities,
+      acceleration: accelerations
+    }
+  };
+}

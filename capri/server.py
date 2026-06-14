@@ -12,12 +12,6 @@ import logging
 import numpy as np
 import pandas as pd
 import torch
-import time
-import math
-import hashlib
-from functools import wraps
-from concurrent.futures import ThreadPoolExecutor
-from pydantic import BaseModel, Field, validator
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from typing import Dict, Any, List, Optional
@@ -25,6 +19,10 @@ import tempfile
 import uuid
 import json
 from pathlib import Path
+from pydantic import BaseModel, validator, ValidationError
+from concurrent.futures import ThreadPoolExecutor
+import time
+from functools import wraps
 
 # Import our modular components
 from cube_builder import EcologicalCubeBuilder, TileMetadata
@@ -40,148 +38,68 @@ from explorer import EcologicalExplorer
 from dataset_compiler import DatasetCompiler
 from multi_dataset import MultiDatasetPool
 from training_pipeline import EcologicalTrainingPipeline
+from temporal_batch import TemporalBatch
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("EEFBackend")
 
-# ── Rate Limiter ──────────────────────────────────────────────────────────────
+app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": ["http://localhost:5174", "http://127.0.0.1:5174", "https://leluxiceice.github.io"]}})
+
 class TokenBucketRateLimiter:
-    def __init__(self, capacity: int, refill_rate: float):
+    def __init__(self, capacity=10, refill_rate=2.0):
         self.capacity = capacity
         self.refill_rate = refill_rate
-        self.buckets = {}  # ip -> (tokens, last_update_time)
+        self.tokens = {}
+        self.last_refill = {}
 
-    def is_allowed(self, ip: str) -> bool:
+    def get_token(self, key):
         now = time.time()
-        if ip not in self.buckets:
-            self.buckets[ip] = (self.capacity, now)
-            return True
-            
-        tokens, last_update = self.buckets[ip]
-        elapsed = now - last_update
-        tokens = min(self.capacity, tokens + elapsed * self.refill_rate)
-        
-        if tokens >= 1.0:
-            self.buckets[ip] = (tokens - 1.0, now)
-            return True
-        else:
-            self.buckets[ip] = (tokens, last_update)  # Keep the old last_update to accumulate
-            return False
+        self.tokens.setdefault(key, self.capacity)
+        self.last_refill.setdefault(key, now)
 
-def rate_limit(capacity=5, refill_rate=0.2):
-    limiter = TokenBucketRateLimiter(capacity, refill_rate)
-    def decorator(f):
-        @wraps(f)
-        def wrapped(*args, **kwargs):
-            ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-            if not limiter.is_allowed(ip):
-                return jsonify({"error": "Rate limit exceeded. Please try again later."}), 429
-            return f(*args, **kwargs)
-        return wrapped
-    return decorator
+        time_passed = now - self.last_refill[key]
+        self.tokens[key] = min(self.capacity, self.tokens[key] + time_passed * self.refill_rate)
+        self.last_refill[key] = now
 
-# ── Pydantic Input Validation ────────────────────────────────────────────────
+        if self.tokens[key] >= 1:
+            self.tokens[key] -= 1
+            return True
+        return False
+
+limiter = TokenBucketRateLimiter(capacity=10, refill_rate=2.0)
+
+def rate_limit(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        client_ip = request.remote_addr or "unknown"
+        if not limiter.get_token(client_ip):
+            return jsonify({"error": "Rate limit exceeded. Please slow down."}), 429
+        return f(*args, **kwargs)
+    return decorated_function
+
 class CubeInput(BaseModel):
     cube: List[List[List[float]]]
-
+    
     @validator('cube')
     def validate_cube(cls, v):
-        H = len(v)
-        if H != 20:
-            raise ValueError(f"Cube must have exactly 20 rows, found {H}")
-        W = len(v[0])
-        if W != 20:
-            raise ValueError(f"Cube must have exactly 20 columns, found {W}")
-        V = len(v[0][0])
-        if V < 7:
-            raise ValueError(f"Cube must have at least 7 channels/variables, found {V}")
-            
-        for i in range(H):
-            if len(v[i]) != W:
-                raise ValueError("Cube must have consistent grid rows")
-            for j in range(W):
-                if len(v[i][j]) != V:
-                    raise ValueError("Cube must have consistent number of channels")
-                for k in range(V):
-                    val = v[i][j][k]
-                    if math.isnan(val) or math.isinf(val):
-                        raise ValueError("Cube contains NaN or infinite values")
+        cube_arr = np.array(v)
+        if cube_arr.shape[:2] != (20, 20):
+            raise ValueError(f"Cube must have spatial dimensions 20x20, got {cube_arr.shape[:2]}")
+        if not np.isfinite(cube_arr).all():
+            raise ValueError("Cube contains NaN or Inf values")
         return v
 
 class EncoderTrainInput(BaseModel):
-    epochs: Optional[int] = Field(default=10, ge=1)
-    batch_size: Optional[int] = Field(default=8, ge=2)
+    epochs: int = 10
+    batch_size: int = 8
     datasets: Optional[List[Any]] = None
 
-    @validator('datasets')
-    def validate_datasets(cls, v):
-        if not v:
-            return v
-        if isinstance(v[0], str):
-            for name in v:
-                if not isinstance(name, str):
-                    raise ValueError("All dataset names must be strings")
-        else:
-            for idx, c in enumerate(v):
-                if not isinstance(c, list):
-                    raise ValueError(f"Dataset element {idx} must be a list/cube")
-                H = len(c)
-                if H == 0:
-                    raise ValueError(f"Dataset element {idx} has empty cube")
-                W = len(c[0])
-                if W == 0:
-                    raise ValueError(f"Dataset element {idx} has empty rows")
-                V = len(c[0][0])
-                if V < 7:
-                    raise ValueError(f"Dataset element {idx} must have at least 7 variables")
-                for i in range(H):
-                    if len(c[i]) != W:
-                        raise ValueError(f"Dataset element {idx} has inconsistent row lengths")
-                    for j in range(W):
-                        if len(c[i][j]) != V:
-                            raise ValueError(f"Dataset element {idx} has inconsistent channel depth")
-                        for k in range(V):
-                            val = c[i][j][k]
-                            if not isinstance(val, (int, float)):
-                                raise ValueError(f"Dataset element {idx} contains non-numeric value")
-                            if math.isnan(val) or math.isinf(val):
-                                raise ValueError(f"Dataset element {idx} contains NaN or infinite values")
-        return v
-
-# ── UMAP Async Helpers ────────────────────────────────────────────────────────
-umap_executor = ThreadPoolExecutor(max_workers=1)
+# Async UMAP execution state
+executor = ThreadPoolExecutor(max_workers=1)
 umap_cache = {}
-umap_status = {"status": "idle", "future": None, "error": None}
-
-def run_umap_async(db):
-    global discovery_results
-    try:
-        logger.info("Background thread: Fitting UMAP...")
-        results = training_pipeline.discover_states(db)
-        logger.info("Background thread: UMAP fit completed.")
-        return results
-    except Exception as e:
-        logger.error(f"Background thread: UMAP fit failed: {str(e)}")
-        raise e
-
-def get_embeddings_hash(db) -> str:
-    if not db or not db.records:
-        return "empty"
-    m = hashlib.sha256()
-    for r in db.records:
-        m.update(r.embedding_id.encode('utf-8'))
-        m.update(r.embedding[:10].tobytes())
-    return m.hexdigest()
-
-app = Flask(__name__)
-# Restrict CORS to specific origins
-CORS(app, resources={r"/*": {"origins": [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "https://leluxiceice.github.io"
-]}})
+umap_status = {"status": "idle", "results": None, "task": None}
 
 # Global explorer instance
 explorer: Optional[EcologicalExplorer] = None
@@ -557,28 +475,33 @@ def update_explorer_from_trained():
 
 @app.route("/api/encoder/train", methods=["POST"])
 @app.route("/train-encoder", methods=["POST"])
-@rate_limit(capacity=2, refill_rate=0.05)
+@rate_limit
 def train_encoder():
     """Trains the ResNet encoder on the merged dataset pool."""
     global training_pipeline, embedding_db, discovery_results
     
     try:
-        req_json = request.get_json() or {}
-        validated = EncoderTrainInput(**req_json)
+        data = request.get_json() or {}
+        try:
+            validated = EncoderTrainInput(**data)
+        except ValidationError as e:
+            return jsonify({"error": "Invalid input format", "details": str(e)}), 400
+            
         epochs = validated.epochs
         batch_size = validated.batch_size
-        datasets = validated.datasets
-    except Exception as val_err:
-        return jsonify({"error": f"Validation failed: {str(val_err)}"}), 400
-    
-    try:
+        
         # Load whatever datasets are specified, or use currently loaded
-        if datasets:
-            if isinstance(datasets[0], str):
-                training_pipeline.load_datasets(datasets)
+        if validated.datasets:
+            if isinstance(validated.datasets[0], str):
+                training_pipeline.load_datasets(validated.datasets)
             else:
-                # The frontend is passing raw cube arrays (e.g. 20 copies of the active cube)
-                cubes_array = [np.array(c, dtype=np.float32) for c in datasets]
+                try:
+                    # Validate all cubes in datasets using CubeInput
+                    for c in validated.datasets:
+                        CubeInput(cube=c)
+                except ValidationError as e:
+                    return jsonify({"error": "Invalid cube in datasets", "details": str(e)}), 400
+                cubes_array = [np.array(c, dtype=np.float32) for c in validated.datasets]
                 training_pipeline.pool.cubes = cubes_array
                 training_pipeline.pool.metadata = [
                     {"dataset": "live_ui", "regime": "unknown", "tile_id": i} 
@@ -633,193 +556,72 @@ def train_encoder():
 
 @app.route("/api/discovery/fit", methods=["POST", "GET"])
 @app.route("/run-umap", methods=["POST", "GET"])
-@rate_limit(capacity=3, refill_rate=0.1)
+@rate_limit
 def get_discovery_state():
-    """Returns the UMAP + HDBSCAN state space results."""
-    global discovery_results, embedding_db, training_pipeline, umap_status, umap_cache
+    """Returns the UMAP + HDBSCAN state space results asynchronously."""
+    global discovery_results, embedding_db, training_pipeline, umap_status
     
-    if embedding_db is None or not embedding_db.records:
-        # Check if we can load fallback data from disk
-        if os.path.exists("umap_projection.csv") and os.path.exists("cluster_assignments.csv"):
-            try:
-                logger.info("No in-memory database, loading UMAP fallback from disk...")
-                import csv
-                umap_2d = []
-                umap_3d = []
-                hdb_labels = []
-                gmm_labels = []
-                
-                with open("umap_projection.csv", "r") as f:
-                    reader = csv.reader(f)
-                    next(reader)  # skip header
-                    for row in reader:
-                        x, y, z = float(row[1]), float(row[2]), float(row[3])
-                        umap_2d.append([x, y])
-                        umap_3d.append([x, y, z])
-                with open("cluster_assignments.csv", "r") as f:
-                    reader = csv.reader(f)
-                    next(reader)  # skip header
-                    for row in reader:
-                        hdb_labels.append(int(row[1]))
-                        gmm_labels.append(int(row[2]))
-                return jsonify({
-                    "umap_2d": umap_2d,
-                    "umap_3d": umap_3d,
-                    "hdbscan_labels": hdb_labels,
-                    "gmm_labels": gmm_labels,
-                    "num_embeddings": len(umap_2d),
-                    "embedding_dim": 128,
-                    "nan_count": 0,
-                    "variance": 0.0,
-                    "status": "completed_fallback"
-                }), 200
-            except Exception as disk_err:
-                logger.error(f"Failed to load fallback UMAP data: {disk_err}")
-        
+    if embedding_db is None or len(embedding_db.records) == 0:
         return jsonify({"error": "State space not constructed yet. Train model first."}), 400
-
-    db_hash = get_embeddings_hash(embedding_db)
-    if db_hash in umap_cache:
-        logger.info("UMAP cache hit.")
-        return jsonify(umap_cache[db_hash]), 200
-
-    future = umap_status.get("future")
-    if future is not None:
-        if future.done():
-            try:
-                discovery_results = future.result()
-                umap_status["status"] = "completed"
-                res_dict = {
-                    "umap_2d": discovery_results["umap"][:, :2].tolist(),
-                    "umap_3d": discovery_results["umap"].tolist() if discovery_results["umap"].shape[1] > 2 else [],
-                    "hdbscan_labels": discovery_results["hdbscan_labels"].tolist(),
-                    "gmm_labels": discovery_results["gmm_labels"].tolist(),
-                    "num_embeddings": discovery_results.get("num_embeddings", 0),
-                    "embedding_dim": discovery_results.get("embedding_dim", 0),
-                    "nan_count": discovery_results.get("nan_count", 0),
-                    "variance": discovery_results.get("variance", 0.0),
-                    "status": "completed"
-                }
-                umap_cache[db_hash] = res_dict
-                umap_status["future"] = None
-                return jsonify(res_dict), 200
-            except Exception as e:
-                umap_status["status"] = "failed"
-                umap_status["error"] = str(e)
-                umap_status["future"] = None
-                return jsonify({"error": f"UMAP fitting failed: {str(e)}", "status": "failed"}), 500
-        else:
-            try:
-                # wait up to 3.0s
-                discovery_results = future.result(timeout=3.0)
-                umap_status["status"] = "completed"
-                res_dict = {
-                    "umap_2d": discovery_results["umap"][:, :2].tolist(),
-                    "umap_3d": discovery_results["umap"].tolist() if discovery_results["umap"].shape[1] > 2 else [],
-                    "hdbscan_labels": discovery_results["hdbscan_labels"].tolist(),
-                    "gmm_labels": discovery_results["gmm_labels"].tolist(),
-                    "num_embeddings": discovery_results.get("num_embeddings", 0),
-                    "embedding_dim": discovery_results.get("embedding_dim", 0),
-                    "nan_count": discovery_results.get("nan_count", 0),
-                    "variance": discovery_results.get("variance", 0.0),
-                    "status": "completed"
-                }
-                umap_cache[db_hash] = res_dict
-                umap_status["future"] = None
-                return jsonify(res_dict), 200
-            except TimeoutError:
-                if os.path.exists("umap_projection.csv") and os.path.exists("cluster_assignments.csv"):
-                    try:
-                        import csv
-                        umap_2d = []
-                        umap_3d = []
-                        hdb_labels = []
-                        gmm_labels = []
-                        with open("umap_projection.csv", "r") as f:
-                            reader = csv.reader(f)
-                            next(reader)
-                            for row in reader:
-                                x, y, z = float(row[1]), float(row[2]), float(row[3])
-                                umap_2d.append([x, y])
-                                umap_3d.append([x, y, z])
-                        with open("cluster_assignments.csv", "r") as f:
-                            reader = csv.reader(f)
-                            next(reader)
-                            for row in reader:
-                                hdb_labels.append(int(row[1]))
-                                gmm_labels.append(int(row[2]))
-                        return jsonify({
-                            "umap_2d": umap_2d,
-                            "umap_3d": umap_3d,
-                            "hdbscan_labels": hdb_labels,
-                            "gmm_labels": gmm_labels,
-                            "num_embeddings": len(umap_2d),
-                            "embedding_dim": 128,
-                            "nan_count": 0,
-                            "variance": 0.0,
-                            "status": "running_using_disk_fallback"
-                        }), 200
-                    except Exception:
-                        pass
-                return jsonify({"status": "running", "message": "UMAP fitting is in progress. Please check again in a few seconds."}), 202
-
-    # Submit background UMAP job
-    umap_status["status"] = "running"
-    umap_status["error"] = None
-    umap_status["future"] = umap_executor.submit(run_umap_async, embedding_db)
+        
+    Z = np.stack([r.embedding for r in embedding_db.records])
+    import hashlib
+    h = hashlib.sha256(Z.tobytes()).hexdigest()
     
-    try:
-        discovery_results = umap_status["future"].result(timeout=2.0)
-        umap_status["status"] = "completed"
-        res_dict = {
-            "umap_2d": discovery_results["umap"][:, :2].tolist(),
-            "umap_3d": discovery_results["umap"].tolist() if discovery_results["umap"].shape[1] > 2 else [],
-            "hdbscan_labels": discovery_results["hdbscan_labels"].tolist(),
-            "gmm_labels": discovery_results["gmm_labels"].tolist(),
-            "num_embeddings": discovery_results.get("num_embeddings", 0),
-            "embedding_dim": discovery_results.get("embedding_dim", 0),
-            "nan_count": discovery_results.get("nan_count", 0),
-            "variance": discovery_results.get("variance", 0.0),
-            "status": "completed"
-        }
-        umap_cache[db_hash] = res_dict
-        umap_status["future"] = None
-        return jsonify(res_dict), 200
-    except TimeoutError:
-        if os.path.exists("umap_projection.csv") and os.path.exists("cluster_assignments.csv"):
+    # Check cache first
+    if h in umap_cache:
+        discovery_results = umap_cache[h]
+        return _serialize_discovery_results()
+        
+    if request.method == "POST":
+        # Check if already running
+        if umap_status["status"] == "running":
+            return jsonify({"status": "running", "message": "UMAP computation in progress"}), 202
+            
+        def run_umap_task():
+            global umap_status, discovery_results, umap_cache
             try:
-                import csv
-                umap_2d = []
-                umap_3d = []
-                hdb_labels = []
-                gmm_labels = []
-                with open("umap_projection.csv", "r") as f:
-                    reader = csv.reader(f)
-                    next(reader)
-                    for row in reader:
-                        x, y, z = float(row[1]), float(row[2]), float(row[3])
-                        umap_2d.append([x, y])
-                        umap_3d.append([x, y, z])
-                with open("cluster_assignments.csv", "r") as f:
-                    reader = csv.reader(f)
-                    next(reader)
-                    for row in reader:
-                        hdb_labels.append(int(row[1]))
-                        gmm_labels.append(int(row[2]))
-                return jsonify({
-                    "umap_2d": umap_2d,
-                    "umap_3d": umap_3d,
-                    "hdbscan_labels": hdb_labels,
-                    "gmm_labels": gmm_labels,
-                    "num_embeddings": len(umap_2d),
-                    "embedding_dim": 128,
-                    "nan_count": 0,
-                    "variance": 0.0,
-                    "status": "running_using_disk_fallback"
-                }), 200
-            except Exception:
-                pass
-        return jsonify({"status": "running", "message": "UMAP fitting started in background."}), 202
+                res = training_pipeline.discover_states(embedding_db)
+                umap_cache[h] = res
+                discovery_results = res
+                umap_status["status"] = "completed"
+                umap_status["results"] = _serialize_discovery_results_dict(res)
+            except Exception as e:
+                logger.error(f"Async UMAP failed: {e}")
+                umap_status["status"] = "failed"
+                
+        umap_status["status"] = "running"
+        umap_status["task"] = executor.submit(run_umap_task)
+        return jsonify({"status": "started", "message": "UMAP computation started"}), 202
+        
+    else: # GET request checks status
+        if h in umap_cache:
+            discovery_results = umap_cache[h]
+            return _serialize_discovery_results()
+            
+        if umap_status["status"] == "completed":
+            return jsonify(umap_status["results"]), 200
+        elif umap_status["status"] == "running":
+            return jsonify({"status": "running"}), 202
+        elif umap_status["status"] == "failed":
+            return jsonify({"error": "UMAP computation failed"}), 500
+        else:
+            return jsonify({"status": "idle", "message": "Send POST to start"}), 200
+
+def _serialize_discovery_results_dict(res):
+    return {
+        "umap_2d": res["umap"][:, :2].tolist(),
+        "umap_3d": res["umap"].tolist() if res["umap"].shape[1] > 2 else [],
+        "hdbscan_labels": res["hdbscan_labels"].tolist(),
+        "gmm_labels": res["gmm_labels"].tolist(),
+        "num_embeddings": res.get("num_embeddings", 0),
+        "embedding_dim": res.get("embedding_dim", 0),
+        "nan_count": res.get("nan_count", 0),
+        "variance": res.get("variance", 0.0)
+    }
+
+def _serialize_discovery_results():
+    return jsonify(_serialize_discovery_results_dict(discovery_results)), 200
 
 @app.route("/api/molecule/decompose", methods=["POST", "GET"])
 def decompose_molecule():
@@ -828,7 +630,11 @@ def decompose_molecule():
         if request.method == "POST":
             data = request.get_json(silent=True)
             if data and "cube" in data:
-                cube = np.array(data["cube"], dtype=np.float32)
+                try:
+                    validated = CubeInput(cube=data["cube"])
+                    cube = np.array(validated.cube, dtype=np.float32)
+                except ValidationError as e:
+                    return jsonify({"error": "Invalid cube format", "details": str(e)}), 400
                 
         if cube is None:
             # Generate synthetic fallback
@@ -878,7 +684,11 @@ def dock_molecule(x, y):
         if request.method == "POST":
             data = request.get_json(silent=True)
             if data and "cube" in data:
-                cube = np.array(data["cube"], dtype=np.float32)
+                try:
+                    validated = CubeInput(cube=data["cube"])
+                    cube = np.array(validated.cube, dtype=np.float32)
+                except ValidationError as e:
+                    return jsonify({"error": "Invalid cube format", "details": str(e)}), 400
         
         if cube is None:
             # Generate or use synthetic cube
@@ -1202,19 +1012,16 @@ def reset_dataset():
 @app.route("/compute-relationships", methods=["POST"])
 def get_cube_stats():
     try:
-        try:
-            req_json = request.get_json()
-            validated = CubeInput(**req_json)
-            cube = np.array(validated.cube, dtype=np.float32)
-        except Exception as val_err:
-            return jsonify({"error": f"Validation failed: {str(val_err)}"}), 400
+        data = request.get_json()
+        if not data or "cube" not in data:
+            return jsonify({"error": "Missing cube data"}), 400
+            
+        cube = np.array(data["cube"], dtype=np.float32)
         H, W, V = cube.shape
         
         # Save local relationship tensor
         from relationship_tensor import RelationshipStructureExtractor
-        all_vars = ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"]
-        vars_to_use = all_vars[:cube.shape[-1]]
-        rel_extractor = RelationshipStructureExtractor(mode="all", variables=vars_to_use)
+        rel_extractor = RelationshipStructureExtractor(mode="all", variables=["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"])
         rel_extractor.compute_tensor(cube)
         
         flat_data = cube.reshape(-1, V)
@@ -1277,8 +1084,7 @@ def get_cube_stats():
                             mi += p_xy[x, y] * np.log2(p_xy[x, y] / (p_x[x] * p_y[y] + 1e-12) + 1e-12)
                 mi_matrix[i, j] = float(np.clip(mi / np.log2(bins), 0.0, 1.0))
         
-        all_variables = ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"]
-        variables = all_variables[:V]
+        variables = ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"]
         distributions = {}
         for idx, var in enumerate(variables):
             distributions[var] = flat_data[:, idx].tolist()[:50]
@@ -1320,12 +1126,11 @@ def get_cube_stats():
 @app.route("/api/spatial", methods=["POST"])
 def get_cube_spatial():
     try:
-        try:
-            req_json = request.get_json()
-            validated = CubeInput(**req_json)
-            cube = np.array(validated.cube, dtype=np.float32)
-        except Exception as val_err:
-            return jsonify({"error": f"Validation failed: {str(val_err)}"}), 400
+        data = request.get_json()
+        if not data or "cube" not in data:
+            return jsonify({"error": "Missing cube data"}), 400
+            
+        cube = np.array(data["cube"], dtype=np.float32)
         H, W, V = cube.shape
         
         from spatial_structure import SpatialStructureExtractor
@@ -1356,12 +1161,11 @@ def get_cube_spatial():
 @app.route("/assess-transferability", methods=["POST"])
 def get_cube_transfer():
     try:
-        try:
-            req_json = request.get_json()
-            validated = CubeInput(**req_json)
-            cube = np.array(validated.cube, dtype=np.float32)
-        except Exception as val_err:
-            return jsonify({"error": f"Validation failed: {str(val_err)}"}), 400
+        data = request.get_json()
+        if not data or "cube" not in data:
+            return jsonify({"error": "Missing cube data"}), 400
+            
+        cube = np.array(data["cube"], dtype=np.float32)
         
         if explorer is None:
             init_eef_pipeline()
@@ -1413,12 +1217,11 @@ def get_cube_transfer():
 @app.route("/api/encoder/embed", methods=["POST"])
 def get_cube_embedding():
     try:
-        try:
-            req_json = request.get_json()
-            validated = CubeInput(**req_json)
-            cube = np.array(validated.cube, dtype=np.float32)
-        except Exception as val_err:
-            return jsonify({"error": f"Validation failed: {str(val_err)}"}), 400
+        data = request.get_json()
+        if not data or "cube" not in data:
+            return jsonify({"error": "Missing cube data"}), 400
+            
+        cube = np.array(data["cube"], dtype=np.float32)
         
         if explorer is None:
             init_eef_pipeline()
@@ -1440,175 +1243,27 @@ def get_cube_embedding():
 @app.route("/api/models", methods=["GET"])
 def list_models():
     models_list = []
-    active_exists = os.path.exists("encoder.pt")
-    if active_exists:
+    # Check if active encoder.pt exists
+    if os.path.exists("encoder.pt"):
         created_time = os.path.getctime("encoder.pt")
         import datetime
         date_str = datetime.datetime.fromtimestamp(created_time).isoformat()
-        description = "Currently trained relationship-aware ecological encoder."
-        if os.path.exists("model_metadata.json"):
-            try:
-                with open("model_metadata.json", "r") as f:
-                    meta = json.load(f)
-                    description = meta.get("description", description)
-            except Exception:
-                pass
         models_list.append({
             "name": "cubenet_active",
             "file": "encoder.pt",
             "created_at": date_str,
             "active": True,
-            "description": description
+            "description": "Currently trained relationship-aware ecological encoder."
         })
-        
-    # Scan saved_models directory
-    models_dir = Path("./saved_models")
-    models_dir.mkdir(exist_ok=True)
-    for model_path in sorted(models_dir.iterdir()):
-        if model_path.is_dir() and (model_path / "encoder.pt").exists():
-            mtime = os.path.getmtime(model_path / "encoder.pt")
-            import datetime
-            date_str = datetime.datetime.fromtimestamp(mtime).isoformat()
-            
-            description = "Saved trained model."
-            meta_file = model_path / "model_metadata.json"
-            if meta_file.exists():
-                try:
-                    with open(meta_file, "r") as f:
-                        meta = json.load(f)
-                        description = meta.get("description", description)
-                except Exception:
-                    pass
-            models_list.append({
-                "name": model_path.name,
-                "file": f"saved_models/{model_path.name}/encoder.pt",
-                "created_at": date_str,
-                "active": False,
-                "description": description
-            })
-
     # Always return a default model reference so the UI is populated
     models_list.append({
         "name": "cubenet_v1",
         "file": "cubenet_v1.pt",
         "created_at": "2026-06-11T12:00:00Z",
-        "active": not active_exists,
+        "active": not os.path.exists("encoder.pt"),
         "description": "Pre-trained baseline model."
     })
     return jsonify({"models": models_list}), 200
-
-@app.route("/api/model/save", methods=["POST"])
-def save_model():
-    """Saves the current active model into saved_models/ directory."""
-    if not os.path.exists("encoder.pt"):
-        return jsonify({"error": "No active trained model to save."}), 400
-        
-    data = request.get_json() or {}
-    name = data.get("name")
-    description = data.get("description", "User-saved CubeNet model")
-    
-    if not name:
-        return jsonify({"error": "Model name is required."}), 400
-        
-    # Sanitize name
-    import re
-    name = re.sub(r'[^a-zA-Z0-9_\-]', '', name)
-    if not name or name in ["cubenet_active", "cubenet_v1", "active"]:
-        return jsonify({"error": "Invalid model name."}), 400
-        
-    dest_dir = Path("./saved_models") / name
-    if dest_dir.exists():
-        import shutil
-        shutil.rmtree(dest_dir)
-        
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    
-    files_to_copy = [
-        "encoder.pt",
-        "decoder.pt",
-        "umap_reducer.pkl",
-        "hdbscan_model.pkl",
-        "embeddings.csv",
-        "embeddings.parquet",
-        "model_metadata.json",
-        "umap_projection.csv",
-        "cluster_assignments.csv",
-        "dependency_graph.json",
-        "relationship_tensor.npy"
-    ]
-    
-    copied = []
-    for f in files_to_copy:
-        if os.path.exists(f):
-            import shutil
-            shutil.copy2(f, dest_dir / f)
-            copied.append(f)
-            
-    import datetime
-    meta_path = dest_dir / "model_metadata.json"
-    meta_data = {
-        "name": name,
-        "description": description,
-        "saved_at": datetime.datetime.now().isoformat(),
-        "copied_files": copied
-    }
-    with open(meta_path, "w") as f:
-        json.dump(meta_data, f, indent=2)
-        
-    logger.info(f"Model saved as '{name}' containing {len(copied)} files.")
-    return jsonify({"status": "success", "message": f"Model saved as '{name}'.", "files": copied}), 200
-
-@app.route("/api/model/load", methods=["POST"])
-def load_model():
-    """Loads a saved model from saved_models/ and makes it active."""
-    data = request.get_json() or {}
-    name = data.get("name")
-    
-    if not name:
-        return jsonify({"error": "Model name is required."}), 400
-        
-    model_dir = Path("./saved_models") / name
-    if not model_dir.exists() or not model_dir.is_dir():
-        return jsonify({"error": f"Saved model '{name}' not found."}), 404
-        
-    files_to_load = [
-        "encoder.pt",
-        "decoder.pt",
-        "umap_reducer.pkl",
-        "hdbscan_model.pkl",
-        "embeddings.csv",
-        "embeddings.parquet",
-        "model_metadata.json",
-        "umap_projection.csv",
-        "cluster_assignments.csv",
-        "dependency_graph.json",
-        "relationship_tensor.npy"
-    ]
-    
-    loaded = []
-    # Clear active files first
-    for f in files_to_load:
-        if os.path.exists(f):
-            os.remove(f)
-            
-    for f in files_to_load:
-        src = model_dir / f
-        if src.exists():
-            import shutil
-            shutil.copy2(src, f)
-            loaded.append(f)
-            
-    # Reinitialize pipeline
-    global explorer
-    explorer = None
-    try:
-        init_eef_pipeline()
-    except Exception as reinit_err:
-        logger.error(f"Failed to reinitialize pipeline after loading model: {reinit_err}")
-        return jsonify({"error": f"Failed to reinitialize: {str(reinit_err)}"}), 500
-        
-    logger.info(f"Model '{name}' loaded as active model.")
-    return jsonify({"status": "success", "message": f"Model '{name}' loaded successfully.", "files": loaded}), 200
 
 @app.route("/api/dataset/remove", methods=["POST"])
 @app.route("/dataset/remove", methods=["POST"])
@@ -1637,28 +1292,189 @@ def remove_model():
         
     files_deleted = []
     if name == "cubenet_active" or name == "active":
-        for f in ["encoder.pt", "decoder.pt", "umap_reducer.pkl", "hdbscan_model.pkl", "embeddings.csv", "embeddings.parquet", "model_metadata.json", "umap_projection.csv", "cluster_assignments.csv", "dependency_graph.json", "relationship_tensor.npy"]:
-            if os.path.exists(f):
-                os.remove(f)
-                files_deleted.append(f)
-        global training_pipeline, explorer
+        if os.path.exists("encoder.pt"):
+            os.remove("encoder.pt")
+            files_deleted.append("encoder.pt")
+        if os.path.exists("model_metadata.json"):
+            os.remove("model_metadata.json")
+            files_deleted.append("model_metadata.json")
+        global training_pipeline
         training_pipeline = EcologicalTrainingPipeline(datasets_dir="./datasets")
-        explorer = None
-        init_eef_pipeline()
         logger.info("Active model removed and pipeline reinitialized.")
         return jsonify({"status": "success", "message": f"Active model removed. Deleted: {files_deleted}"}), 200
     else:
-        # Remove from saved_models
-        model_dir = Path("./saved_models") / name
-        if model_dir.exists() and model_dir.is_dir():
-            import shutil
-            shutil.rmtree(model_dir)
-            logger.info(f"Saved model '{name}' deleted from disk.")
-            return jsonify({"status": "success", "message": f"Saved model '{name}' deleted."}), 200
-        else:
-            return jsonify({"error": f"Model {name} not found."}), 404
+        return jsonify({"error": f"Model {name} cannot be removed."}), 400
 
-@app.route("/api/download/<path:filename>", methods=["GET"])
+# ── Temporal Batches API Routes ───────────────────────────────────────────────
+
+@app.route("/api/temporal/list", methods=["GET"])
+def list_temporal_batches():
+    """Lists available folders in datasets/temporal_batches/."""
+    folder = Path("datasets/temporal_batches")
+    if not folder.exists():
+        folder.mkdir(parents=True, exist_ok=True)
+    
+    # List subdirectories
+    dirs = [d.name for d in folder.iterdir() if d.is_dir() and not d.name.startswith(".")]
+    return jsonify({"batches": dirs}), 200
+
+@app.route("/api/temporal/load", methods=["POST"])
+def load_temporal_batch():
+    """Loads a temporal batch, projects it, and returns chart coordinates."""
+    global explorer, embedding_db
+    
+    data = request.get_json() or {}
+    batch_id = data.get("batch_id")
+    if not batch_id:
+        return jsonify({"error": "Missing batch_id"}), 400
+        
+    folder_path = Path("datasets/temporal_batches") / batch_id
+    if not folder_path.exists() or not folder_path.is_dir():
+        return jsonify({"error": f"Temporal batch '{batch_id}' not found."}), 404
+        
+    try:
+        if explorer is None:
+            init_eef_pipeline()
+            
+        batch = TemporalBatch.from_folder(
+            str(folder_path),
+            encoder_model=explorer.encoder_model,
+            regime_discoverer=explorer.regime_discoverer
+        )
+        
+        if not batch.samples:
+            return jsonify({
+                "batch_id": batch_id,
+                "umap_trajectory": [],
+                "time_series": {"timestamps": [], "bands": {}},
+                "trajectory_analysis": {
+                    "velocities": [],
+                    "accelerations": [],
+                    "cumulative_distance": 0.0,
+                    "transitions": []
+                },
+                "correlation_delta": []
+            }), 200
+            
+        Z = np.stack([np.array(s.embedding) for s in batch.samples])
+        
+        # 1. Project using UMAP
+        try:
+            if explorer.regime_discoverer.reducer is not None:
+                Z_proj = explorer.regime_discoverer.reducer.transform(Z)
+            else:
+                Z_proj = explorer.regime_discoverer.fit_transform_latent_space(Z)
+        except Exception:
+            try:
+                from sklearn.decomposition import PCA
+                pca = PCA(n_components=2)
+                Z_proj = pca.fit_transform(Z)
+            except Exception:
+                Z_proj = np.zeros((len(Z), 2))
+                
+        umap_trajectory = []
+        for i, sample in enumerate(batch.samples):
+            pt = Z_proj[i]
+            umap_trajectory.append({
+                "sample_id": sample.sample_id,
+                "timestamp": sample.timestamp,
+                "x": float(pt[0]),
+                "y": float(pt[1]),
+                "z": float(pt[2]) if len(pt) > 2 else 0.0,
+                "regime": sample.regime
+            })
+            
+        # 2. Time-series of mean values per band
+        bands = {}
+        if batch.samples:
+            for var in batch.samples[0].variables.keys():
+                bands[var] = [s.variables[var] for s in batch.samples]
+            
+        time_series = {
+            "timestamps": [s.timestamp for s in batch.samples],
+            "bands": bands
+        }
+        
+        # 3. Trajectory velocity/acceleration
+        labels_seq = []
+        for s in batch.samples:
+            try:
+                lbl = int(s.regime.split("_")[-1])
+            except Exception:
+                lbl = 0
+            labels_seq.append(lbl)
+            
+        trajectory_analysis = explorer.analog_retriever.explore_trajectory(Z, labels_seq)
+        
+        # 4. Correlation delta matrix
+        # Find closest historical analog
+        mean_z = Z.mean(axis=0)
+        analog_results = explorer.analog_retriever.retrieve_analogs(mean_z, k=1)
+        
+        closest_idx = analog_results["indices"][0]
+        
+        analog_corr = None
+        if embedding_db is not None and closest_idx < len(embedding_db.records):
+            closest_record = embedding_db.records[closest_idx]
+            analog_cube = closest_record.cube
+            if analog_cube is not None:
+                V = analog_cube.shape[-1]
+                analog_flat = analog_cube.reshape(-1, V)
+                analog_corr = np.corrcoef(analog_flat, rowvar=False)
+                analog_corr = np.nan_to_num(analog_corr, nan=0.0)
+                
+        # Compute batch correlation
+        cubes_list = [s.cube for s in batch.samples if s.cube is not None]
+        if cubes_list:
+            V = cubes_list[0].shape[-1]
+            flat_pixels = np.concatenate([c.reshape(-1, V) for c in cubes_list], axis=0)
+            batch_corr = np.corrcoef(flat_pixels, rowvar=False)
+            batch_corr = np.nan_to_num(batch_corr, nan=0.0)
+            
+            if analog_corr is None or analog_corr.shape != batch_corr.shape:
+                correlation_delta = np.zeros_like(batch_corr)
+            else:
+                correlation_delta = batch_corr - analog_corr
+        else:
+            correlation_delta = np.zeros((7, 7))
+            
+        return jsonify({
+            "batch_id": batch_id,
+            "umap_trajectory": umap_trajectory,
+            "time_series": time_series,
+            "trajectory_analysis": trajectory_analysis,
+            "correlation_delta": correlation_delta.tolist()
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error loading temporal batch: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/temporal/manifest", methods=["GET", "POST"])
+def manage_temporal_manifest():
+    """Reads or updates saved_manifests/training_manifest.json on disk."""
+    manifest_path = Path("saved_manifests/training_manifest.json")
+    
+    if request.method == "POST":
+        data = request.get_json() or {}
+        try:
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(manifest_path, "w") as f:
+                json.dump(data, f, indent=2)
+            return jsonify({"status": "success", "message": "Manifest updated successfully"}), 200
+        except Exception as e:
+            return jsonify({"error": f"Failed to update manifest: {str(e)}"}), 500
+    else:
+        if not manifest_path.exists():
+            return jsonify({}), 200
+        try:
+            with open(manifest_path, "r") as f:
+                data = json.load(f)
+            return jsonify(data), 200
+        except Exception as e:
+            return jsonify({"error": f"Failed to read manifest: {str(e)}"}), 500
+
+@app.route("/api/download/<filename>", methods=["GET"])
 def download_artifact(filename):
     """Safely serves trained model files and representations for download."""
     allowed_files = [
@@ -1674,8 +1490,7 @@ def download_artifact(filename):
         "dependency_graph.json",
         "relationship_tensor.npy"
     ]
-    basename = os.path.basename(filename)
-    if basename not in allowed_files:
+    if filename not in allowed_files:
         logger.warning(f"Unauthorized file download request: {filename}")
         return jsonify({"error": "Forbidden"}), 403
         
