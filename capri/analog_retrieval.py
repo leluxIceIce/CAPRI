@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from typing import List, Tuple, Dict, Any, Optional
+from scipy.stats import lognorm, norm
 
 class EcologicalAnalogRetriever:
     """
@@ -19,6 +20,7 @@ class EcologicalAnalogRetriever:
         self.knn = None
         self.reference_embeddings = None
         self.novelty_threshold = 0.0
+        self._baseline_dists = None
 
     def fit(self, Z: np.ndarray) -> "EcologicalAnalogRetriever":
         """
@@ -41,10 +43,45 @@ class EcologicalAnalogRetriever:
             # Distance to the closest non-self neighbor
             closest_dist = distances[:, 1]
             self.novelty_threshold = float(np.percentile(closest_dist, 95))
+            self._baseline_dists = closest_dist  # cache — no recompute later
         else:
             self.novelty_threshold = 1.0
+            self._baseline_dists = None
 
         return self
+
+    def retrieve_neighbors(
+        self,
+        z_query: np.ndarray,
+        k: Optional[int] = None
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Retrieves the indices, distances, and similarities of neighbors.
+        
+        Args:
+            z_query: Embedding vector of the query state, shape (D,) or (1, D).
+            k: Number of neighbors to return (overrides default).
+            
+        Returns:
+            Tuple of (indices, distances, similarities) as 1D numpy arrays.
+        """
+        if z_query.ndim == 1:
+            z_query = z_query.reshape(1, -1)
+            
+        k_val = k if k is not None else self.n_neighbors
+        k_val = min(k_val, len(self.reference_embeddings))
+        
+        distances, indices = self.knn.kneighbors(z_query, n_neighbors=k_val)
+        
+        # Convert distance to a similarity score [0, 1]
+        # For Cosine, similarity = 1 - distance
+        # For Euclidean, similarity = 1 / (1 + distance)
+        if self.metric == "cosine":
+            similarities = 1.0 - distances[0]
+        else:
+            similarities = 1.0 / (1.0 + distances[0])
+            
+        return indices[0], distances[0], similarities
 
     def retrieve_analogs(
         self,
@@ -65,32 +102,18 @@ class EcologicalAnalogRetriever:
                 - similarities: Similarity scores in [0, 1] range.
                 - is_novel: Boolean flag indicating if state is highly novel.
         """
-        if z_query.ndim == 1:
-            z_query = z_query.reshape(1, -1)
-            
-        k_val = k if k is not None else self.n_neighbors
-        k_val = min(k_val, len(self.reference_embeddings))
+        indices, distances, similarities = self.retrieve_neighbors(z_query, k)
         
-        distances, indices = self.knn.kneighbors(z_query, n_neighbors=k_val)
-        
-        # Convert distance to a similarity score [0, 1]
-        # For Cosine, similarity = 1 - distance
-        # For Euclidean, similarity = 1 / (1 + distance)
-        if self.metric == "cosine":
-            similarities = 1.0 - distances[0]
-        else:
-            similarities = 1.0 / (1.0 + distances[0])
-            
         # Determine if this query state is novel (i.e. furthest neighbor is beyond threshold)
-        nearest_distance = distances[0][0]
+        nearest_distance = distances[0]
         is_novel = bool(nearest_distance > self.novelty_threshold)
         
         # Calculate statistical novelty confidence
         is_novel_stat, p_value, conf_str = self.estimate_novelty_confidence(nearest_distance)
         
         return {
-            "indices": indices[0].tolist(),
-            "distances": distances[0].tolist(),
+            "indices": indices.tolist(),
+            "distances": distances.tolist(),
             "similarities": similarities.tolist(),
             "is_novel": is_novel,
             "is_novel_statistically": is_novel_stat,
@@ -104,23 +127,22 @@ class EcologicalAnalogRetriever:
         """
         Estimates the statistical significance of state novelty using log-normal fitting.
         """
-        if self.reference_embeddings is None or len(self.reference_embeddings) <= 2:
+        if self._baseline_dists is None or len(self._baseline_dists) <= 2:
             return False, 1.0, "0.0% Confidence (No reference data)"
             
-        distances, _ = self.knn.kneighbors(self.reference_embeddings, n_neighbors=2)
-        closest_dists = distances[:, 1]
+        closest_dists = self._baseline_dists
         
-        from scipy.stats import lognorm
         try:
             shape, loc, scale = lognorm.fit(closest_dists)
             p_value = 1.0 - lognorm.cdf(nearest_distance, shape, loc, scale)
             p_value = np.clip(p_value, 0.0, 1.0)
         except Exception:
+            import warnings
+            warnings.warn("lognorm.fit failed; falling back to z-score.", RuntimeWarning)
             # Fallback to simple z-score
             mean = np.mean(closest_dists)
             std = np.std(closest_dists) + 1e-6
             z_score = (nearest_distance - mean) / std
-            from scipy.stats import norm
             p_value = 1.0 - norm.cdf(z_score)
             
         is_novel = p_value < 0.05
@@ -151,7 +173,7 @@ class EcologicalAnalogRetriever:
         velocities = np.linalg.norm(diffs, axis=1).tolist()
         
         # 2. Compute accelerations
-        accelerations = [velocities[i] - velocities[i-1] for i in range(1, len(velocities))]
+        accelerations = np.diff(velocities).tolist()
         
         # 3. Cumulative path distance
         cumulative_distance = float(np.sum(velocities))

@@ -12,6 +12,12 @@ import logging
 import numpy as np
 import pandas as pd
 import torch
+import time
+import math
+import hashlib
+from functools import wraps
+from concurrent.futures import ThreadPoolExecutor
+from pydantic import BaseModel, Field, validator
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from typing import Dict, Any, List, Optional
@@ -39,8 +45,143 @@ from training_pipeline import EcologicalTrainingPipeline
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("EEFBackend")
 
+# ── Rate Limiter ──────────────────────────────────────────────────────────────
+class TokenBucketRateLimiter:
+    def __init__(self, capacity: int, refill_rate: float):
+        self.capacity = capacity
+        self.refill_rate = refill_rate
+        self.buckets = {}  # ip -> (tokens, last_update_time)
+
+    def is_allowed(self, ip: str) -> bool:
+        now = time.time()
+        if ip not in self.buckets:
+            self.buckets[ip] = (self.capacity, now)
+            return True
+            
+        tokens, last_update = self.buckets[ip]
+        elapsed = now - last_update
+        tokens = min(self.capacity, tokens + elapsed * self.refill_rate)
+        
+        if tokens >= 1.0:
+            self.buckets[ip] = (tokens - 1.0, now)
+            return True
+        else:
+            self.buckets[ip] = (tokens, last_update)  # Keep the old last_update to accumulate
+            return False
+
+def rate_limit(capacity=5, refill_rate=0.2):
+    limiter = TokenBucketRateLimiter(capacity, refill_rate)
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+            if not limiter.is_allowed(ip):
+                return jsonify({"error": "Rate limit exceeded. Please try again later."}), 429
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
+# ── Pydantic Input Validation ────────────────────────────────────────────────
+class CubeInput(BaseModel):
+    cube: List[List[List[float]]]
+
+    @validator('cube')
+    def validate_cube(cls, v):
+        H = len(v)
+        if H != 20:
+            raise ValueError(f"Cube must have exactly 20 rows, found {H}")
+        W = len(v[0])
+        if W != 20:
+            raise ValueError(f"Cube must have exactly 20 columns, found {W}")
+        V = len(v[0][0])
+        if V < 7:
+            raise ValueError(f"Cube must have at least 7 channels/variables, found {V}")
+            
+        for i in range(H):
+            if len(v[i]) != W:
+                raise ValueError("Cube must have consistent grid rows")
+            for j in range(W):
+                if len(v[i][j]) != V:
+                    raise ValueError("Cube must have consistent number of channels")
+                for k in range(V):
+                    val = v[i][j][k]
+                    if math.isnan(val) or math.isinf(val):
+                        raise ValueError("Cube contains NaN or infinite values")
+        return v
+
+class EncoderTrainInput(BaseModel):
+    epochs: Optional[int] = Field(default=10, ge=1)
+    batch_size: Optional[int] = Field(default=8, ge=2)
+    datasets: Optional[List[Any]] = None
+
+    @validator('datasets')
+    def validate_datasets(cls, v):
+        if not v:
+            return v
+        if isinstance(v[0], str):
+            for name in v:
+                if not isinstance(name, str):
+                    raise ValueError("All dataset names must be strings")
+        else:
+            for idx, c in enumerate(v):
+                if not isinstance(c, list):
+                    raise ValueError(f"Dataset element {idx} must be a list/cube")
+                H = len(c)
+                if H == 0:
+                    raise ValueError(f"Dataset element {idx} has empty cube")
+                W = len(c[0])
+                if W == 0:
+                    raise ValueError(f"Dataset element {idx} has empty rows")
+                V = len(c[0][0])
+                if V < 7:
+                    raise ValueError(f"Dataset element {idx} must have at least 7 variables")
+                for i in range(H):
+                    if len(c[i]) != W:
+                        raise ValueError(f"Dataset element {idx} has inconsistent row lengths")
+                    for j in range(W):
+                        if len(c[i][j]) != V:
+                            raise ValueError(f"Dataset element {idx} has inconsistent channel depth")
+                        for k in range(V):
+                            val = c[i][j][k]
+                            if not isinstance(val, (int, float)):
+                                raise ValueError(f"Dataset element {idx} contains non-numeric value")
+                            if math.isnan(val) or math.isinf(val):
+                                raise ValueError(f"Dataset element {idx} contains NaN or infinite values")
+        return v
+
+# ── UMAP Async Helpers ────────────────────────────────────────────────────────
+umap_executor = ThreadPoolExecutor(max_workers=1)
+umap_cache = {}
+umap_status = {"status": "idle", "future": None, "error": None}
+
+def run_umap_async(db):
+    global discovery_results
+    try:
+        logger.info("Background thread: Fitting UMAP...")
+        results = training_pipeline.discover_states(db)
+        logger.info("Background thread: UMAP fit completed.")
+        return results
+    except Exception as e:
+        logger.error(f"Background thread: UMAP fit failed: {str(e)}")
+        raise e
+
+def get_embeddings_hash(db) -> str:
+    if not db or not db.records:
+        return "empty"
+    m = hashlib.sha256()
+    for r in db.records:
+        m.update(r.embedding_id.encode('utf-8'))
+        m.update(r.embedding[:10].tobytes())
+    return m.hexdigest()
+
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend
+# Restrict CORS to specific origins
+CORS(app, resources={r"/*": {"origins": [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://leluxiceice.github.io"
+]}})
 
 # Global explorer instance
 explorer: Optional[EcologicalExplorer] = None
@@ -416,22 +557,28 @@ def update_explorer_from_trained():
 
 @app.route("/api/encoder/train", methods=["POST"])
 @app.route("/train-encoder", methods=["POST"])
+@rate_limit(capacity=2, refill_rate=0.05)
 def train_encoder():
     """Trains the ResNet encoder on the merged dataset pool."""
     global training_pipeline, embedding_db, discovery_results
     
-    data = request.get_json() or {}
-    epochs = int(data.get("epochs", 10))
-    batch_size = int(data.get("batch_size", 8))
+    try:
+        req_json = request.get_json() or {}
+        validated = EncoderTrainInput(**req_json)
+        epochs = validated.epochs
+        batch_size = validated.batch_size
+        datasets = validated.datasets
+    except Exception as val_err:
+        return jsonify({"error": f"Validation failed: {str(val_err)}"}), 400
     
     try:
         # Load whatever datasets are specified, or use currently loaded
-        if "datasets" in data and data["datasets"]:
-            if isinstance(data["datasets"][0], str):
-                training_pipeline.load_datasets(data["datasets"])
+        if datasets:
+            if isinstance(datasets[0], str):
+                training_pipeline.load_datasets(datasets)
             else:
                 # The frontend is passing raw cube arrays (e.g. 20 copies of the active cube)
-                cubes_array = [np.array(c, dtype=np.float32) for c in data["datasets"]]
+                cubes_array = [np.array(c, dtype=np.float32) for c in datasets]
                 training_pipeline.pool.cubes = cubes_array
                 training_pipeline.pool.metadata = [
                     {"dataset": "live_ui", "regime": "unknown", "tile_id": i} 
@@ -486,27 +633,193 @@ def train_encoder():
 
 @app.route("/api/discovery/fit", methods=["POST", "GET"])
 @app.route("/run-umap", methods=["POST", "GET"])
+@rate_limit(capacity=3, refill_rate=0.1)
 def get_discovery_state():
     """Returns the UMAP + HDBSCAN state space results."""
-    global discovery_results, embedding_db, training_pipeline
-    if discovery_results is None:
-        if embedding_db is not None:
-            logger.info("Fitting UMAP dynamically...")
-            discovery_results = training_pipeline.discover_states(embedding_db)
-        else:
-            return jsonify({"error": "State space not constructed yet. Train model first."}), 400
+    global discovery_results, embedding_db, training_pipeline, umap_status, umap_cache
+    
+    if embedding_db is None or not embedding_db.records:
+        # Check if we can load fallback data from disk
+        if os.path.exists("umap_projection.csv") and os.path.exists("cluster_assignments.csv"):
+            try:
+                logger.info("No in-memory database, loading UMAP fallback from disk...")
+                import csv
+                umap_2d = []
+                umap_3d = []
+                hdb_labels = []
+                gmm_labels = []
+                
+                with open("umap_projection.csv", "r") as f:
+                    reader = csv.reader(f)
+                    next(reader)  # skip header
+                    for row in reader:
+                        x, y, z = float(row[1]), float(row[2]), float(row[3])
+                        umap_2d.append([x, y])
+                        umap_3d.append([x, y, z])
+                with open("cluster_assignments.csv", "r") as f:
+                    reader = csv.reader(f)
+                    next(reader)  # skip header
+                    for row in reader:
+                        hdb_labels.append(int(row[1]))
+                        gmm_labels.append(int(row[2]))
+                return jsonify({
+                    "umap_2d": umap_2d,
+                    "umap_3d": umap_3d,
+                    "hdbscan_labels": hdb_labels,
+                    "gmm_labels": gmm_labels,
+                    "num_embeddings": len(umap_2d),
+                    "embedding_dim": 128,
+                    "nan_count": 0,
+                    "variance": 0.0,
+                    "status": "completed_fallback"
+                }), 200
+            except Exception as disk_err:
+                logger.error(f"Failed to load fallback UMAP data: {disk_err}")
         
-    # Convert numpy arrays to lists for JSON serialization
-    return jsonify({
-        "umap_2d": discovery_results["umap"][:, :2].tolist(),
-        "umap_3d": discovery_results["umap"].tolist() if discovery_results["umap"].shape[1] > 2 else [],
-        "hdbscan_labels": discovery_results["hdbscan_labels"].tolist(),
-        "gmm_labels": discovery_results["gmm_labels"].tolist(),
-        "num_embeddings": discovery_results.get("num_embeddings", 0),
-        "embedding_dim": discovery_results.get("embedding_dim", 0),
-        "nan_count": discovery_results.get("nan_count", 0),
-        "variance": discovery_results.get("variance", 0.0)
-    }), 200
+        return jsonify({"error": "State space not constructed yet. Train model first."}), 400
+
+    db_hash = get_embeddings_hash(embedding_db)
+    if db_hash in umap_cache:
+        logger.info("UMAP cache hit.")
+        return jsonify(umap_cache[db_hash]), 200
+
+    future = umap_status.get("future")
+    if future is not None:
+        if future.done():
+            try:
+                discovery_results = future.result()
+                umap_status["status"] = "completed"
+                res_dict = {
+                    "umap_2d": discovery_results["umap"][:, :2].tolist(),
+                    "umap_3d": discovery_results["umap"].tolist() if discovery_results["umap"].shape[1] > 2 else [],
+                    "hdbscan_labels": discovery_results["hdbscan_labels"].tolist(),
+                    "gmm_labels": discovery_results["gmm_labels"].tolist(),
+                    "num_embeddings": discovery_results.get("num_embeddings", 0),
+                    "embedding_dim": discovery_results.get("embedding_dim", 0),
+                    "nan_count": discovery_results.get("nan_count", 0),
+                    "variance": discovery_results.get("variance", 0.0),
+                    "status": "completed"
+                }
+                umap_cache[db_hash] = res_dict
+                umap_status["future"] = None
+                return jsonify(res_dict), 200
+            except Exception as e:
+                umap_status["status"] = "failed"
+                umap_status["error"] = str(e)
+                umap_status["future"] = None
+                return jsonify({"error": f"UMAP fitting failed: {str(e)}", "status": "failed"}), 500
+        else:
+            try:
+                # wait up to 3.0s
+                discovery_results = future.result(timeout=3.0)
+                umap_status["status"] = "completed"
+                res_dict = {
+                    "umap_2d": discovery_results["umap"][:, :2].tolist(),
+                    "umap_3d": discovery_results["umap"].tolist() if discovery_results["umap"].shape[1] > 2 else [],
+                    "hdbscan_labels": discovery_results["hdbscan_labels"].tolist(),
+                    "gmm_labels": discovery_results["gmm_labels"].tolist(),
+                    "num_embeddings": discovery_results.get("num_embeddings", 0),
+                    "embedding_dim": discovery_results.get("embedding_dim", 0),
+                    "nan_count": discovery_results.get("nan_count", 0),
+                    "variance": discovery_results.get("variance", 0.0),
+                    "status": "completed"
+                }
+                umap_cache[db_hash] = res_dict
+                umap_status["future"] = None
+                return jsonify(res_dict), 200
+            except TimeoutError:
+                if os.path.exists("umap_projection.csv") and os.path.exists("cluster_assignments.csv"):
+                    try:
+                        import csv
+                        umap_2d = []
+                        umap_3d = []
+                        hdb_labels = []
+                        gmm_labels = []
+                        with open("umap_projection.csv", "r") as f:
+                            reader = csv.reader(f)
+                            next(reader)
+                            for row in reader:
+                                x, y, z = float(row[1]), float(row[2]), float(row[3])
+                                umap_2d.append([x, y])
+                                umap_3d.append([x, y, z])
+                        with open("cluster_assignments.csv", "r") as f:
+                            reader = csv.reader(f)
+                            next(reader)
+                            for row in reader:
+                                hdb_labels.append(int(row[1]))
+                                gmm_labels.append(int(row[2]))
+                        return jsonify({
+                            "umap_2d": umap_2d,
+                            "umap_3d": umap_3d,
+                            "hdbscan_labels": hdb_labels,
+                            "gmm_labels": gmm_labels,
+                            "num_embeddings": len(umap_2d),
+                            "embedding_dim": 128,
+                            "nan_count": 0,
+                            "variance": 0.0,
+                            "status": "running_using_disk_fallback"
+                        }), 200
+                    except Exception:
+                        pass
+                return jsonify({"status": "running", "message": "UMAP fitting is in progress. Please check again in a few seconds."}), 202
+
+    # Submit background UMAP job
+    umap_status["status"] = "running"
+    umap_status["error"] = None
+    umap_status["future"] = umap_executor.submit(run_umap_async, embedding_db)
+    
+    try:
+        discovery_results = umap_status["future"].result(timeout=2.0)
+        umap_status["status"] = "completed"
+        res_dict = {
+            "umap_2d": discovery_results["umap"][:, :2].tolist(),
+            "umap_3d": discovery_results["umap"].tolist() if discovery_results["umap"].shape[1] > 2 else [],
+            "hdbscan_labels": discovery_results["hdbscan_labels"].tolist(),
+            "gmm_labels": discovery_results["gmm_labels"].tolist(),
+            "num_embeddings": discovery_results.get("num_embeddings", 0),
+            "embedding_dim": discovery_results.get("embedding_dim", 0),
+            "nan_count": discovery_results.get("nan_count", 0),
+            "variance": discovery_results.get("variance", 0.0),
+            "status": "completed"
+        }
+        umap_cache[db_hash] = res_dict
+        umap_status["future"] = None
+        return jsonify(res_dict), 200
+    except TimeoutError:
+        if os.path.exists("umap_projection.csv") and os.path.exists("cluster_assignments.csv"):
+            try:
+                import csv
+                umap_2d = []
+                umap_3d = []
+                hdb_labels = []
+                gmm_labels = []
+                with open("umap_projection.csv", "r") as f:
+                    reader = csv.reader(f)
+                    next(reader)
+                    for row in reader:
+                        x, y, z = float(row[1]), float(row[2]), float(row[3])
+                        umap_2d.append([x, y])
+                        umap_3d.append([x, y, z])
+                with open("cluster_assignments.csv", "r") as f:
+                    reader = csv.reader(f)
+                    next(reader)
+                    for row in reader:
+                        hdb_labels.append(int(row[1]))
+                        gmm_labels.append(int(row[2]))
+                return jsonify({
+                    "umap_2d": umap_2d,
+                    "umap_3d": umap_3d,
+                    "hdbscan_labels": hdb_labels,
+                    "gmm_labels": gmm_labels,
+                    "num_embeddings": len(umap_2d),
+                    "embedding_dim": 128,
+                    "nan_count": 0,
+                    "variance": 0.0,
+                    "status": "running_using_disk_fallback"
+                }), 200
+            except Exception:
+                pass
+        return jsonify({"status": "running", "message": "UMAP fitting started in background."}), 202
 
 @app.route("/api/molecule/decompose", methods=["POST", "GET"])
 def decompose_molecule():
@@ -889,16 +1202,19 @@ def reset_dataset():
 @app.route("/compute-relationships", methods=["POST"])
 def get_cube_stats():
     try:
-        data = request.get_json()
-        if not data or "cube" not in data:
-            return jsonify({"error": "Missing cube data"}), 400
-            
-        cube = np.array(data["cube"], dtype=np.float32)
+        try:
+            req_json = request.get_json()
+            validated = CubeInput(**req_json)
+            cube = np.array(validated.cube, dtype=np.float32)
+        except Exception as val_err:
+            return jsonify({"error": f"Validation failed: {str(val_err)}"}), 400
         H, W, V = cube.shape
         
         # Save local relationship tensor
         from relationship_tensor import RelationshipStructureExtractor
-        rel_extractor = RelationshipStructureExtractor(mode="all", variables=["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"])
+        all_vars = ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"]
+        vars_to_use = all_vars[:cube.shape[-1]]
+        rel_extractor = RelationshipStructureExtractor(mode="all", variables=vars_to_use)
         rel_extractor.compute_tensor(cube)
         
         flat_data = cube.reshape(-1, V)
@@ -961,7 +1277,8 @@ def get_cube_stats():
                             mi += p_xy[x, y] * np.log2(p_xy[x, y] / (p_x[x] * p_y[y] + 1e-12) + 1e-12)
                 mi_matrix[i, j] = float(np.clip(mi / np.log2(bins), 0.0, 1.0))
         
-        variables = ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"]
+        all_variables = ["CHL", "TSM", "APHY", "ADG", "BBP", "PAR", "KD490", "SST"]
+        variables = all_variables[:V]
         distributions = {}
         for idx, var in enumerate(variables):
             distributions[var] = flat_data[:, idx].tolist()[:50]
@@ -1003,11 +1320,12 @@ def get_cube_stats():
 @app.route("/api/spatial", methods=["POST"])
 def get_cube_spatial():
     try:
-        data = request.get_json()
-        if not data or "cube" not in data:
-            return jsonify({"error": "Missing cube data"}), 400
-            
-        cube = np.array(data["cube"], dtype=np.float32)
+        try:
+            req_json = request.get_json()
+            validated = CubeInput(**req_json)
+            cube = np.array(validated.cube, dtype=np.float32)
+        except Exception as val_err:
+            return jsonify({"error": f"Validation failed: {str(val_err)}"}), 400
         H, W, V = cube.shape
         
         from spatial_structure import SpatialStructureExtractor
@@ -1038,11 +1356,12 @@ def get_cube_spatial():
 @app.route("/assess-transferability", methods=["POST"])
 def get_cube_transfer():
     try:
-        data = request.get_json()
-        if not data or "cube" not in data:
-            return jsonify({"error": "Missing cube data"}), 400
-            
-        cube = np.array(data["cube"], dtype=np.float32)
+        try:
+            req_json = request.get_json()
+            validated = CubeInput(**req_json)
+            cube = np.array(validated.cube, dtype=np.float32)
+        except Exception as val_err:
+            return jsonify({"error": f"Validation failed: {str(val_err)}"}), 400
         
         if explorer is None:
             init_eef_pipeline()
@@ -1094,11 +1413,12 @@ def get_cube_transfer():
 @app.route("/api/encoder/embed", methods=["POST"])
 def get_cube_embedding():
     try:
-        data = request.get_json()
-        if not data or "cube" not in data:
-            return jsonify({"error": "Missing cube data"}), 400
-            
-        cube = np.array(data["cube"], dtype=np.float32)
+        try:
+            req_json = request.get_json()
+            validated = CubeInput(**req_json)
+            cube = np.array(validated.cube, dtype=np.float32)
+        except Exception as val_err:
+            return jsonify({"error": f"Validation failed: {str(val_err)}"}), 400
         
         if explorer is None:
             init_eef_pipeline()

@@ -12,8 +12,18 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from typing import List, Tuple, Optional
+import bisect
+from datetime import datetime, timedelta
 from ecological_encoder import EcologicalEncoding, EcologicalEncoder
 from cube_builder import TileMetadata
+
+def parse_timestamp(ts_str: str) -> Optional[datetime]:
+    if not ts_str:
+        return None
+    try:
+        return datetime.fromisoformat(ts_str)
+    except Exception:
+        return None
 
 class ContrastiveLoss(nn.Module):
     """
@@ -109,13 +119,11 @@ class SpatialAdjacencyPairs(PairGenerationStrategy):
             
         cx, cy = coords
         neighbors = []
-        for other_idx, other in enumerate(dataset.encodings):
-            other_coords = getattr(other.metadata, "coordinates", None)
-            if other_coords is not None and other_idx != idx:
-                ox, oy = other_coords
-                # 4-neighborhood spatial adjacency
-                if abs(cx - ox) + abs(cy - oy) <= 1:
-                    neighbors.append(other)
+        # Check 4-neighbors and the same cell
+        for nx, ny in [(cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1), (cx, cy)]:
+            for other_idx in dataset._spatial_index.get((nx, ny), []):
+                if other_idx != idx:
+                    neighbors.append(dataset.encodings[other_idx])
                     
         if len(neighbors) == 0:
             return self.fallback.generate_pair(dataset, idx)
@@ -140,23 +148,22 @@ class TemporalNeighborPairs(PairGenerationStrategy):
         if not ts_str:
             return self.fallback.generate_pair(dataset, idx)
             
-        try:
-            from datetime import datetime
-            t_curr = datetime.fromisoformat(ts_str)
-        except Exception:
+        t_curr = parse_timestamp(ts_str)
+        if t_curr is None:
             return self.fallback.generate_pair(dataset, idx)
-            
+
+        times = [t for _, t in dataset._timestamps]
+        t_min = t_curr - timedelta(days=self.max_delta_days)
+        t_max = t_curr + timedelta(days=self.max_delta_days)
+
+        left = bisect.bisect_left(times, t_min)
+        right = bisect.bisect_right(times, t_max)
+
         neighbors = []
-        for other_idx, other in enumerate(dataset.encodings):
-            other_ts_str = getattr(other.metadata, "timestamp", "")
-            if other_ts_str and other_idx != idx:
-                try:
-                    t_other = datetime.fromisoformat(other_ts_str)
-                    delta = abs((t_curr - t_other).total_seconds()) / 86400.0
-                    if delta <= self.max_delta_days:
-                        neighbors.append(other)
-                except Exception:
-                    continue
+        for i in range(left, right):
+            other_idx, _ = dataset._timestamps[i]
+            if other_idx != idx:
+                neighbors.append(dataset.encodings[other_idx])
                     
         if len(neighbors) == 0:
             return self.fallback.generate_pair(dataset, idx)
@@ -178,24 +185,15 @@ class SeasonalAnalogPairs(PairGenerationStrategy):
         if not ts_str:
             return self.fallback.generate_pair(dataset, idx)
             
-        try:
-            from datetime import datetime
-            t_curr = datetime.fromisoformat(ts_str)
-            month = t_curr.month
-        except Exception:
+        t_curr = parse_timestamp(ts_str)
+        if t_curr is None:
             return self.fallback.generate_pair(dataset, idx)
-            
+
+        candidates = dataset._month_index.get(t_curr.month, [])
         neighbors = []
-        for other_idx, other in enumerate(dataset.encodings):
-            other_ts_str = getattr(other.metadata, "timestamp", "")
-            if other_ts_str and other_idx != idx:
-                try:
-                    t_other = datetime.fromisoformat(other_ts_str)
-                    # Check if months match and years are different
-                    if t_other.month == month and t_other.year != t_curr.year:
-                        neighbors.append(other)
-                except Exception:
-                    continue
+        for other_idx, other_year in candidates:
+            if other_idx != idx and other_year != t_curr.year:
+                neighbors.append(dataset.encodings[other_idx])
                     
         if len(neighbors) == 0:
             return self.fallback.generate_pair(dataset, idx)
@@ -226,6 +224,28 @@ class EcologicalPairDataset(Dataset):
         self.pair_strategy = pair_strategy or PhysicalPerturbationPairs()
         self.encoder = encoder or EcologicalEncoder()
 
+        # Build spatial coordinates index: maps (x, y) -> list of encoding indices
+        self._spatial_index = {}
+        # Build temporal index: list of (index, parsed_datetime)
+        self._timestamps = []
+        # Build seasonal index: maps month (1..12) -> list of (index, year)
+        self._month_index = {}
+
+        for i, enc in enumerate(encodings):
+            coords = getattr(enc.metadata, "coordinates", None)
+            if coords is not None:
+                self._spatial_index.setdefault(coords, []).append(i)
+
+            ts_str = getattr(enc.metadata, "timestamp", "")
+            if ts_str:
+                t_parsed = parse_timestamp(ts_str)
+                if t_parsed is not None:
+                    self._timestamps.append((i, t_parsed))
+                    self._month_index.setdefault(t_parsed.month, []).append((i, t_parsed.year))
+
+        # Sort temporal index chronologically for binary search
+        self._timestamps.sort(key=lambda x: x[1])
+
     @classmethod
     def from_cubes(
         cls,
@@ -254,7 +274,11 @@ class EcologicalPairDataset(Dataset):
         return len(self.encodings)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.pair_strategy.generate_pair(self, idx)
+        x_i, x_j = self.pair_strategy.generate_pair(self, idx)
+        # Normalize to [0, 1] range to ensure stability
+        x_i = (x_i - x_i.min()) / (x_i.max() - x_i.min() + 1e-8)
+        x_j = (x_j - x_j.min()) / (x_j.max() - x_j.min() + 1e-8)
+        return x_i, x_j
 
 # ── Training Loop ─────────────────────────────────────────────────────────────
 
@@ -275,6 +299,7 @@ def train_contrastive_model(
         model.use_projection = True
         
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, factor=0.5)
     criterion = ContrastiveLoss(temperature=0.5)
     bs = min(batch_size, len(dataset))
     if bs < 2:
@@ -301,6 +326,7 @@ def train_contrastive_model(
             
             loss = criterion(z_i, z_j)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             
             epoch_loss += loss.item()
@@ -328,6 +354,15 @@ def train_contrastive_model(
         avg_loss = epoch_loss / len(dataloader)
         avg_pos_sim = epoch_pos_sim / len(dataloader)
         avg_neg_sim = epoch_neg_sim / len(dataloader)
+        
+        scheduler.step(avg_loss)
+        
+        # Validate model weights
+        has_nan = any(torch.isnan(p).any() for p in model.parameters())
+        if has_nan or np.isnan(avg_loss):
+            import logging
+            logging.getLogger("EEFBackend").error("NaN weights or loss detected! Representation collapsed.")
+            break
         
         losses.append(avg_loss)
         pos_sims.append(avg_pos_sim)

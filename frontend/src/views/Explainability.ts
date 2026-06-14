@@ -6,6 +6,7 @@ import type { CubeData, StatsData } from '../api';
 
 let activeVariable = 'CHL';
 let activeMetric = 'pearson' as 'pearson' | 'spearman' | 'mi';
+let relationshipThreshold = 0.0;
 let cachedCube: CubeData | null = null;
 let cachedStats: StatsData | null = null;
 
@@ -95,8 +96,16 @@ export function buildExplainabilityView(): HTMLElement {
                 </div>
               </div>
             </div>
+
+            <!-- Relationship Threshold Slider -->
+            <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px; padding:8px 12px; background:var(--surface-3); border-radius:var(--r-sm); border:1px solid var(--border);">
+              <label for="expl-threshold-slider" style="font-size:12px; font-weight:600; color:var(--text-dim); white-space:nowrap;">Relationship Threshold:</label>
+              <input type="range" id="expl-threshold-slider" min="0.0" max="1.0" step="0.05" value="0.0" style="flex:1;">
+              <span id="expl-threshold-val" style="font-family:var(--font-mono); font-size:12px; color:var(--text); min-width:32px; text-align:right;">0.00</span>
+            </div>
+
             <div style="flex:1; position:relative; min-height:400px; display:flex; justify-content:center; align-items:center; background:rgba(0,0,0,0.1); border-radius:var(--r-md); overflow:hidden;">
-              <svg id="expl-graph-svg" style="width:100%; height:100%; min-height:400px;"></svg>
+              <svg id="expl-graph-svg" style="width:100%; height:100%; min-height:400px; background:#FFFFFF;"></svg>
             </div>
           </div>
         </div>
@@ -128,6 +137,18 @@ function setupEventListeners() {
     metricSelect.onchange = () => {
       activeMetric = metricSelect.value as any;
       updateDriversList();
+      drawDependencyGraph();
+    };
+  }
+
+  const thresholdSlider = document.getElementById('expl-threshold-slider') as HTMLInputElement;
+  const thresholdVal = document.getElementById('expl-threshold-val') as HTMLElement;
+  if (thresholdSlider && thresholdVal) {
+    thresholdSlider.value = relationshipThreshold.toString();
+    thresholdVal.textContent = relationshipThreshold.toFixed(2);
+    thresholdSlider.oninput = () => {
+      relationshipThreshold = parseFloat(thresholdSlider.value);
+      thresholdVal.textContent = relationshipThreshold.toFixed(2);
       drawDependencyGraph();
     };
   }
@@ -230,7 +251,7 @@ function updateDriversList() {
   }).join('');
 }
 
-function drawDependencyGraph() {
+function drawDependencyGraph(threshold = relationshipThreshold) {
   const svg = document.getElementById('expl-graph-svg') as unknown as SVGSVGElement;
   if (!svg || !cachedCube || !cachedStats) return;
 
@@ -269,16 +290,16 @@ function drawDependencyGraph() {
   svg.innerHTML += `
     <defs>
       <marker id="arrow-drive" viewBox="0 0 10 10" refX="24" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-        <path d="M 0 1 L 10 5 L 0 9 z" fill="rgba(0, 229, 255, 0.7)" />
+        <path d="M 0 1 L 10 5 L 0 9 z" fill="#0077B6" />
       </marker>
       <marker id="arrow-drive-active" viewBox="0 0 10 10" refX="24" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-        <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--cyan)" />
+        <path d="M 0 1 L 10 5 L 0 9 z" fill="#0056B3" />
       </marker>
       <marker id="arrow-couple" viewBox="0 0 10 10" refX="24" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-        <path d="M 0 1 L 10 5 L 0 9 z" fill="rgba(168, 85, 247, 0.7)" />
+        <path d="M 0 1 L 10 5 L 0 9 z" fill="#6D28D9" />
       </marker>
       <marker id="arrow-inhibit" viewBox="0 0 10 10" refX="24" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-        <path d="M 5 0 L 5 10" stroke="rgba(255, 71, 87, 0.7)" stroke-width="3" />
+        <path d="M 5 0 L 5 10" stroke="#D32F2F" stroke-width="3" />
       </marker>
     </defs>
   `;
@@ -305,21 +326,24 @@ function drawDependencyGraph() {
     const rVal = matrix[fIdx][tIdx];
     const absVal = Math.abs(rVal);
 
+    // Filter by threshold
+    if (absVal < threshold) return;
+
     // Scaling edge thickness: width between 1.5px and 7px
     const strokeWidth = 1.5 + absVal * 5.5;
 
     // Edge color
-    let strokeColor = 'rgba(255, 255, 255, 0.15)';
+    let strokeColor = 'rgba(0, 0, 0, 0.15)';
     const isActive = link.from === activeVariable || link.to === activeVariable;
     
     if (activeMetric === 'mi') {
-      strokeColor = isActive ? 'rgba(0, 229, 255, 0.7)' : `rgba(0, 229, 255, ${0.1 + absVal * 0.4})`;
+      strokeColor = isActive ? 'rgba(0, 119, 182, 0.95)' : `rgba(0, 119, 182, ${0.2 + absVal * 0.5})`;
     } else {
       const isPositive = rVal >= 0;
       if (isPositive) {
-        strokeColor = isActive ? 'rgba(0, 255, 157, 0.8)' : `rgba(0, 255, 157, ${0.1 + absVal * 0.35})`;
+        strokeColor = isActive ? 'rgba(0, 135, 90, 0.95)' : `rgba(0, 135, 90, ${0.2 + absVal * 0.5})`;
       } else {
-        strokeColor = isActive ? 'rgba(255, 71, 87, 0.8)' : `rgba(255, 71, 87, ${0.1 + absVal * 0.35})`;
+        strokeColor = isActive ? 'rgba(211, 47, 47, 0.95)' : `rgba(211, 47, 47, ${0.2 + absVal * 0.5})`;
       }
     }
 
