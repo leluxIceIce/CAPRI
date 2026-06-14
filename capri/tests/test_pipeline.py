@@ -222,6 +222,67 @@ class TestLayer4Encoding:
         assert "ECOLOGICAL ENCODING INSPECTION REPORT" in report
         assert "Total Input Channels   : 282" in report
 
+    def test_ecological_encoder_reentrancy(self):
+        builder = EcologicalCubeBuilder()
+        cube = builder.generate_synthetic_cube(seed=42)
+        meta1 = TileMetadata(source_file="t1.csv", variables=["V1", "V2", "V3", "V4", "V5", "V6", "V7"])
+        meta2 = TileMetadata(source_file="t2.csv", variables=["X1", "X2", "X3", "X4", "X5", "X6", "X7"])
+        
+        encoder = EcologicalEncoder()
+        
+        # Check first run
+        encoding1 = encoder.encode(cube, meta1)
+        assert encoding1.channel_manifest[0] == "V1"
+        assert "V1_gradient_dx" in encoding1.channel_manifest
+        assert "corr_V1_V2" in encoding1.channel_manifest
+        
+        # Check second run with completely different variables
+        encoding2 = encoder.encode(cube, meta2)
+        assert encoding2.channel_manifest[0] == "X1"
+        assert "X1_gradient_dx" in encoding2.channel_manifest
+        assert "corr_X1_X2" in encoding2.channel_manifest
+        
+        # Verify first one's manifest did not change and wasn't contaminated
+        assert encoding1.channel_manifest[0] == "V1"
+        
+        # Verify extractors don't have mutated "variables" state
+        assert not hasattr(encoder.spatial_extractor, "variables")
+        assert encoder.relationship_extractor.variables == ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490"]
+        assert encoder.relationship_extractor.variables != meta2.variables
+        
+        # Verify caller's input TileMetadata objects were not mutated
+        assert meta1.variables == ["V1", "V2", "V3", "V4", "V5", "V6", "V7"]
+        assert meta2.variables == ["X1", "X2", "X3", "X4", "X5", "X6", "X7"]
+
+    def test_ecological_encoding_validation(self):
+        builder = EcologicalCubeBuilder()
+        cube = builder.generate_synthetic_cube(seed=42)
+        meta = TileMetadata(source_file="t1.csv")
+        encoder = EcologicalEncoder()
+        encoding = encoder.encode(cube, meta)
+        
+        # Create an invalid encoding where manifest length doesn't match total channels
+        with pytest.raises(ValueError, match="Channel manifest length"):
+            EcologicalEncoding(
+                cube=encoding.cube,
+                spatial_descriptors=encoding.spatial_descriptors,
+                relationship_descriptors=encoding.relationship_descriptors,
+                molecular_fingerprint=encoding.molecular_fingerprint,
+                metadata=encoding.metadata,
+                channel_manifest=encoding.channel_manifest[:-1] # Remove one element to cause mismatch
+            )
+
+    def test_ecological_encoder_falsy_variables(self):
+        builder = EcologicalCubeBuilder()
+        cube = builder.generate_synthetic_cube(seed=42)
+        meta_none = TileMetadata(source_file="none.csv", variables=None)
+        
+        encoder = EcologicalEncoder()
+        encoding = encoder.encode(cube, meta_none)
+        # Should fall back to defaults matching the cube shape (7 channels)
+        assert len(encoding.metadata.variables) == 7
+        assert encoding.channel_manifest[0] == "CHL"
+
 
 # ── Layer 5: Representation Learning ─────────────────────────────────────────
 

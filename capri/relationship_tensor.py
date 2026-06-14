@@ -49,7 +49,7 @@ class RelationshipStructureExtractor:
         """
         self.mode = mode
         self.window_size = window_size
-        self.variables = variables or ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490"]
+        self.variables = variables if variables is not None else ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490"]
 
     def compute_local_mi(self, c1: np.ndarray, c2: np.ndarray, bins: int = 3) -> np.ndarray:
         """Computes discretized local Mutual Information using sliding window."""
@@ -125,18 +125,27 @@ class RelationshipStructureExtractor:
             norm_cov = np.zeros_like(local_cov)
         return norm_cov
 
-    def compute_tensor(self, cube: np.ndarray) -> RelationshipDescriptorMatrix:
+    def compute_tensor(self, cube: np.ndarray, var_names: Optional[List[str]] = None) -> RelationshipDescriptorMatrix:
         """
         Computes the relationship tensor R based on the selected mode.
         
         Args:
             cube: Input observation cube of shape (H, W, V).
+            var_names: Optional list of variable names.
             
         Returns:
             RelationshipDescriptorMatrix holding the computed tensor.
         """
         H, W, V = cube.shape
         
+        if var_names is not None:
+            variables = list(var_names)
+        else:
+            variables = list(self.variables)
+            
+        if len(variables) != V:
+            variables = [f"var_{i}" for i in range(V)]
+            
         data_list = []
         feature_names = []
 
@@ -144,7 +153,7 @@ class RelationshipStructureExtractor:
         if self.mode in ("correlation", "all"):
             for i in range(V):
                 for j in range(i + 1, V):
-                    name_i, name_j = self.variables[i], self.variables[j]
+                    name_i, name_j = variables[i], variables[j]
                     norm_corr = self._compute_local_correlation(cube[:, :, i], cube[:, :, j])
                     data_list.append(norm_corr)
                     feature_names.append(f"corr_{name_i}_{name_j}")
@@ -155,7 +164,7 @@ class RelationshipStructureExtractor:
             ranked_channels = [self._rank_transform(cube[:, :, v]) for v in range(V)]
             for i in range(V):
                 for j in range(i + 1, V):
-                    name_i, name_j = self.variables[i], self.variables[j]
+                    name_i, name_j = variables[i], variables[j]
                     norm_spearman = self._compute_local_correlation(ranked_channels[i], ranked_channels[j])
                     data_list.append(norm_spearman)
                     feature_names.append(f"spearman_{name_i}_{name_j}")
@@ -164,7 +173,7 @@ class RelationshipStructureExtractor:
         if self.mode in ("mutual_information", "all"):
             for i in range(V):
                 for j in range(i + 1, V):
-                    name_i, name_j = self.variables[i], self.variables[j]
+                    name_i, name_j = variables[i], variables[j]
                     mi = self.compute_local_mi(cube[:, :, i], cube[:, :, j])
                     data_list.append(mi)
                     feature_names.append(f"mi_{name_i}_{name_j}")
@@ -173,13 +182,13 @@ class RelationshipStructureExtractor:
         if self.mode in ("covariance", "all"):
             for i in range(V):
                 for j in range(i + 1, V):
-                    name_i, name_j = self.variables[i], self.variables[j]
+                    name_i, name_j = variables[i], variables[j]
                     norm_cov = self._compute_local_covariance(cube[:, :, i], cube[:, :, j])
                     data_list.append(norm_cov)
                     feature_names.append(f"cov_{name_i}_{name_j}")
 
         # ── 5. Ecologically Grounded Ratios ───────────────────────────────────
-        var_to_idx = {v.upper(): idx for idx, v in enumerate(self.variables)}
+        var_to_idx = {v.upper(): idx for idx, v in enumerate(variables)}
         epsilon = 1e-6
         if self.mode == "ratios":
             # CHL / TSM
@@ -250,6 +259,6 @@ class RelationshipStructureExtractor:
         return RelationshipDescriptorMatrix(
             data=data,
             feature_names=feature_names,
-            variables=self.variables
+            variables=variables
         )
 

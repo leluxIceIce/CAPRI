@@ -91,7 +91,7 @@ class EcologicalCubeBuilder:
         variables: Optional[List[str]] = None,
     ):
         self.grid_shape = grid_shape
-        self.variables = variables or list(CANONICAL_VARIABLES)
+        self.variables = variables if variables is not None else list(CANONICAL_VARIABLES)
         self.num_variables = len(self.variables)
 
     # ── Synthetic cube generation ─────────────────────────────────────────

@@ -8,7 +8,7 @@ EcologicalEncoding object.
 
 import numpy as np
 import torch
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Dict, Tuple, Optional
 from cube_builder import TileMetadata
 from spatial_structure import SpatialDescriptorSet, SpatialStructureExtractor
@@ -29,29 +29,40 @@ class EcologicalEncoding:
     metadata: TileMetadata
     channel_manifest: List[str]                 # Names of all channels in concatenated order
 
+    def __post_init__(self):
+        total_channels = (
+            self.cube.shape[-1]
+            + self.relationship_descriptors.data.shape[-1]
+            + self.spatial_descriptors.data.shape[-1]
+            + self.molecular_fingerprint.shape[-1]
+        )
+        if len(self.channel_manifest) != total_channels:
+            raise ValueError(
+                f"Channel manifest length ({len(self.channel_manifest)}) does not match "
+                f"total number of feature channels ({total_channels})."
+            )
+
+    def _concatenate(self) -> np.ndarray:
+        """Concatenates all feature groups along the last (channel) axis."""
+        return np.concatenate([
+            self.cube,
+            self.relationship_descriptors.data,
+            self.spatial_descriptors.data,
+            self.molecular_fingerprint
+        ], axis=-1)
+
     def to_tensor(self) -> torch.Tensor:
         """
         Concatenates all features and converts to PyTorch channel-first tensor.
         Shape: (C_total, H, W).
         """
-        concat = np.concatenate([
-            self.cube,
-            self.relationship_descriptors.data,
-            self.spatial_descriptors.data,
-            self.molecular_fingerprint
-        ], axis=-1)
+        concat = self._concatenate()
         # Convert to (C_total, H, W)
         return torch.from_numpy(concat).permute(2, 0, 1).float()
 
     def to_vector(self) -> np.ndarray:
         """Flattens the entire encoding into a single explicit fingerprint vector."""
-        concat = np.concatenate([
-            self.cube,
-            self.relationship_descriptors.data,
-            self.spatial_descriptors.data,
-            self.molecular_fingerprint
-        ], axis=-1)
-        return concat.flatten()
+        return self._concatenate().flatten()
 
     def inspect(self) -> str:
         """Generates a human-readable scientific diagnostic report of the encoding."""
@@ -112,7 +123,7 @@ class EcologicalEncoder:
         Ingests a raw observation cube and constructs the full ecological encoding.
         """
         # Ensure correct variable names are configured
-        var_names = metadata.variables
+        var_names = metadata.variables if metadata.variables is not None else []
         if not var_names or len(var_names) != cube.shape[-1]:
             if cube.shape[-1] == 8:
                 var_names = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "SST"]
@@ -120,40 +131,19 @@ class EcologicalEncoder:
                 var_names = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490"]
             else:
                 var_names = [f"var_{i}" for i in range(cube.shape[-1])]
-        self.spatial_extractor.variables = var_names
-        self.relationship_extractor.variables = var_names
+            metadata = replace(metadata, variables=var_names)
         
         # Compute spatial and relationship features
-        spatial_desc = self.spatial_extractor.compute_tensor(cube)
-        relationship_desc = self.relationship_extractor.compute_tensor(cube)
+        spatial_desc = self.spatial_extractor.compute_tensor(cube, var_names=var_names)
+        relationship_desc = self.relationship_extractor.compute_tensor(cube, var_names=var_names)
         
-        # Overwrite internal variable names to match metadata
-        spatial_desc.variables = var_names
-        relationship_desc.variables = var_names
-        
-        # Regenerate spatial feature names to use clean variable names
-        spatial_desc.feature_names = []
-        for v in range(len(var_names)):
-            var_name = var_names[v]
-            spatial_desc.feature_names.extend([
-                f"{var_name}_gradient_dx",
-                f"{var_name}_gradient_dy",
-                f"{var_name}_laplacian",
-                f"{var_name}_variance",
-                f"{var_name}_entropy",
-                f"{var_name}_moran",
-                f"{var_name}_semivariance",
-                f"{var_name}_patchiness",
-                f"{var_name}_texture_contrast"
-            ])
-            
         # Compute molecular fingerprint
         from molecular_tensor import decompose_to_molecular_fingerprint
         fingerprint = decompose_to_molecular_fingerprint(cube)
         H, W, _ = cube.shape
         tiled_fingerprint = np.tile(fingerprint, (H, W, 1)).astype(np.float32)
         
-        # Build the channel manifest
+        # Build the channel manifest directly from the descriptors
         mol_names = [f"molecular_fingerprint_d{i}" for i in range(128)]
         channel_manifest = (
             list(var_names) + 

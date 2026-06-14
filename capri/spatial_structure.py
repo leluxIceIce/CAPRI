@@ -8,7 +8,7 @@ from ecological observation cubes C ∈ R^{H×W×V}.
 import numpy as np
 import scipy.ndimage as ndimage
 from dataclasses import dataclass
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 
 @dataclass
 class SpatialDescriptorSet:
@@ -33,6 +33,17 @@ class SpatialStructureExtractor:
     8. patchiness
     9. texture_contrast
     """
+    FEATURE_SUFFIXES = [
+        "gradient_dx",
+        "gradient_dy",
+        "laplacian",
+        "variance",
+        "entropy",
+        "moran",
+        "semivariance",
+        "patchiness",
+        "texture_contrast"
+    ]
 
     def __init__(self, window_size: int = 3):
         self.window_size = window_size
@@ -142,29 +153,29 @@ class SpatialStructureExtractor:
         contrast = ndimage.uniform_filter(diff, size=self.window_size, mode='constant', cval=0.0)
         return np.clip(contrast / 49.0, 0.0, 1.0)
 
-    def compute_tensor(self, cube: np.ndarray) -> SpatialDescriptorSet:
+    def compute_tensor(self, cube: np.ndarray, var_names: Optional[List[str]] = None) -> SpatialDescriptorSet:
         """
         Computes the spatial structure tensor for all variables.
         
         Args:
             cube: Input observation cube of shape (H, W, V).
+            var_names: Optional list of variable names.
             
         Returns:
             SpatialDescriptorSet holding a (H, W, V * 9) array and metadata.
         """
         H, W, V = cube.shape
-        # Total feature channels = V * 9
-        features_per_var = 9
+        features_per_var = len(self.FEATURE_SUFFIXES)
         data = np.zeros((H, W, V * features_per_var), dtype=np.float32)
         feature_names = []
-        variables = []
-
-        # We assume cube ordering of variables matches variables list, or we use defaults
-        # For simplicity, we just use a generic list or build it dynamically
-        for v in range(V):
-            var_name = f"var_{v}"
-            # In practice we know variables from cube_builder if default, but let's label
-            variables.append(var_name)
+        
+        if var_names is not None:
+            variables = list(var_names)
+        else:
+            variables = [f"var_{i}" for i in range(V)]
+            
+        if len(variables) != V:
+            variables = [f"var_{i}" for i in range(V)]
 
         feat_idx = 0
         for v in range(V):
