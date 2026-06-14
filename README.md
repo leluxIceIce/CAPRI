@@ -4,6 +4,17 @@ This guide details how to start, refresh, and stop the interactive 3D Cube platf
 
 ---
 
+## 📦 Repository layout
+
+| Path | What it is |
+| --- | --- |
+| [`capri/`](capri) | Python (Flask) backend — server, datasets, ML manifests |
+| [`frontend/`](frontend) | Vanilla-TypeScript 3D cube frontend (port `5174`) |
+| [`react-dashboard/`](react-dashboard) | **Standalone React + Three.js telemetry dashboard prototype** — glassmorphic UI, live stream simulator, CSV playback, custom colormaps, and a macOS `.dmg` Electron build. Runs on its own with no backend. See [`react-dashboard/README.md`](react-dashboard/README.md). |
+| [`reports/`](reports) | QA / performance audit reports |
+
+---
+
 ## 🚀 1. How to Start the Project
 
 To start the platform, both the **Python Flask backend** and the **Vite frontend** servers must be running.
