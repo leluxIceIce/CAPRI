@@ -68,15 +68,17 @@ class RelationshipStructureExtractor:
                 p2 = d2[i_min:i_max, j_min:j_max].ravel()
                 
                 n = p1.size
-                joint_counts = np.bincount(p1 * bins + p2, minlength=bins*bins).reshape(bins, bins)
+                joint_counts = np.zeros((bins, bins), dtype=np.int32)
+                np.add.at(joint_counts, (p1, p2), 1)
                 
                 p_xy = joint_counts / n
                 p_x = p_xy.sum(axis=1)
                 p_y = p_xy.sum(axis=0)
                 
                 p_x_p_y = p_x[:, np.newaxis] * p_y[np.newaxis, :]
-                mask = p_xy > 0
-                mi = np.sum(p_xy[mask] * np.log2(p_xy[mask] / (p_x_p_y[mask] + 1e-12) + 1e-12))
+                
+                # Vectorized MI calculation using np.where to handle zero probabilities safely
+                mi = np.sum(np.where(p_xy > 0, p_xy * np.log2(p_xy / (p_x_p_y + 1e-12) + 1e-12), 0.0))
                 mi_grid[i, j] = mi
         
         max_mi = np.log2(bins)
@@ -225,11 +227,12 @@ class RelationshipStructureExtractor:
 
         # ── 6. Composite Ecological Indices ───────────────────────────────────
         if self.mode == "indices":
-            # Trophic State Proxy: CHL * PAR
+            # Phytoplankton Production Proxy: CHL * PAR
+            # Captures light-weighted phytoplankton abundance, representing production potential.
             if "CHL" in var_to_idx and "PAR" in var_to_idx:
                 val = cube[:, :, var_to_idx["CHL"]] * cube[:, :, var_to_idx["PAR"]]
                 data_list.append(val)
-                feature_names.append("index_trophic_state")
+                feature_names.append("index_phytoplankton_production")
                 
             # Turbidity/Eutrophication Index: TSM * KD490
             if "TSM" in var_to_idx and "KD490" in var_to_idx:
@@ -238,6 +241,8 @@ class RelationshipStructureExtractor:
                 feature_names.append("index_turbidity")
                 
             # Light Limitation Index: PAR / (KD490 + epsilon)
+            # Note: This index is dimensionally inconsistent (PAR [W/m²] vs KD490 [m⁻¹] resulting in W/m).
+            # It functions as a pragmatically normalized proxy scaled/clipped to [0, 1] to represent limitation.
             if "PAR" in var_to_idx and "KD490" in var_to_idx:
                 val = cube[:, :, var_to_idx["PAR"]] / (cube[:, :, var_to_idx["KD490"]] + epsilon)
                 data_list.append(np.clip(val, 0.0, 10.0) / 10.0)
