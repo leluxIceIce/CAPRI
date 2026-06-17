@@ -14,33 +14,6 @@
     "electron:preview": "npm run build && electron .",
     "electron:build": "npm run build && electron-builder --mac --arm64"
   },
-  "build": {
-    "appId": "com.eef.dashboard",
-    "productName": "EEF Dashboard",
-    "files": [
-      "dist/**/*",
-      "electron/main.cjs"
-    ],
-    "mac": {
-      "category": "public.app-category.productivity",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64"
-          ]
-        }
-      ]
-    },
-    "dmg": {
-      "title": "EEF Dashboard ${version}",
-      "backgroundColor": "#030307",
-      "window": {
-        "width": 540,
-        "height": 380
-      }
-    }
-  },
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
