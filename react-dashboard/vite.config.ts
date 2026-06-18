@@ -4,9 +4,11 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
+  // GitHub Pages builds need '/CAPRI/' base; Electron needs './'
+  const base = process.env.PAGES_BUILD === 'true' ? '/CAPRI/' : './';
+
   return {
-    // Relative base is required for Electron to load dist/ via file:// protocol
-    base: './',
+    base,
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
