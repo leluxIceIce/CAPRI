@@ -582,6 +582,12 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
             return (
               <div key={key} className="flex flex-col border border-white/5 rounded bg-black/40 p-2 relative group hover:border-white/10 transition-colors">
                 <div className="absolute top-0 left-0 w-1 h-full rounded-l" style={{ backgroundColor: meta.color }} />
+
+                {/* Hover explanation tooltip */}
+                <div className="pointer-events-none absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-44 p-2 rounded-md bg-black/95 border border-white/10 text-[10px] text-white/80 leading-snug opacity-0 group-hover:opacity-100 transition-opacity shadow-xl">
+                  <span className="font-bold block mb-0.5" style={{ color: meta.color }}>{meta.label}</span>
+                  {meta.description}
+                </div>
                 
                 <div className="flex justify-between items-center text-xs font-mono ml-1">
                   <span className="font-extrabold" style={{ color: meta.color }}>{key}</span>
