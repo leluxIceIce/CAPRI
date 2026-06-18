@@ -32,7 +32,7 @@ const APPS = [
     title: "VibeCode Grasshopper Editor",
     description: "Interactive 3D visual programming environment for grasshopper algorithm design and parametric modeling.",
     cta: "Download (macOS arm64)",
-    ctaHref: "/downloads/VibeCode.Grasshopper.Editor-0.1.0-arm64.dmg",
+    ctaHref: "https://github.com/leluxiceice/CAPRI/releases/download/v0.1.0/VibeCode.Grasshopper.Editor-0.1.0-arm64.dmg",
     badge: "Desktop",
     color: "from-purple-500 to-pink-500",
   },
