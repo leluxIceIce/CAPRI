@@ -10,7 +10,7 @@ This guide details how to start, refresh, and stop the interactive 3D Cube platf
 | --- | --- |
 | [`capri/`](capri) | Python (Flask) backend — server, datasets, ML manifests |
 | [`frontend/`](frontend) | Vanilla-TypeScript 3D cube frontend (port `5174`) |
-| [`react-dashboard/`](react-dashboard) | **Standalone React + Three.js telemetry dashboard prototype** — glassmorphic UI, live stream simulator, CSV playback, custom colormaps, and a macOS `.dmg` Electron build. Runs on its own with no backend. See [`react-dashboard/README.md`](react-dashboard/README.md). |
+| [`react-dashboard/`](react-dashboard) | **Standalone React + Three.js telemetry dashboard prototype** — glassmorphic UI, live stream simulator, CSV playback, custom colormaps, and a macOS `.dmg` Electron build. Runs on its own with no backend. Live at **[leluxiceice.github.io/CAPRI](https://leluxiceice.github.io/CAPRI/)**. See [`react-dashboard/README.md`](react-dashboard/README.md). |
 | [`reports/`](reports) | QA / performance audit reports |
 
 ---

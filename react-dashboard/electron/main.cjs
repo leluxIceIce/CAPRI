@@ -29,7 +29,8 @@ function createWindow() {
     },
   });
 
-  win.loadURL('app://dashboard/index.html');
+  // #/dashboard skips the marketing landing page — the desktop app is the dashboard itself
+  win.loadURL('app://dashboard/index.html#/dashboard');
 
   // Open external links in the system browser, not inside the app
   win.webContents.setWindowOpenHandler(({ url }) => {

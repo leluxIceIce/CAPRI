@@ -26,6 +26,17 @@ macOS desktop app (`.dmg`) via Electron.
   illustrative heuristics, not a trained model).
 - **Resizable panel layout** — draggable, container-query-aware panels.
 
+## Live site
+
+The app is deployed to **[leluxiceice.github.io/CAPRI](https://leluxiceice.github.io/CAPRI/)** and auto-redeploys
+from `main` via `.github/workflows/deploy-pages.yml`. It has two routes (client-side,
+`react-router-dom` `HashRouter`):
+
+- `/` — landing page: project description, how-to-use guide, interactive resource cards
+- `/dashboard` — the full interactive 3D telemetry console described below
+
+The packaged Electron `.dmg` build skips the landing page and opens straight to `/dashboard`.
+
 ## Run locally
 
 **Prerequisites:** Node.js 18+
