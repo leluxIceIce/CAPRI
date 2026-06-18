@@ -1,0 +1,17 @@
+appId: com.eef.dashboard
+productName: EEF Dashboard
+files:
+  - dist/**/*
+  - electron/main.cjs
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - arm64
+dmg:
+  title: EEF Dashboard ${version}
+  backgroundColor: "#030307"
+  window:
+    width: 540
+    height: 380
