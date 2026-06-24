@@ -65,7 +65,9 @@ jobs:
       - name: Locate the .dmg and report its size
         id: dmg
         run: |
-          DMG=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -n1)
+          # Absolute path: `working-directory` applies to run: steps but NOT to
+          # the upload-artifact action below, which resolves from the repo root.
+          DMG=$(find "$PWD/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -n1)
           if [ -z "$DMG" ]; then
             echo "No .dmg produced — bundle step failed." >&2
             exit 1
