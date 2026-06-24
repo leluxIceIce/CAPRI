@@ -14,7 +14,10 @@
     "clean": "rm -rf dist server.js out",
     "lint": "tsc --noEmit",
     "electron:preview": "npm run build && electron .",
-    "electron:build": "npm run build && electron-builder --mac --arm64"
+    "electron:build": "npm run build && electron-builder --mac --arm64",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build --target aarch64-apple-darwin"
   },
   "build": {
     "appId": "com.eef.dashboard",
@@ -60,6 +63,9 @@
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/plugin-process": "^2.3.0",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "electron-updater": "^6.8.9",
@@ -73,6 +79,7 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.3",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/three": "^0.184.1",

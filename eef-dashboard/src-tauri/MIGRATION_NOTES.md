@@ -1,10 +1,110 @@
-# Electron -> Tauri v2 shell migration notes (spike phase)
+# Electron -> Tauri v2 shell migration notes
 
 This documents the mapping from the current Electron IPC surface
 (`electron/preload.cjs` + `electron/main.cjs`) to the Tauri v2 equivalents.
 No React code has been changed yet — `src/components/UpdateNotifier.tsx`
 still calls `window.electronAPI.*` and will keep working under Electron
 until it's ported.
+
+## Status (post-spike scaffold, prep for Sprint 2/4 — not a final package)
+
+The WebKit rendering spike (WebGL2 + MeshStandardMaterial terrain +
+EffectComposer/UnrealBloomPass postprocessing under WebKitGTK, the closest
+Linux proxy to macOS WKWebView) proved out: builds, launches, renders
+correctly, zero console errors. This pass finalizes the scaffold on top of
+that result.
+
+### Done
+
+- **Window shell**: `tauri.conf.json` `app.windows[0]` matches the Electron
+  `BrowserWindow` config exactly — 1440x900, minWidth 1024, minHeight 680,
+  `backgroundColor: #030307` (prevents the white flash on load Electron also
+  guards against).
+- **Identity**: `productName: "EEF Dashboard"`, `identifier: com.eef.dashboard`,
+  `version: 0.2.0` — all three match `package.json` / the Electron
+  `build.appId`/`productName` exactly, so update channels and OS-level app
+  identity stay consistent across the migration.
+- **Asset serving**: `frontendDist: ../dist` + Tauri's built-in asset
+  protocol replaces Electron's hand-rolled `app://` scheme handler entirely
+  (see "Asset serving" section below) — no code needed, just config.
+- **Build target**: `bundle.targets` set to `["dmg", "app"]` and
+  `bundle.category: "Productivity"` (mirrors electron-builder's
+  `mac.category: public.app-category.productivity` + `mac.target: dmg`).
+  `bundle.macOS.minimumSystemVersion: "11.0"` set. Verified `cargo build`
+  (debug, plain rustc — does not invoke the bundler) still succeeds on this
+  Linux container with `dmg` in the target list, so the dmg-only target does
+  not block iteration here; the bundler itself only runs (and only cares
+  about target validity) inside `cargo tauri build`, which is mac-only for
+  the `dmg`/`app` targets regardless.
+- **Updater/process deps declared**: `tauri-plugin-updater` and
+  `tauri-plugin-process` added to `src-tauri/Cargo.toml`;
+  `@tauri-apps/plugin-updater`, `@tauri-apps/plugin-process`, plus the
+  baseline `@tauri-apps/api` and `@tauri-apps/cli` (none of the four existed
+  in `package.json` before this pass) added to `package.json` and installed
+  (`npm install` ran clean, `npm run build` still succeeds). `npm run
+  tauri:dev` / `npm run tauri:build` scripts added alongside the existing
+  `electron:preview` / `electron:build` ones.
+- Verified `cargo build` succeeds with the new Rust plugin crates present
+  (they compile; see "What's TODO" — they are not yet registered/used).
+
+### What's TODO (next phase, not done in this pass)
+
+- **Full updater wiring** — the IPC parity mapping is fully documented below
+  (Electron `electronAPI.*` -> Tauri `check()`/`downloadAndInstall()`/
+  `relaunch()`), but none of it is implemented yet:
+  - `tauri_plugin_updater`/`tauri_plugin_process` are not registered in
+    `src/lib.rs` / `src/main.rs` (no `.plugin(...)` calls yet).
+  - `tauri.conf.json` has no `plugins.updater` block yet — it needs a real
+    signing keypair first: `cargo tauri signer generate -w
+    ~/.tauri/eef-dashboard.key` produces the pubkey that goes in
+    `plugins.updater.pubkey`, plus an `endpoints` URL (the GitHub Releases
+    `latest.json` convention, same release artifacts electron-builder's
+    `publish.provider: github` already targets).
+  - `src/components/UpdateNotifier.tsx` still imports nothing from
+    `@tauri-apps/plugin-updater` — it needs to be ported off
+    `window.electronAPI.*` to the `check()`/`downloadAndInstall()`/
+    `relaunch()` shape sketched in "Suggested future `UpdateNotifier.tsx`
+    shape" below.
+  - CI/release pipeline needs to actually sign and upload a `latest.json` +
+    signature per release (electron-updater's GitHub provider did this
+    automatically; Tauri's updater needs `cargo tauri build` run with
+    `TAURI_SIGNING_PRIVATE_KEY` set, or an explicit `tauri-action`-equivalent
+    step, to produce the signed manifest).
+- **App icon** — `src-tauri/icons/` is currently populated from a
+  *placeholder* 1024x1024 source (`icon-source.png`/`.svg`, generated with
+  ImageMagick purely to unblock the spike build) run through `cargo tauri
+  icon`. **Electron-builder never had a real icon configured either** (no
+  `mac.icon` was set in `package.json`'s `build` block, so Electron app
+  builds were already running with whatever default Electron/Chromium icon
+  electron-builder falls back to) — so this isn't a regression, but it does
+  mean a real design pass is needed: get an actual EEF Dashboard icon design
+  (1024x1024 source, ideally as a vector/SVG), then re-run `cargo tauri
+  icon path/to/real-icon.png` from `src-tauri/` to regenerate
+  `icons/icon.icns` (and the rest of the set) before any real beta ships.
+- **Size verification** — the spike's 175MB binary is an unstripped *debug*
+  build (`cargo build`, not `cargo tauri build --release`); the actual
+  release/bundle size relevant to the Sprint 2 <100MB goal has not been
+  measured yet and needs a release build (ideally on the real macOS target)
+  to confirm.
+
+### Building the real macOS dmg
+
+This cannot be done in this Linux container — `dmg`/`.app` bundling and
+code-signing require running on an actual macOS host (or a macOS CI runner,
+e.g. GitHub Actions `macos-14`/`macos-latest`). From the project root, on a
+macOS machine with Xcode command line tools, Rust, and the
+`aarch64-apple-darwin` target installed (`rustup target add
+aarch64-apple-darwin`):
+
+```bash
+npm install
+npm run build && cargo tauri build --target aarch64-apple-darwin
+```
+
+(equivalently `npm run tauri:build`, which wraps the same `tauri build
+--target aarch64-apple-darwin` invocation via the `@tauri-apps/cli` script
+added in this pass). Output lands in
+`src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/`.
 
 ## Current Electron surface
 
@@ -82,9 +182,16 @@ if (update) {
 }
 ```
 
-This is noted as a TODO for the next phase — `src-tauri/Cargo.toml` lists
-`tauri-plugin-updater` and `tauri-plugin-process` commented out since they
-aren't wired into `src/main.rs` yet (spike just opens the window).
+This is noted as a TODO for the next phase — `src-tauri/Cargo.toml` declares
+`tauri-plugin-updater` and `tauri-plugin-process` (and `package.json`
+declares the matching `@tauri-apps/plugin-updater` / `@tauri-apps/plugin-process`
+JS packages) as real dependencies as of the scaffold-finalization pass, but
+neither is registered yet in `src/lib.rs` / `src/main.rs` via
+`.plugin(tauri_plugin_updater::Builder::new().build())` /
+`.plugin(tauri_plugin_process::init())`, and `tauri.conf.json` has no
+`plugins.updater` config block yet (needs a real signing keypair from
+`cargo tauri signer generate` first — see "What's TODO" below). `src/main.rs`
+still just opens the window pointing at `frontendDist`/`devUrl`.
 
 ## Asset serving: app:// protocol vs Tauri's default
 

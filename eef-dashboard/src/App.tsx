@@ -8,7 +8,6 @@ import {
   Sparkles,
   HelpCircle,
   User,
-  Cpu,
   RefreshCw,
   Info,
   Layers,
@@ -488,47 +487,58 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  // Shared style for the in-panel section toggles (lucid-glass light)
+  const toggleButtonStyle = (active: boolean): CSSProperties => ({
+    padding: "7px 11px",
+    background: active ? "var(--eef-accent)" : "var(--eef-inset)",
+    color: active ? "#fff" : "var(--eef-text-2)",
+    border: "1px solid",
+    borderColor: active ? "var(--eef-accent)" : "var(--eef-border)",
+    borderRadius: "10px",
+    fontSize: "12px",
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "background-color .2s ease, border-color .2s ease, color .2s ease",
+  });
+
   return (
-    <div className="h-screen bg-[#030307] text-[#f8fafc] flex flex-col antialiased selection:bg-white selection:text-black">
-      
-      {/* ── DESIGNER HEADER BAR ── */}
-      {/* In the Electron shell, reserve space for the macOS traffic-light buttons */}
-      {/* (hiddenInset title bar) and turn the header into a drag handle for the window. */}
+    <div className="h-screen text-[var(--eef-text)] flex flex-col antialiased">
+
+      {/* ── Header ── */}
+      {/* In the packaged shell, reserve space for the macOS traffic-light buttons */}
+      {/* (hidden-inset title bar) and let the header act as the window drag handle. */}
       <header
-        className={`h-[56px] border-b border-white/5 bg-[#030307]/80 backdrop-blur-xl pr-4 flex items-center justify-between z-10 sticky top-0 ${isElectron ? "pl-20" : "pl-4"}`}
+        className={`h-[56px] border-b border-[var(--eef-border)] bg-[var(--eef-surface-2)] backdrop-blur-xl pr-4 flex items-center justify-between z-10 sticky top-0 ${isElectron ? "pl-20" : "pl-4"}`}
         style={isElectron ? ({ WebkitAppRegion: "drag" } as CSSProperties) : undefined}
       >
 
-        {/* Left Side: Brand & Ticking Status */}
+        {/* Left: brand */}
         <div className="flex items-center gap-3">
-          {/* Neon rotating radar logo */}
-          <div className="relative w-8 h-8 rounded-lg bg-white flex items-center justify-center font-bold text-black text-sm select-none shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-            <Cpu size={16} className="animate-pulse" />
+          <div className="relative w-8 h-8 rounded-[9px] flex items-center justify-center select-none shadow-[var(--eef-shadow-sm)] overflow-hidden"
+               style={{ background: "linear-gradient(160deg, #6FA0F0, #2E6BE6)" }}>
+            <Waves size={17} className="text-white" strokeWidth={2.2} />
           </div>
-          
+
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm font-black uppercase tracking-wider text-white">EEF</h1>
-              <span className="text-white/30 text-xs">|</span>
-              <span className="text-[11px] font-mono tracking-widest text-white font-bold bg-white/10 border border-white/10 px-1.5 py-0.5 rounded shadow-[0_0_8px_rgba(255,255,255,0.05)]">
-                ECOLOGICAL ENCODING FRAMEWORK
-              </span>
+              <h1 className="text-[15px] font-semibold tracking-tight text-[var(--eef-text)]">EEF</h1>
+              <span className="text-[12px] text-[var(--eef-text-3)]">Ecological Encoding Framework</span>
             </div>
-            <p className="text-[10px] text-white/40 font-mono tracking-tight leading-none mt-0.5">
-              Multi-Layer Spectrometry Analysis Console
+            <p className="text-[11px] text-[var(--eef-text-3)] leading-none mt-0.5">
+              Ocean-colour terrain analysis
             </p>
           </div>
         </div>
 
-        {/* Center: Live UTC Scientific Clock */}
-        <div className="hidden md:flex items-center gap-2.5 px-3 py-1 bg-white/10 border border-white/20 rounded-md font-mono text-[11px] text-white font-bold">
-          <span className="w-2 h-2 rounded-full bg-white pulse-teal-glow" />
-          <span className="text-white/40 font-normal">LOCK TIMER:</span>
-          <span>{currentTime || "UTC LOCKING..."}</span>
+        {/* Center: live UTC clock */}
+        <div className="hidden md:flex items-center gap-2.5 px-3 py-1.5 glass-well text-[11px] text-[var(--eef-text-2)]">
+          <span className="w-2 h-2 rounded-full eef-live-dot" style={{ background: "var(--eef-ok)" }} />
+          <span className="text-[var(--eef-text-3)]">UTC</span>
+          <span className="tnum text-[var(--eef-text)]">{currentTime || "syncing…"}</span>
         </div>
 
-        {/* Right Side: Session save/load, environment metadata & email */}
-        <div className="flex items-center gap-3">
+        {/* Right: session save/load + account */}
+        <div className="flex items-center gap-2.5">
           <input
             ref={sessionFileInputRef}
             type="file"
@@ -542,44 +552,44 @@ export default function App() {
           />
           <button
             onClick={handleExportSession}
-            title="Save session (view settings) to a JSON file"
-            className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+            title="Save session settings to a file"
+            className="w-8 h-8 rounded-full bg-[var(--eef-inset)] border border-[var(--eef-border)] flex items-center justify-center text-[var(--eef-text-2)] hover:text-[var(--eef-accent)] hover:border-[var(--eef-accent-ring)] transition-colors"
           >
             <Save size={14} />
           </button>
           <button
             onClick={() => sessionFileInputRef.current?.click()}
-            title="Load a previously saved session"
-            className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+            title="Load a saved session"
+            className="w-8 h-8 rounded-full bg-[var(--eef-inset)] border border-[var(--eef-border)] flex items-center justify-center text-[var(--eef-text-2)] hover:text-[var(--eef-accent)] hover:border-[var(--eef-accent-ring)] transition-colors"
           >
             <Upload size={14} />
           </button>
 
-          <div className="hidden sm:flex flex-col text-right font-mono">
-            <span className="text-[10px] text-white/40 leading-none">FEEDBACK COUPLING:</span>
-            <span className="text-[11px] text-white leading-tight">iceicefelix@gmail.com</span>
+          <div className="hidden sm:flex flex-col text-right">
+            <span className="text-[10px] text-[var(--eef-text-3)] leading-none">Signed in</span>
+            <span className="text-[11px] text-[var(--eef-text-2)] leading-tight">iceicefelix@gmail.com</span>
           </div>
 
-          <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white">
+          <div className="w-8 h-8 rounded-full bg-[var(--eef-accent-soft)] border border-[var(--eef-border)] flex items-center justify-center text-[var(--eef-accent)]">
             <User size={14} />
           </div>
         </div>
       </header>
  
-      {/* ── MAIN COCKPIT BENTO CONTAINER ── */}
+      {/* ── Main layout ── */}
       <main className="flex-1 min-h-0 p-4 max-w-[1720px] w-full mx-auto overflow-hidden flex flex-col lg:block">
         <div className="hidden lg:block h-full">
         <PanelGroup orientation="horizontal" className="h-full gap-0">
 
-          {/* SIDEBAR LEFT: Modulators & Coupling Controls */}
+          {/* SIDEBAR LEFT: data source & controls */}
           <Panel defaultSize={33} minSize={22} className="flex flex-col min-h-0">
             <section className="flex flex-col gap-4 overflow-y-auto h-full min-h-0 pr-2">
-              <div className="glass-panel rounded-xl p-4 flex-1 flex flex-col gap-3 min-h-[420px]">
-                <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-                    <Database size={13} className="text-white/60" /> SENSOR COUPLING AND DECODER CONSOLE
+              <div className="glass-panel rounded-2xl p-4 flex-1 flex flex-col gap-3 min-h-[420px]">
+                <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-2.5">
+                  <h2 className="text-[13px] font-semibold tracking-tight text-[var(--eef-text)] flex items-center gap-2">
+                    <Database size={14} className="text-[var(--eef-accent)]" /> Data &amp; controls
                   </h2>
-                  <span className="text-[10px] font-mono text-white/40 font-bold">DECODER_CORE</span>
+                  <span className="text-[11px] text-[var(--eef-text-3)]">Source</span>
                 </div>
 
                 <div className="flex-1">
@@ -625,29 +635,29 @@ export default function App() {
 
           <PanelResizeHandle className="resize-handle" />
 
-          {/* CENTER COLUMN: Interactive 3D WebGL Visualization */}
+          {/* CENTER COLUMN: interactive 3D view */}
           <Panel defaultSize={42} minSize={20} className="flex flex-col min-h-0">
             <section className="flex flex-col gap-4 h-full min-h-0 px-2">
-              <div className="glass-panel rounded-xl overflow-hidden flex-1 relative flex flex-col">
+              <div className="glass-panel rounded-2xl overflow-hidden flex-1 relative flex flex-col">
 
-                {/* Hologram details on stage */}
+                {/* Stage label */}
                 <div className="absolute top-3 left-3 z-20 pointer-events-none select-none">
                   <div className="flex items-center gap-1.5">
-                    <Radio className="text-[#1A73E8] rounded-full p-0.5" size={12} />
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-white">
-                      REAL-TIME 3D GRIDS MATRIX HUD
+                    <Radio className="text-[var(--eef-accent)]" size={13} />
+                    <span className="text-[12px] font-semibold tracking-tight text-[var(--eef-text)]">
+                      3D terrain
                     </span>
                   </div>
-                  <p className="text-[9px] font-mono text-white/45 leading-none mt-0.5">
-                    Multi-Layer Spectrometry Terrain Map (20 × 20 Grid)
+                  <p className="text-[11px] text-[var(--eef-text-3)] leading-none mt-1">
+                    Spectral layers · 20 × 20 grid
                   </p>
                 </div>
 
-                {/* Float helper in the stage corner */}
-                <div className="absolute bottom-4 left-4 z-20 text-[10px] font-mono text-white/50 select-none bg-black/45 px-2.5 py-1.5 rounded-lg border border-white/5 backdrop-blur-md flex flex-col gap-0.5 shadow-sm">
-                  <span className="text-white/80 font-bold">DRAG:</span> Rotate angle (Orbit)
-                  <span className="text-white/80 font-bold">WHEEL/PINCH:</span> Variable zoom scaling
-                  <span className="text-white/80 font-bold">SHIFT KEYS:</span> Vertical spacing / Opacities
+                {/* Controls hint */}
+                <div className="absolute bottom-4 left-4 z-20 text-[11px] text-[var(--eef-text-2)] select-none bg-[var(--eef-surface-2)] px-3 py-2 rounded-xl border border-[var(--eef-border)] backdrop-blur-md flex flex-col gap-0.5 shadow-[var(--eef-shadow-sm)]">
+                  <span><span className="text-[var(--eef-text)] font-semibold">Drag</span> — orbit</span>
+                  <span><span className="text-[var(--eef-text)] font-semibold">Scroll / pinch</span> — zoom</span>
+                  <span><span className="text-[var(--eef-text)] font-semibold">Shift</span> — spacing &amp; opacity</span>
                 </div>
 
                 {/* Three.js Viewport element */}
@@ -689,12 +699,12 @@ export default function App() {
           {/* SIDEBAR RIGHT: Scientific Analyst and Statistical Diagnostic report */}
           <Panel defaultSize={25} minSize={16} className="flex flex-col min-h-0">
             <section className="flex flex-col gap-4 overflow-y-auto h-full min-h-0 pl-2">
-              <div className="glass-panel rounded-xl p-4 flex-grow flex flex-col gap-3 min-h-0 overflow-y-auto">
-                <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-                    <Compass size={13} className="text-white/60" /> CLUSTER SEPARATION & ANOMALIES
+              <div className="glass-panel rounded-2xl p-4 flex-grow flex flex-col gap-3 min-h-0 overflow-y-auto">
+                <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-2.5">
+                  <h2 className="text-[13px] font-semibold tracking-tight text-[var(--eef-text)] flex items-center gap-2">
+                    <Compass size={14} className="text-[var(--eef-accent)]" /> Diagnostics
                   </h2>
-                  <span className="text-[10px] font-mono text-white/40 font-bold">DIAGNOSTICS_NODE</span>
+                  <span className="text-[11px] text-[var(--eef-text-3)]">Clusters &amp; anomalies</span>
                 </div>
 
                 <div className="flex-grow">
@@ -734,20 +744,9 @@ export default function App() {
 
                 <button
                   onClick={() => setGate2Visible(!gate2Visible)}
-                  style={{
-                    marginTop: "8px",
-                    padding: "6px 8px",
-                    background: gate2Visible ? "#1A73E8" : "rgba(255,255,255,0.06)",
-                    color: gate2Visible ? "#fff" : "rgba(255,255,255,0.5)",
-                    border: "1px solid",
-                    borderColor: gate2Visible ? "#1A73E8" : "rgba(255,255,255,0.12)",
-                    borderRadius: "4px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  style={toggleButtonStyle(gate2Visible)}
                 >
-                  {gate2Visible ? "Hide Gate 2: Understanding Roots" : "Show Gate 2: Understanding Roots"}
+                  {gate2Visible ? "Hide latent ecology" : "Show latent ecology"}
                 </button>
 
                 {gate2Visible && (
@@ -761,20 +760,9 @@ export default function App() {
                   <>
                     <button
                       onClick={() => setCsvInspectorVisible(!csvInspectorVisible)}
-                      style={{
-                        marginTop: "8px",
-                        padding: "6px 8px",
-                        background: csvInspectorVisible ? "#1A73E8" : "rgba(255,255,255,0.06)",
-                        color: csvInspectorVisible ? "#fff" : "rgba(255,255,255,0.5)",
-                        border: "1px solid",
-                        borderColor: csvInspectorVisible ? "#1A73E8" : "rgba(255,255,255,0.12)",
-                        borderRadius: "4px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
+                      style={toggleButtonStyle(csvInspectorVisible)}
                     >
-                      {csvInspectorVisible ? "Hide CSV Inspector" : "Show CSV Inspector"}
+                      {csvInspectorVisible ? "Hide CSV inspector" : "Show CSV inspector"}
                     </button>
 
                     {csvInspectorVisible && <CSVInspectorPanel raw={csvRawData} />}
@@ -783,20 +771,9 @@ export default function App() {
 
                 <button
                   onClick={() => setSizeClassVisible(!sizeClassVisible)}
-                  style={{
-                    marginTop: "8px",
-                    padding: "6px 8px",
-                    background: sizeClassVisible ? "#1A73E8" : "rgba(255,255,255,0.06)",
-                    color: sizeClassVisible ? "#fff" : "rgba(255,255,255,0.5)",
-                    border: "1px solid",
-                    borderColor: sizeClassVisible ? "#1A73E8" : "rgba(255,255,255,0.12)",
-                    borderRadius: "4px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  style={toggleButtonStyle(sizeClassVisible)}
                 >
-                  {sizeClassVisible ? "Hide Size-Class Breakdown" : "Show Size-Class Breakdown"}
+                  {sizeClassVisible ? "Hide size classes" : "Show size classes"}
                 </button>
 
                 {sizeClassVisible && <SizeClassPanel activeDataCube={activeDataCube} />}
@@ -810,11 +787,11 @@ export default function App() {
         {/* Mobile/narrow fallback: stacked layout, no resize handles */}
         <div className="lg:hidden flex flex-col gap-4 overflow-y-auto h-full">
           <div className="glass-panel rounded-xl p-4 flex flex-col gap-3 min-h-[420px]">
-            <div className="flex justify-between items-center border-b border-white/5 pb-2">
-              <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-                <Database size={13} className="text-white/60" /> SENSOR COUPLING AND DECODER CONSOLE
+            <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-2.5">
+              <h2 className="text-[13px] font-semibold tracking-tight text-[var(--eef-text)] flex items-center gap-2">
+                <Database size={13} className="text-[var(--eef-accent)]" />Data &amp; controls
               </h2>
-              <span className="text-[10px] font-mono text-white/40 font-bold">DECODER_CORE</span>
+              <span className="text-[11px] text-[var(--eef-text-3)]">Source</span>
             </div>
             <TelemetryConsole
               config={config}
@@ -855,13 +832,13 @@ export default function App() {
           <div className="glass-panel rounded-xl overflow-hidden relative flex flex-col h-[420px]">
             <div className="absolute top-3 left-3 z-20 pointer-events-none select-none">
               <div className="flex items-center gap-1.5">
-                <Radio className="text-[#1A73E8] rounded-full p-0.5" size={12} />
-                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-white">
-                  REAL-TIME 3D GRIDS MATRIX HUD
+                <Radio className="text-[var(--eef-accent)]" size={13} />
+                <span className="text-[12px] font-semibold tracking-tight text-[var(--eef-text)]">
+                  3D terrain
                 </span>
               </div>
-              <p className="text-[9px] font-mono text-white/45 leading-none mt-0.5">
-                Multi-Layer Spectrometry Terrain Map (20 × 20 Grid)
+              <p className="text-[11px] text-[var(--eef-text-3)] leading-none mt-1">
+                Spectral layers · 20 × 20 grid
               </p>
             </div>
             <div className="flex-1 w-full h-full">
@@ -885,11 +862,11 @@ export default function App() {
           </div>
 
           <div className="glass-panel rounded-xl p-4 flex flex-col gap-3 min-h-[420px]">
-            <div className="flex justify-between items-center border-b border-white/5 pb-2">
-              <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-                <Compass size={13} className="text-white/60" /> CLUSTER SEPARATION & ANOMALIES
+            <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-2.5">
+              <h2 className="text-[13px] font-semibold tracking-tight text-[var(--eef-text)] flex items-center gap-2">
+                <Compass size={13} className="text-[var(--eef-accent)]" />Diagnostics
               </h2>
-              <span className="text-[10px] font-mono text-white/40 font-bold">DIAGNOSTICS_NODE</span>
+              <span className="text-[11px] text-[var(--eef-text-3)]">Clusters &amp; anomalies</span>
             </div>
             <DiagnosticsPanel
               analysis={analysisResult}
@@ -907,11 +884,11 @@ export default function App() {
           </div>
 
           <div className="glass-panel rounded-xl p-4 flex flex-col gap-3">
-            <div className="flex justify-between items-center border-b border-white/5 pb-2">
-              <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-                <Layers size={13} className="text-white/60" /> SPATIAL & RELATIONSHIP ENCODING
+            <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-2.5">
+              <h2 className="text-[13px] font-semibold tracking-tight text-[var(--eef-text)] flex items-center gap-2">
+                <Layers size={13} className="text-[var(--eef-accent)]" />Spatial &amp; relationships
               </h2>
-              <span className="text-[10px] font-mono text-white/40 font-bold">ENCODING_NODE</span>
+              <span className="text-[11px] text-[var(--eef-text-3)]">Encoding</span>
             </div>
             <SpatialEncodingPanel
               spatialOverlay={spatialOverlayState}
@@ -925,27 +902,17 @@ export default function App() {
           </div>
 
           <div className="glass-panel rounded-xl p-4 flex flex-col gap-3">
-            <div className="flex justify-between items-center border-b border-white/5 pb-2">
-              <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-                <Sparkles size={13} className="text-white/60" /> UNDERSTANDING ROOTS
+            <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-2.5">
+              <h2 className="text-[13px] font-semibold tracking-tight text-[var(--eef-text)] flex items-center gap-2">
+                <Sparkles size={13} className="text-[var(--eef-accent)]" />Latent ecology
               </h2>
-              <span className="text-[10px] font-mono text-white/40 font-bold">GATE_2</span>
+              <span className="text-[11px] text-[var(--eef-text-3)]">Analysis</span>
             </div>
             <button
               onClick={() => setGate2Visible(!gate2Visible)}
-              style={{
-                padding: "6px 8px",
-                background: gate2Visible ? "#1A73E8" : "rgba(255,255,255,0.06)",
-                color: gate2Visible ? "#fff" : "rgba(255,255,255,0.5)",
-                border: "1px solid",
-                borderColor: gate2Visible ? "#1A73E8" : "rgba(255,255,255,0.12)",
-                borderRadius: "4px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
+              style={toggleButtonStyle(gate2Visible)}
             >
-              {gate2Visible ? "Hide Analysis" : "Show Analysis"}
+              {gate2Visible ? "Hide analysis" : "Show analysis"}
             </button>
             {gate2Visible && (
               <LatentEcologyPanel
@@ -957,67 +924,48 @@ export default function App() {
 
           {csvRawData && (
             <div className="glass-panel rounded-xl p-4 flex flex-col gap-3">
-              <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-                  <Database size={13} className="text-white/60" /> CSV INSPECTOR
+              <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-2.5">
+                <h2 className="text-[13px] font-semibold tracking-tight text-[var(--eef-text)] flex items-center gap-2">
+                  <Database size={13} className="text-[var(--eef-accent)]" />CSV inspector
                 </h2>
-                <span className="text-[10px] font-mono text-white/40 font-bold">RAW_ROWS</span>
+                <span className="text-[11px] text-[var(--eef-text-3)]">Raw rows</span>
               </div>
               <button
                 onClick={() => setCsvInspectorVisible(!csvInspectorVisible)}
-                style={{
-                  padding: "6px 8px",
-                  background: csvInspectorVisible ? "#1A73E8" : "rgba(255,255,255,0.06)",
-                  color: csvInspectorVisible ? "#fff" : "rgba(255,255,255,0.5)",
-                  border: "1px solid",
-                  borderColor: csvInspectorVisible ? "#1A73E8" : "rgba(255,255,255,0.12)",
-                  borderRadius: "4px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
+                style={toggleButtonStyle(csvInspectorVisible)}
               >
-                {csvInspectorVisible ? "Hide CSV Inspector" : "Show CSV Inspector"}
+                {csvInspectorVisible ? "Hide CSV inspector" : "Show CSV inspector"}
               </button>
               {csvInspectorVisible && <CSVInspectorPanel raw={csvRawData} />}
             </div>
           )}
 
           <div className="glass-panel rounded-xl p-4 flex flex-col gap-3">
-            <div className="flex justify-between items-center border-b border-white/5 pb-2">
-              <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-                <Layers size={13} className="text-white/60" /> SIZE-CLASS BREAKDOWN
+            <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-2.5">
+              <h2 className="text-[13px] font-semibold tracking-tight text-[var(--eef-text)] flex items-center gap-2">
+                <Layers size={13} className="text-[var(--eef-accent)]" />Size classes
               </h2>
-              <span className="text-[10px] font-mono text-white/40 font-bold">PICO_NANO_MICRO</span>
+              <span className="text-[11px] text-[var(--eef-text-3)]">Pico · nano · micro</span>
             </div>
             <button
               onClick={() => setSizeClassVisible(!sizeClassVisible)}
-              style={{
-                padding: "6px 8px",
-                background: sizeClassVisible ? "#1A73E8" : "rgba(255,255,255,0.06)",
-                color: sizeClassVisible ? "#fff" : "rgba(255,255,255,0.5)",
-                border: "1px solid",
-                borderColor: sizeClassVisible ? "#1A73E8" : "rgba(255,255,255,0.12)",
-                borderRadius: "4px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
+              style={toggleButtonStyle(sizeClassVisible)}
             >
-              {sizeClassVisible ? "Hide Size-Class Breakdown" : "Show Size-Class Breakdown"}
+              {sizeClassVisible ? "Hide size classes" : "Show size classes"}
             </button>
             {sizeClassVisible && <SizeClassPanel activeDataCube={activeDataCube} />}
           </div>
         </div>
       </main>
 
-      {/* ── COCOS COCKPIT UNDERGUARD FOOTER ── */}
-      <footer className="h-[28px] border-t border-white/5 bg-[#030307] text-[10px] text-white/25 font-mono flex items-center justify-between px-4 select-none">
+      {/* ── Footer ── */}
+      <footer className="h-[28px] border-t border-[var(--eef-border)] bg-[var(--eef-surface)] backdrop-blur-md text-[11px] text-[var(--eef-text-3)] flex items-center justify-between px-4 select-none">
         <div>
-          <span>EEF PIPELINE ENGINE · CLIENT-SIDE SPECTRAL RECONSTRUCTION CORE</span>
+          <span>EEF · client-side ocean-colour reconstruction</span>
         </div>
-        <div className="flex gap-4">
-          <span>SYSTEM MODE: ACTIVE MATRIX</span>
+        <div className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full eef-live-dot" style={{ background: "var(--eef-ok)" }} />
+          <span>{isStreaming ? "Live" : "Paused"}</span>
         </div>
       </footer>
 
