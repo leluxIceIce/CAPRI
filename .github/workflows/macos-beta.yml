@@ -9,6 +9,11 @@ name: Build macOS beta (.dmg)
 on:
   workflow_dispatch: {}
   push:
+    branches:
+      # Temporary: lets us produce + size-check the first beta build from this
+      # feature branch before it merges to main (where workflow_dispatch lives).
+      # Remove once merged.
+      - claude/macos-dmg-packaging-mvp-2lur2e
     tags:
       - "v*"
 
