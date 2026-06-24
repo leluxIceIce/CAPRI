@@ -495,7 +495,9 @@ function ThreeViewportInner(
         if (lctx) {
           // Light frosted chip with a calm slate hairline, so the label reads as a
           // crisp dark-on-light tag on the light scene (matches the app's glass UI).
-          lctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+          // Near-opaque so the chip fully occludes the busy translucent terrain
+          // layers behind it and the label stays legible.
+          lctx.fillStyle = "rgba(255, 255, 255, 0.96)";
           lctx.roundRect(0, 0, 192, 40, 6);
           lctx.fill();
           lctx.lineWidth = 1.5;
@@ -519,7 +521,7 @@ function ThreeViewportInner(
         const labelMat = new THREE.SpriteMaterial({
           map: labelTex,
           transparent: true,
-          opacity: 0.9,
+          opacity: 1,
           depthTest: false
         });
         const labelSprite = new THREE.Sprite(labelMat);
