@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Frosted light squircle background -->
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#F4F7FB"/>
+      <stop offset="1" stop-color="#E7EEF8"/>
+    </linearGradient>
+    <!-- Cobalt band gradients, light (top) -> deep (bottom) -->
+    <linearGradient id="b1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9CC0F5"/><stop offset="1" stop-color="#7FA9EF"/>
+    </linearGradient>
+    <linearGradient id="b2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6FA0F0"/><stop offset="1" stop-color="#4F84E6"/>
+    </linearGradient>
+    <linearGradient id="b3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3F71D8"/><stop offset="1" stop-color="#2E6BE6"/>
+    </linearGradient>
+    <linearGradient id="b4" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2455B8"/><stop offset="1" stop-color="#1B408C"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="0.6" stop-color="#EAF1FC"/><stop offset="1" stop-color="#CFE0F7"/>
+    </radialGradient>
+    <clipPath id="squircle">
+      <rect x="80" y="80" width="864" height="864" rx="196" ry="196"/>
+    </clipPath>
+  </defs>
+
+  <!-- tile -->
+  <rect x="80" y="80" width="864" height="864" rx="196" ry="196" fill="url(#bg)"/>
+
+  <g clip-path="url(#squircle)">
+    <!-- soft remote-sensing sun / satellite source, upper area -->
+    <circle cx="690" cy="300" r="92" fill="url(#sun)"/>
+    <circle cx="690" cy="300" r="92" fill="none" stroke="#2E6BE6" stroke-opacity="0.16" stroke-width="6"/>
+
+    <!-- stacked spectral / terrain bands (the app's signature) -->
+    <!-- band 1 (lightest, top) -->
+    <path fill="url(#b1)" d="M 60 470
+      C 230 408, 360 530, 512 478
+      C 664 426, 800 540, 964 478
+      L 964 560 L 60 560 Z"/>
+    <!-- band 2 -->
+    <path fill="url(#b2)" d="M 60 560
+      C 230 502, 372 620, 512 568
+      C 652 516, 800 628, 964 566
+      L 964 652 L 60 652 Z"/>
+    <!-- band 3 (accent cobalt) -->
+    <path fill="url(#b3)" d="M 60 652
+      C 240 596, 372 710, 512 660
+      C 652 610, 792 720, 964 658
+      L 964 748 L 60 748 Z"/>
+    <!-- band 4 (deepest) fills to bottom -->
+    <path fill="url(#b4)" d="M 60 748
+      C 240 694, 372 804, 512 754
+      C 652 704, 792 812, 964 750
+      L 964 980 L 60 980 Z"/>
+
+    <!-- thin light crest highlights for the lucid-glass feel -->
+    <path fill="none" stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="5" stroke-linecap="round"
+      d="M 90 470 C 250 410, 360 528, 512 478 C 664 428, 800 538, 950 478"/>
+    <path fill="none" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="4" stroke-linecap="round"
+      d="M 90 652 C 250 598, 372 708, 512 660 C 652 612, 792 718, 950 658"/>
+  </g>
+
+  <!-- lucid-glass hairline edge -->
+  <rect x="80" y="80" width="864" height="864" rx="196" ry="196" fill="none" stroke="#1B2A44" stroke-opacity="0.10" stroke-width="3"/>
+  <rect x="83" y="83" width="858" height="858" rx="193" ry="193" fill="none" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="2"/>
+</svg>
