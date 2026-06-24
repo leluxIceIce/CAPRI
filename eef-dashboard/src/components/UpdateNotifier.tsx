@@ -42,22 +42,22 @@ export const UpdateNotifier = () => {
   if (status.state === "error") return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-xs rounded-lg border border-white/10 bg-[#0a0a12]/95 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] px-4 py-3 text-xs font-mono text-white/70">
+    <div className="glass-panel fixed bottom-4 right-4 z-50 max-w-xs rounded-xl px-4 py-3 text-xs text-[var(--eef-text-2)]">
       {status.state === "available" && (
         <div className="flex items-center gap-2">
-          <Download size={14} className="text-white/50 animate-pulse" />
-          <span>Update {status.version} found — downloading…</span>
+          <Download size={14} className="text-[var(--eef-accent)] animate-pulse" />
+          <span>Update <span className="tnum text-[var(--eef-text)]">{status.version}</span> found — downloading…</span>
         </div>
       )}
       {status.state === "downloading" && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <Download size={14} className="text-white/50" />
-            <span>Downloading update… {status.percent.toFixed(0)}%</span>
+            <Download size={14} className="text-[var(--eef-accent)]" />
+            <span>Downloading update… <span className="tnum text-[var(--eef-text)]">{status.percent.toFixed(0)}%</span></span>
           </div>
-          <div className="h-1 w-full rounded-full bg-slate-100 overflow-hidden">
+          <div className="h-1 w-full rounded-full bg-[var(--eef-inset)] overflow-hidden">
             <div
-              className="h-full bg-white/70 transition-all"
+              className="h-full bg-[var(--eef-accent)] transition-all"
               style={{ width: `${status.percent}%` }}
             />
           </div>
@@ -66,12 +66,12 @@ export const UpdateNotifier = () => {
       {status.state === "downloaded" && (
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <RefreshCw size={14} className="text-white/50" />
-            <span>v{status.version} ready to install</span>
+            <RefreshCw size={14} className="text-[var(--eef-ok)]" />
+            <span><span className="tnum text-[var(--eef-text)]">v{status.version}</span> ready to install</span>
           </div>
           <button
             onClick={() => window.electronAPI?.quitAndInstall()}
-            className="rounded bg-white text-black px-2 py-1 font-bold hover:bg-white/80 transition-colors"
+            className="rounded-lg bg-[var(--eef-accent)] text-white px-2.5 py-1 font-semibold hover:bg-[var(--eef-accent-hover)] transition-colors"
           >
             Restart
           </button>

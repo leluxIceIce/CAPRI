@@ -160,10 +160,12 @@ function ThreeViewportInner(
     const width = containerRef.current.clientWidth || 600;
     const height = containerRef.current.clientHeight || 450;
 
-    // Create Scene
+    // Create Scene — light canvas to match the redesigned app shell (#EEF2F8).
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x030307);
-    scene.fog = new THREE.Fog(0x030307, 60, 180);
+    scene.background = new THREE.Color(0xEEF2F8);
+    // Soft light fog matching the background so distant geometry fades into the
+    // light canvas instead of darkening. Pushed back so it never muddies the view.
+    scene.fog = new THREE.Fog(0xEEF2F8, 90, 220);
     sceneRef.current = scene;
 
     // Create Camera
@@ -182,37 +184,52 @@ function ThreeViewportInner(
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+    renderer.setClearColor(0xEEF2F8, 1);
 
     // Effect Composer for Bloom (Glassmorphic Perception Layer)
     const renderScene = new RenderPass(scene, camera);
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 1.5, 0.4, 0.85);
-    // Glow must be earned, not ambient (T8.28/T8.29): only genuinely bright
-    // emissive elements (high-dominance root cores) should bloom. A low
-    // threshold here blooms the terrain planes themselves, washing the
-    // default view out to white.
-    bloomPass.threshold = 0.85;
-    bloomPass.strength = 0.45; // Subtle glow reserved for high-dominance/high-certainty structures
-    bloomPass.radius = 0.4;
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.18, 0.4, 0.95);
+    // On a LIGHT background additive bloom blows everything toward white, so it is
+    // kept very restrained: a high luminance threshold means only the genuinely
+    // bright accent elements (hotspot dots, high-dominance root cores) glow faintly.
+    // The terrain planes and labels must stay crisp and readable, never hazed out.
+    bloomPass.threshold = 0.95;
+    bloomPass.strength = 0.18; // Barely-there glow reserved for the brightest accents only
+    bloomPass.radius = 0.3;
 
     const composer = new EffectComposer(renderer);
     composer.addPass(renderScene);
     composer.addPass(bloomPass);
     composerRef.current = composer;
 
-    // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.61);
+    // Lights — rebalanced for a LIGHT scene. A bright hemisphere fill (white sky,
+    // cool light-slate ground bounce) keeps the lit terrain readable against the
+    // light canvas, while a softened key light gives gentle directional shading
+    // without washing the planes out to flat white.
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0xC7D2E2, 0.85);
+    scene.add(hemiLight);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.55);
     dirLight1.position.set(15, 40, 20);
     scene.add(dirLight1);
 
-    const dirLight2 = new THREE.DirectionalLight(0xaaccff, 0.3);
+    const dirLight2 = new THREE.DirectionalLight(0xC9D8F0, 0.22);
     dirLight2.position.set(-20, 20, -10);
     scene.add(dirLight2);
 
-    // Grid Floor
-    const gridHelper = new THREE.GridHelper(32, 32, 0x1a1a2e, 0x0f0f1a);
+    // Grid Floor — calm slate hairlines on the light canvas (dark-on-light),
+    // replacing the old neon-on-dark grid.
+    const gridHelper = new THREE.GridHelper(32, 32, 0x1B2740, 0x8492AD);
+    const gridMat = gridHelper.material as THREE.Material | THREE.Material[];
+    if (Array.isArray(gridMat)) {
+      gridMat.forEach((m) => { m.transparent = true; m.opacity = 0.22; });
+    } else {
+      gridMat.transparent = true;
+      gridMat.opacity = 0.22;
+    }
     gridHelper.position.y = -6;
     scene.add(gridHelper);
 
@@ -476,20 +493,24 @@ function ThreeViewportInner(
         labelCanvas.height = 40;
         const lctx = labelCanvas.getContext("2d");
         if (lctx) {
-          lctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+          // Light frosted chip with a calm slate hairline, so the label reads as a
+          // crisp dark-on-light tag on the light scene (matches the app's glass UI).
+          lctx.fillStyle = "rgba(255, 255, 255, 0.92)";
           lctx.roundRect(0, 0, 192, 40, 6);
           lctx.fill();
           lctx.lineWidth = 1.5;
-          lctx.strokeStyle = metadata.color;
+          lctx.strokeStyle = "rgba(23, 39, 64, 0.18)";
           lctx.stroke();
 
-          lctx.fillStyle = "#0f172a";
+          // Primary deep-slate text (#1B2740)
+          lctx.fillStyle = "#1B2740";
           lctx.font = "bold 15px sans-serif";
           lctx.textAlign = "left";
           lctx.textBaseline = "middle";
           lctx.fillText(varName.replace(/_/g, " "), 12, 20);
 
-          lctx.fillStyle = "rgba(15, 23, 42, 0.6)";
+          // Secondary muted-slate caption (#51607A)
+          lctx.fillStyle = "rgba(81, 96, 122, 0.85)";
           lctx.font = "12px monospace";
           lctx.fillText(metadata.label.length > 15 ? metadata.label.substring(0, 15) + "..." : metadata.label, 52, 20);
         }
@@ -1206,9 +1227,9 @@ function ThreeViewportInner(
 
       const dotGeo = new THREE.SphereGeometry(0.18, 16, 16);
       const dotMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(0xff2d2d),
-        emissive: new THREE.Color(0xff2d2d),
-        emissiveIntensity: 0.8,
+        color: new THREE.Color(0xC8553D),
+        emissive: new THREE.Color(0xC8553D),
+        emissiveIntensity: 0.45,
       });
       const dot = new THREE.Mesh(dotGeo, dotMat);
       dot.position.set(x, overlayY + 0.25, z);
@@ -1219,20 +1240,22 @@ function ThreeViewportInner(
       labelCanvas.height = 56;
       const lctx = labelCanvas.getContext("2d");
       if (lctx) {
-        lctx.fillStyle = "rgba(20, 5, 5, 0.85)";
+        // Light frosted chip with a burnt-red hairline; risk value in the muted
+        // alert red, coordinates in deep slate — readable dark-on-light.
+        lctx.fillStyle = "rgba(255, 255, 255, 0.92)";
         lctx.roundRect(0, 0, 220, 56, 8);
         lctx.fill();
         lctx.lineWidth = 1.5;
-        lctx.strokeStyle = "#ff2d2d";
+        lctx.strokeStyle = "rgba(200, 85, 61, 0.55)";
         lctx.stroke();
 
-        lctx.fillStyle = "#ff8080";
+        lctx.fillStyle = "#C8553D";
         lctx.font = "bold 14px sans-serif";
         lctx.textAlign = "left";
         lctx.textBaseline = "middle";
         lctx.fillText(`RISK ${Math.round(hotspot.meanRisk * 100)}%`, 12, 18);
 
-        lctx.fillStyle = "rgba(255,255,255,0.85)";
+        lctx.fillStyle = "rgba(27, 39, 64, 0.85)";
         lctx.font = "11px monospace";
         const coordText =
           hotspot.lat !== null && hotspot.lon !== null
@@ -1256,7 +1279,7 @@ function ThreeViewportInner(
   return (
     <div ref={containerRef} className="relative w-full h-full min-h-[400px]">
       <canvas ref={canvasRef} className="w-full h-full block touch-none" />
-      <div className="absolute top-4 right-4 text-[10px] font-mono select-none px-2 py-1 border border-white/10 rounded backdrop-blur-md bg-black/40 text-white/50">
+      <div className="absolute top-4 right-4 text-[10px] font-mono select-none px-2 py-1 rounded backdrop-blur-md border border-[var(--eef-border)] bg-[var(--eef-surface-2)] text-[var(--eef-text-3)]">
         GL_VERSION: WebGL 2.0 · Orbit: Mouse/Touch
       </div>
     </div>

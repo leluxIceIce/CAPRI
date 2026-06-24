@@ -76,26 +76,26 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
   }
 
   return (
-    <div className="glass-panel rounded-xl p-4 flex flex-col gap-4 text-white select-none overflow-y-auto">
+    <div className="glass-panel rounded-xl p-4 flex flex-col gap-4 text-[var(--eef-text)] select-none overflow-y-auto">
       {/* Header */}
-      <div className="flex justify-between items-center border-b border-white/5 pb-3">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-          <Search size={13} className="text-white/60" /> PIXEL INSPECTOR
+      <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-3">
+        <h2 className="text-xs font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
+          <Search size={13} className="text-[var(--eef-text-3)]" /> Pixel inspector
         </h2>
         <button
           onClick={() => onChangeState({ ...inspectorState, visible: false })}
-          className="text-white/40 hover:text-white transition-colors"
+          className="text-[var(--eef-text-3)] hover:text-[var(--eef-text)] transition-colors"
         >
           <X size={16} />
         </button>
       </div>
 
       {/* Pixel Location */}
-      <div className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-lg p-2.5">
-        <Grid3x3 size={16} className="text-white/60" />
+      <div className="flex items-center gap-3 glass-well p-2.5">
+        <Grid3x3 size={16} className="text-[var(--eef-text-3)]" />
         <div>
-          <div className="text-[10px] font-mono text-white/40">SELECTED PIXEL</div>
-          <div className="text-sm font-bold text-white">
+          <div className="text-[10px] text-[var(--eef-text-3)]">Selected pixel</div>
+          <div className="tnum text-sm font-semibold text-[var(--eef-text)]">
             [{selectedStats.coord.row}, {selectedStats.coord.col}]
           </div>
         </div>
@@ -103,18 +103,18 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
 
       {/* 1. Raw Values */}
       <div>
-        <h3 className="text-[11px] font-bold uppercase tracking-wider text-white/60 mb-2 flex items-center gap-1.5">
-          <Zap size={12} className="text-white/40" /> MEASURED VALUES
+        <h3 className="text-[11px] font-semibold text-[var(--eef-text-2)] mb-2 flex items-center gap-1.5">
+          <Zap size={12} className="text-[var(--eef-text-3)]" /> Measured values
         </h3>
         <div className="grid grid-cols-2 gap-2">
           {VARS.map((varName) => {
             const value = selectedStats.values[varName];
             const unit = VARIABLE_METADATA[varName].unit;
             return (
-              <div key={varName} className="bg-white/5 border border-white/8 rounded p-2 text-[9px]">
-                <div className="text-white/40 font-mono">{varName}</div>
-                <div className="text-white font-bold">{value.toFixed(4)}</div>
-                <div className="text-white/40 text-[8px]">{unit}</div>
+              <div key={varName} className="glass-well p-2 text-[9px]">
+                <div className="text-[var(--eef-text-3)]">{varName}</div>
+                <div className="tnum text-[var(--eef-text)] font-semibold">{value.toFixed(4)}</div>
+                <div className="text-[var(--eef-text-3)] text-[8px]">{unit}</div>
               </div>
             );
           })}
@@ -123,10 +123,10 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
 
       {/* 2. Normalized (Z-scored) Values */}
       <div>
-        <h3 className="text-[11px] font-bold uppercase tracking-wider text-white/60 mb-2 flex items-center gap-1.5">
-          <TrendingUp size={12} className="text-white/40" /> Z-SCORED VALUES
+        <h3 className="text-[11px] font-semibold text-[var(--eef-text-2)] mb-2 flex items-center gap-1.5">
+          <TrendingUp size={12} className="text-[var(--eef-text-3)]" /> Z-scored values
         </h3>
-        <div className="bg-white/5 border border-white/8 rounded-lg p-3">
+        <div className="glass-well p-3">
           <div className="grid grid-cols-3 gap-2">
             {VARS.map((varName) => {
               const normalized = selectedStats.normalizedValues[varName];
@@ -134,9 +134,8 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
               return (
                 <div
                   key={varName}
-                  className={`text-center text-[9px] font-mono font-bold ${
-                    isHigher ? "text-red-300" : "text-blue-300"
-                  }`}
+                  className="tnum text-center text-[9px] font-semibold"
+                  style={{ color: isHigher ? "var(--eef-alert)" : "var(--eef-accent)" }}
                 >
                   <div>{varName}</div>
                   <div>{normalized.toFixed(2)}</div>
@@ -148,35 +147,35 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
       </div>
 
       {/* 3. PCA Embedding Distance */}
-      <div className="bg-white/5 border border-white/8 rounded-lg p-3">
-        <div className="text-[10px] font-mono text-white/40 mb-1">PCA DISTANCE FROM MEAN</div>
-        <div className="text-lg font-bold text-white">{selectedStats.pcaDistance.toFixed(3)}</div>
-        <div className="text-[9px] text-white/40 mt-1">
+      <div className="glass-well p-3">
+        <div className="text-[10px] text-[var(--eef-text-3)] mb-1">PCA distance from mean</div>
+        <div className="tnum text-lg font-semibold text-[var(--eef-text)]">{selectedStats.pcaDistance.toFixed(3)}</div>
+        <div className="text-[9px] text-[var(--eef-text-3)] mt-1">
           Euclidean distance in principal component space (9D)
         </div>
       </div>
 
       {/* 4. Neighborhood Metrics */}
       <div>
-        <h3 className="text-[11px] font-bold uppercase tracking-wider text-white/60 mb-2">
-          LOCAL NEIGHBORHOOD (3×3)
+        <h3 className="text-[11px] font-semibold text-[var(--eef-text-2)] mb-2">
+          Local neighborhood (3×3)
         </h3>
         <div className="space-y-2">
-          <div className="bg-white/5 border border-white/8 rounded-lg p-2.5">
-            <div className="text-[10px] font-mono text-white/40 mb-1">LOCAL MEAN</div>
+          <div className="glass-well p-2.5">
+            <div className="text-[10px] text-[var(--eef-text-3)] mb-1">Local mean</div>
             <div className="grid grid-cols-3 gap-1">
               {VARS.map((varName) => (
-                <div key={varName} className="text-[8px] text-white/60 font-mono">
+                <div key={varName} className="tnum text-[8px] text-[var(--eef-text-2)]">
                   {selectedStats.neighborhoodMetrics.localMean[varName].toFixed(2)}
                 </div>
               ))}
             </div>
           </div>
-          <div className="bg-white/5 border border-white/8 rounded-lg p-2.5">
-            <div className="text-[10px] font-mono text-white/40 mb-1">LOCAL STD DEV</div>
+          <div className="glass-well p-2.5">
+            <div className="text-[10px] text-[var(--eef-text-3)] mb-1">Local std dev</div>
             <div className="grid grid-cols-3 gap-1">
               {VARS.map((varName) => (
-                <div key={varName} className="text-[8px] text-white/60 font-mono">
+                <div key={varName} className="tnum text-[8px] text-[var(--eef-text-2)]">
                   {selectedStats.neighborhoodMetrics.localStd[varName].toFixed(3)}
                 </div>
               ))}
@@ -189,8 +188,8 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
       {variableDependency && (
         <div>
           <div className="flex justify-between items-center mb-2">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-white/60">
-              VARIABLE DEPENDENCIES
+            <h3 className="text-[11px] font-semibold text-[var(--eef-text-2)]">
+              Variable dependencies
             </h3>
             <select
               value={inspectorState.selectedVariable || "CHL"}
@@ -200,7 +199,7 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
                   selectedVariable: e.target.value as VariableName
                 })
               }
-              className="bg-white/5 border border-white/8 rounded px-2 py-1 text-[9px] text-white cursor-pointer hover:bg-white/8 transition-colors"
+              className="bg-[var(--eef-surface-2)] border border-[var(--eef-border)] rounded px-2 py-1 text-[9px] text-[var(--eef-text)] cursor-pointer hover:border-[var(--eef-border-strong)] transition-colors"
             >
               {VARS.map((v) => (
                 <option key={v} value={v}>
@@ -209,18 +208,17 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
               ))}
             </select>
           </div>
-          <div className="bg-white/5 border border-white/8 rounded-lg p-2.5 space-y-1">
+          <div className="glass-well p-2.5 space-y-1">
             {VARS.map((varName) => {
               const corr = variableDependency.correlations[varName];
               const corrNum = typeof corr === "number" ? corr : parseFloat(corr as unknown as string);
               const isPositive = corrNum > 0;
               return (
                 <div key={varName} className="flex justify-between items-center text-[9px]">
-                  <span className="text-white/60 font-mono">{varName}</span>
+                  <span className="text-[var(--eef-text-2)]">{varName}</span>
                   <span
-                    className={`font-bold font-mono ${
-                      isPositive ? "text-orange-300" : "text-cyan-300"
-                    }`}
+                    className="tnum font-semibold"
+                    style={{ color: isPositive ? "var(--eef-warn)" : "var(--eef-ok)" }}
                   >
                     {corrNum.toFixed(2)}
                   </span>
@@ -234,14 +232,14 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
       {/* 6. Similar Pixels */}
       {similarPixels.length > 0 && (
         <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-white/60 mb-2">
-            MOST SIMILAR PIXELS (Top {Math.min(5, similarPixels.length)})
+          <h3 className="text-[11px] font-semibold text-[var(--eef-text-2)] mb-2">
+            Most similar pixels (top {Math.min(5, similarPixels.length)})
           </h3>
           <div className="space-y-1.5">
             {similarPixels.map((pixel) => (
               <div
                 key={`${pixel.coord.row}_${pixel.coord.col}`}
-                className="bg-white/5 border border-white/8 rounded-lg p-2.5 hover:bg-white/8 transition-colors cursor-pointer"
+                className="glass-well p-2.5 hover:bg-[var(--eef-surface-2)] transition-colors cursor-pointer"
                 onClick={() =>
                   onChangeState({
                     ...inspectorState,
@@ -250,17 +248,18 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
                 }
               >
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-[10px] font-bold text-white">
+                  <span className="tnum text-[10px] font-semibold text-[var(--eef-text)]">
                     Rank #{pixel.rank}: [{pixel.coord.row}, {pixel.coord.col}]
                   </span>
-                  <span className="text-[9px] font-mono text-white/40">
+                  <span className="tnum text-[9px] text-[var(--eef-text-3)]">
                     dist={pixel.similarity.toFixed(3)}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-1">
                   {VARS.slice(0, 3).map((varName) => (
-                    <div key={varName} className="text-[8px] text-white/60">
-                      <span className="text-white/40">{varName}:</span> {pixel.values[varName].toFixed(2)}
+                    <div key={varName} className="text-[8px] text-[var(--eef-text-2)]">
+                      <span className="text-[var(--eef-text-3)]">{varName}:</span>{" "}
+                      <span className="tnum">{pixel.values[varName].toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
@@ -271,8 +270,8 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
       )}
 
       {/* Help text */}
-      <div className="bg-blue/5 border border-blue/20 rounded-lg p-2.5 text-[9px] text-white/40 font-mono">
-        <Info size={12} className="inline mr-1" /> Click any pixel in the 3D grid to inspect its properties
+      <div className="rounded-lg p-2.5 text-[9px] text-[var(--eef-text-2)]" style={{ background: "var(--eef-accent-soft)", border: "1px solid var(--eef-border)" }}>
+        <Info size={12} className="inline mr-1 text-[var(--eef-accent)]" /> Click any pixel in the 3D grid to inspect its properties
       </div>
     </div>
   );

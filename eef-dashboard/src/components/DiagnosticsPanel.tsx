@@ -37,23 +37,23 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
   // Translate entropy to risk levels
   const entropyPercent = (analysis.transitionEntropy * 100).toFixed(1);
 
-  // Return conditional styling for regime badge - updated to pristine monochromatic frosted glass
+  // Return conditional styling for regime badge — calm frosted glass well
   const getRegimeColor = (id: number) => {
-    return "text-white border-white/20 bg-white/5 shadow-[0_0_12px_rgba(255,255,255,0.03)]";
+    return "text-[var(--eef-text)] border-[var(--eef-border)] bg-[var(--eef-inset)]";
   };
 
   return (
-    <div className="@container flex flex-col gap-4 text-white select-none h-full overflow-y-auto pr-1">
-      
+    <div className="@container flex flex-col gap-4 text-[var(--eef-text)] select-none h-full overflow-y-auto pr-1">
+
       {/* 1. Classification & GMM Posterior probabilities */}
       <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2.5">
         <div className="flex justify-between items-center">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1.5">
-            <Radio size={13} className="text-white/60 pulse-teal-glow rounded-full p-0.5" /> REGIME CLASSIFICATION
+          <span className="text-[12px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
+            <Radio size={13} className="text-[var(--eef-accent)] eef-live-dot rounded-full p-0.5" /> Regime classification
           </span>
-          <span className="text-[9px] font-mono text-white/40">heuristic demo</span>
+          <span className="text-[9px] text-[var(--eef-text-3)]">heuristic demo</span>
         </div>
-        <p className="text-[9px] text-white/30 leading-snug font-mono -mt-1">
+        <p className="text-[9px] text-[var(--eef-text-3)] leading-snug -mt-1">
           Regime score, entropy, and probability mixtures below are computed from
           hand-tuned heuristics for demonstrating the encoding pipeline — not
           outputs of a trained or peer-reviewed model.
@@ -61,33 +61,31 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
 
         {/* Dynamic Big classification badge */}
         <div className={`border rounded-lg p-2.5 flex items-center gap-2.5 h-14 ${getRegimeColor(analysis.regimeId)}`}>
-          <Waves size={24} className="stroke-[1.5] text-white/80" />
+          <Waves size={24} className="stroke-[1.5] text-[var(--eef-accent)]" />
           <div>
-            <div className="text-[10px] font-mono uppercase tracking-widest text-white/50">Primary Ocean Regime</div>
-            <div className="text-sm font-extrabold tracking-tight">{analysis.regime}</div>
+            <div className="text-[10px] text-[var(--eef-text-3)]">Primary ocean regime</div>
+            <div className="text-sm font-semibold tracking-tight text-[var(--eef-text)]">{analysis.regime}</div>
           </div>
         </div>
 
         {/* GMM Progress Bars */}
-        <div className="flex flex-col gap-1.5 mt-1 border-t border-white/5 pt-2">
-          <span className="text-[10px] font-bold font-mono text-white/40 block">GMM POSTERIOR PROBABILITY MIXTURES:</span>
-          
+        <div className="flex flex-col gap-1.5 mt-1 border-t border-[var(--eef-divider)] pt-2">
+          <span className="text-[10px] font-medium text-[var(--eef-text-3)] block">GMM posterior probability mixtures</span>
+
           {Object.entries(analysis.probabilities).map(([key, prob]) => {
             const numProb = prob as number;
             const widthPct = `${(numProb * 100).toFixed(1)}%`;
-            const colorClass = "bg-white";
-            const textStyle = "text-white/80";
 
             return (
               <div key={key} className="flex flex-col gap-1">
-                <div className="flex justify-between items-center text-[11px] font-mono">
-                  <span className={textStyle}>{key} Upwelling Profile</span>
-                  <span className="font-bold">{widthPct}</span>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-[var(--eef-text-2)]">{key} upwelling profile</span>
+                  <span className="tnum font-semibold text-[var(--eef-text)]">{widthPct}</span>
                 </div>
                 {/* Horizontal progress bar */}
-                <div className="h-1 bg-white/5 rounded-full overflow-hidden w-full">
+                <div className="h-1 bg-[var(--eef-inset)] rounded-full overflow-hidden w-full">
                   <div
-                    className={`h-full rounded-full transition-all duration-300 ${colorClass}`}
+                    className="h-full rounded-full transition-all duration-300 bg-[var(--eef-accent)]"
                     style={{ width: widthPct }}
                   />
                 </div>
@@ -103,31 +101,31 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
         {/* Entropy / Tipping point Risk Gauge */}
         <div className="glass-panel rounded-lg p-3.5 flex flex-col justify-between">
           <div>
-            <span className="text-[10px] font-bold font-mono text-white/40 block leading-tight uppercase tracking-wider">Tipping point Entropy</span>
-            <div className="text-xl font-mono font-black mt-2 text-white/95">{entropyPercent}%</div>
+            <span className="text-[10px] font-medium text-[var(--eef-text-3)] block leading-tight">Tipping point entropy</span>
+            <div className="text-xl tnum font-semibold mt-2 text-[var(--eef-text)]">{entropyPercent}%</div>
           </div>
-          
+
           <div className="mt-2.5">
-            <span className="text-[9px] font-mono text-white/40 block">TRANSITION RISK LEVEL:</span>
+            <span className="text-[9px] text-[var(--eef-text-3)] block">Transition risk level</span>
             {analysis.transitionRisk === "High (State Boundary)" ? (
-              <span className="inline-flex items-center gap-1 font-bold text-[10px] text-white font-mono mt-0.5">
-                <AlertTriangle size={11} className="text-white fill-white/15" /> STATE BOUNDARY
+              <span className="inline-flex items-center gap-1 font-semibold text-[10px] text-[var(--eef-alert)] mt-0.5">
+                <AlertTriangle size={11} className="text-[var(--eef-alert)]" /> State boundary
               </span>
             ) : analysis.transitionRisk === "Moderate (Mixing)" ? (
-              <span className="inline-flex items-center gap-1 font-bold text-[10px] text-white/90 font-mono mt-0.5">
-                <AlertTriangle size={11} className="text-white/80 fill-white/10" /> TURBID FRONTIER
+              <span className="inline-flex items-center gap-1 font-semibold text-[10px] text-[var(--eef-warn)] mt-0.5">
+                <AlertTriangle size={11} className="text-[var(--eef-warn)]" /> Turbid frontier
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 font-bold text-[10px] text-white/80 font-mono mt-0.5">
-                <ShieldCheck size={11} className="text-white/80" /> STABLE CORE
+              <span className="inline-flex items-center gap-1 font-semibold text-[10px] text-[var(--eef-ok)] mt-0.5">
+                <ShieldCheck size={11} className="text-[var(--eef-ok)]" /> Stable core
               </span>
             )}
           </div>
-          
+
           {/* Subtle percentage tracker */}
-          <div className="h-1 bg-white/5 rounded-full overflow-hidden mt-2">
+          <div className="h-1 bg-[var(--eef-inset)] rounded-full overflow-hidden mt-2">
             <div
-              className="h-full rounded-full transition-all duration-500 bg-white"
+              className="h-full rounded-full transition-all duration-500 bg-[var(--eef-accent)]"
               style={{ width: `${Math.max(5, analysis.transitionEntropy * 100)}%` }}
             />
           </div>
@@ -136,22 +134,22 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
         {/* Structural Boundary Front indicator */}
         <div className="glass-panel rounded-lg p-3.5 flex flex-col justify-between">
           <div>
-            <span className="text-[10px] font-bold font-mono text-white/40 block leading-tight uppercase tracking-wider">Spatial Front Index</span>
-            <div className="text-xl font-mono font-black mt-2 text-white/95">
-              {analysis.isBoundaryZone ? "TRUE" : "FALSE"}
+            <span className="text-[10px] font-medium text-[var(--eef-text-3)] block leading-tight">Spatial front index</span>
+            <div className="text-xl tnum font-semibold mt-2 text-[var(--eef-text)]">
+              {analysis.isBoundaryZone ? "True" : "False"}
             </div>
           </div>
 
           <div className="mt-2.5">
-            <span className="text-[9px] font-mono text-white/40 block">HYDRODYNAMIC SHIFT:</span>
-            <span className="text-[10px] font-mono font-bold text-white/90 mt-0.5 block truncate">
+            <span className="text-[9px] text-[var(--eef-text-3)] block">Hydrodynamic shift</span>
+            <span className="text-[10px] tnum font-semibold text-[var(--eef-text-2)] mt-0.5 block truncate">
               dx={dataCube.stats.CHL.std.toFixed(2)}σ · TSM={dataCube.stats.TSM.std.toFixed(2)}σ
             </span>
           </div>
 
           {/* Quick explainer */}
-          <span className="text-[9px] text-white/30 leading-snug font-mono mt-2 block">
-            {analysis.isBoundaryZone 
+          <span className="text-[9px] text-[var(--eef-text-3)] leading-snug mt-2 block">
+            {analysis.isBoundaryZone
               ? "High pixel spatial gradients confirm a fluid shear front."
               : "Low local gradient shifts. Core uniform region."
             }
@@ -162,48 +160,48 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
 
       {/* 3. Novelty Detection and Signatures */}
       <div className={`glass-panel rounded-lg p-3.5 transition-all flex flex-col gap-2 ${
-        analysis.isNovel ? "border-white/30 bg-white/10" : ""
+        analysis.isNovel ? "border-[var(--eef-alert)] bg-[var(--eef-alert-soft)]" : ""
       }`}>
         <div className="flex justify-between items-center">
-          <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-white/90">
-            <Compass size={13} className={analysis.isNovel ? "pulse-teal-glow rounded-full p-0.5" : ""} /> {analysis.isNovel ? "CRITICAL ANOMALY ALERT" : "STATE SYSTEM INTEGRITY"}
+          <span className="text-[12px] font-semibold flex items-center gap-1.5 text-[var(--eef-text)]">
+            <Compass size={13} className={analysis.isNovel ? "text-[var(--eef-alert)] eef-live-dot rounded-full p-0.5" : "text-[var(--eef-text-3)]"} /> {analysis.isNovel ? "Critical anomaly alert" : "State system integrity"}
           </span>
-          <span className="text-[9px] font-mono text-white/40">heuristic p-value</span>
+          <span className="text-[9px] text-[var(--eef-text-3)]">heuristic p-value</span>
         </div>
-        <p className="text-[9px] text-white/30 leading-snug font-mono">
+        <p className="text-[9px] text-[var(--eef-text-3)] leading-snug">
           Misfit distance and p-value are illustrative heuristics comparing the
           current frame to a synthetic baseline — not a validated statistical test.
         </p>
 
         <div className="flex justify-between items-baseline mt-1 gap-2">
           <div>
-            <div className="text-[9px] font-mono uppercase tracking-widest text-white/50">Misfit Distance Score</div>
-            <div className="text-lg font-mono font-bold text-white/95">{analysis.stateNoveltyScore.toFixed(3)}</div>
+            <div className="text-[9px] text-[var(--eef-text-3)]">Misfit distance score</div>
+            <div className="text-lg tnum font-semibold text-[var(--eef-text)]">{analysis.stateNoveltyScore.toFixed(3)}</div>
           </div>
 
           <div className="text-right">
-            <div className="text-[9px] font-mono uppercase tracking-widest text-white/50">Baseline Significance</div>
-            <div className="text-[11px] font-mono font-extrabold text-white">p={analysis.stateNoveltyPValue.toFixed(4)}</div>
+            <div className="text-[9px] text-[var(--eef-text-3)]">Baseline significance</div>
+            <div className="text-[11px] tnum font-semibold text-[var(--eef-text)]">p={analysis.stateNoveltyPValue.toFixed(4)}</div>
           </div>
         </div>
 
         {analysis.isNovel ? (
-          <div className="text-[10.5px] border border-white/20 bg-white/5 text-white/90 rounded p-2.5 leading-relaxed font-mono mt-1">
-            ▫ <strong>HIGH SYSTEM NOVELTY:</strong> Current geospatial signature exceeds 95% threshold of historical baseline archives. Anomaly status is active.
+          <div className="text-[10.5px] border border-[var(--eef-alert)] bg-[var(--eef-alert-soft)] text-[var(--eef-text)] rounded p-2.5 leading-relaxed mt-1">
+            <strong className="text-[var(--eef-alert)]">High system novelty:</strong> Current geospatial signature exceeds 95% threshold of historical baseline archives. Anomaly status is active.
           </div>
         ) : (
-          <div className="text-[10px] bg-white/3 border border-white/5 text-white/80 rounded p-2 leading-normal font-mono text-center">
-            ✔ State resides safely within historical margins (Confidence {((1.0 - analysis.stateNoveltyPValue) * 100).toFixed(0)}%)
+          <div className="text-[10px] bg-[var(--eef-ok-soft)] border border-[var(--eef-border)] text-[var(--eef-text-2)] rounded p-2 leading-normal text-center">
+            State resides safely within historical margins (confidence {((1.0 - analysis.stateNoveltyPValue) * 100).toFixed(0)}%)
           </div>
         )}
       </div>
 
       {/* 4. Narrative justification explanation */}
       <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-1.5">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1.5">
-          <Info size={13} className="text-white/60" /> SCIENTIFIC EXPLORER BRIEFING
+        <span className="text-[12px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
+          <Info size={13} className="text-[var(--eef-text-3)]" /> Scientific explorer briefing
         </span>
-        <p className="text-[10.5px] text-white/70 leading-relaxed font-mono border border-white/5 bg-black/10 rounded p-2 select-text selection:bg-white selection:text-black">
+        <p className="text-[10.5px] text-[var(--eef-text-2)] leading-relaxed glass-well p-2 select-text">
           {analysis.scientificJustification}
         </p>
       </div>
@@ -212,23 +210,23 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
       {rootAnalysis && rootState && onChangeRootState && (
         <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2">
           <div className="flex justify-between items-center">
-            <h3 className="text-[11px] font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-              <Compass size={11} className="text-white/50" /> EIGENVALUE ROOT SYSTEM
+            <h3 className="text-[12px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
+              <Compass size={11} className="text-[var(--eef-text-3)]" /> Eigenvalue root system
             </h3>
             <button
               onClick={() => onChangeRootState({ ...rootState, visible: !rootState.visible })}
-              className={`text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded border transition-colors ${
+              className={`text-[9px] font-medium px-1.5 py-0.5 rounded border transition-colors ${
                 rootState.visible
-                  ? "bg-white/15 border-white/30 text-white"
-                  : "bg-transparent border-white/10 text-white/40"
+                  ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent)] text-[var(--eef-accent)]"
+                  : "bg-transparent border-[var(--eef-border)] text-[var(--eef-text-3)]"
               }`}
             >
-              {rootState.visible ? "ON" : "OFF"}
+              {rootState.visible ? "On" : "Off"}
             </button>
           </div>
 
           <div className="flex flex-col gap-1">
-            <span className="text-[9px] font-mono text-white/40 uppercase">Eigenvalue Spectrum (λ₁…λ₉)</span>
+            <span className="text-[9px] text-[var(--eef-text-3)]">Eigenvalue spectrum (λ₁…λ₉)</span>
             <div className="flex gap-[2px] h-5 items-end">
               {Array.from(rootAnalysis.eigenvalues, (val: number, i: number) => ({ val, i })).map(({ val, i }) => {
                 const maxVal = rootAnalysis.eigenvalues[0] || 1;
@@ -239,30 +237,30 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
                     className="flex-1 rounded-t-sm transition-all"
                     style={{
                       height: `${h}%`,
-                      backgroundColor: i < 3 ? `rgba(255,255,255,${0.6 - i * 0.15})` : "rgba(255,255,255,0.12)",
+                      backgroundColor: i < 3 ? `rgba(46,107,230,${0.7 - i * 0.18})` : "rgba(23,39,64,0.12)",
                     }}
                     title={`λ${i + 1} = ${val.toFixed(3)} (${VARS[i]})`}
                   />
                 );
               })}
             </div>
-            <span className="text-[9px] font-mono text-white/50">
+            <span className="text-[9px] text-[var(--eef-text-3)]">
               PC1-3 capture {(rootAnalysis.varianceExplained[2] * 100).toFixed(0)}% of variance
             </span>
           </div>
 
           <div className="flex flex-col gap-1">
-            <span className="text-[9px] font-mono text-white/40 uppercase">Root Clusters</span>
+            <span className="text-[9px] text-[var(--eef-text-3)]">Root clusters</span>
             <div className="flex gap-1 flex-wrap">
               {(() => {
                 const counts = new Array(rootAnalysis.clusterCount).fill(0);
                 rootAnalysis.clusterLabels.forEach(l => { if (l < counts.length) counts[l]++; });
-                const palette = ["#d95a40","#4dbe8c","#736ad9","#e5a633","#8ccce6","#cc73b3","#5a993d","#f28080"];
+                const palette = ["#C8553D","#1FA38A","#736AD9","#C2843A","#5A8BC2","#B36AA0","#5A993D","#D97A6A"];
                 return counts.map((c, i) => (
                   <span
                     key={i}
-                    className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-white/10"
-                    style={{ backgroundColor: palette[i % palette.length] + "30", color: palette[i % palette.length] }}
+                    className="text-[9px] tnum px-1.5 py-0.5 rounded border border-[var(--eef-border)]"
+                    style={{ backgroundColor: palette[i % palette.length] + "22", color: palette[i % palette.length] }}
                   >
                     C{i + 1}: {c}
                   </span>
@@ -271,34 +269,34 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-[10px] font-mono">
-            <span className="text-white/40">Depth</span>
+          <div className="flex items-center gap-2 text-[10px]">
+            <span className="text-[var(--eef-text-3)]">Depth</span>
             <input
               type="range" min="1" max="4" step="1"
               value={rootState.depth}
               onChange={(e) => onChangeRootState({ ...rootState, depth: parseInt(e.target.value) })}
-              className="flex-1 h-0.5 bg-white/15 rounded appearance-none cursor-pointer accent-white"
+              className="flex-1 h-0.5 bg-[var(--eef-border-strong)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
             />
-            <span className="text-white/60 w-4 text-right">{rootState.depth}</span>
+            <span className="text-[var(--eef-text-2)] tnum w-4 text-right">{rootState.depth}</span>
           </div>
 
-          <div className="flex items-center gap-2 text-[10px] font-mono">
-            <span className="text-white/40">Opacity</span>
+          <div className="flex items-center gap-2 text-[10px]">
+            <span className="text-[var(--eef-text-3)]">Opacity</span>
             <input
               type="range" min="0.1" max="1" step="0.05"
               value={rootState.opacity}
               onChange={(e) => onChangeRootState({ ...rootState, opacity: parseFloat(e.target.value) })}
-              className="flex-1 h-0.5 bg-white/15 rounded appearance-none cursor-pointer accent-white"
+              className="flex-1 h-0.5 bg-[var(--eef-border-strong)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
             />
-            <span className="text-white/60 w-6 text-right">{(rootState.opacity * 100).toFixed(0)}%</span>
+            <span className="text-[var(--eef-text-2)] tnum w-6 text-right">{(rootState.opacity * 100).toFixed(0)}%</span>
           </div>
         </div>
       )}
 
       {/* 5. Layer HUD Quick Toggles & Opacity */}
       <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1.5">
-          <BarChart2 size={13} className="text-white/60" /> STACK VISIBILITY TUNER
+        <span className="text-[12px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
+          <BarChart2 size={13} className="text-[var(--eef-text-3)]" /> Layer visibility
         </span>
 
         <div className="flex flex-col gap-2 mt-1">
@@ -307,13 +305,13 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
             const ls = layerState[key] || { visible: true, opacity: 0.70 };
 
             return (
-              <div key={key} className="flex items-center gap-2 text-xs font-mono select-none">
+              <div key={key} className="flex items-center gap-2 text-xs select-none">
                 {/* Checkbox */}
                 <input
                   type="checkbox"
                   checked={ls.visible}
                   onChange={() => onToggleLayer(key)}
-                  className="w-3.5 h-3.5 text-white bg-black/40 border-white/15 rounded focus:ring-white focus:ring-1 accent-white"
+                  className="w-3.5 h-3.5 bg-[var(--eef-inset)] border-[var(--eef-border)] rounded focus:ring-[var(--eef-accent)] focus:ring-1 accent-[var(--eef-accent)]"
                 />
                 
                 {/* Miniature gradient colormap representation — click to customize */}
@@ -329,8 +327,8 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
                 </div>
                 
                 {/* Name */}
-                <span className="w-12 font-bold ml-1" style={{ color: meta.color }}>{key}</span>
-                
+                <span className="w-12 font-semibold ml-1" style={{ color: meta.color }}>{key}</span>
+
                 {/* Opacity slider */}
                 <input
                   type="range"
@@ -339,10 +337,10 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
                   step="0.05"
                   value={ls.opacity}
                   onChange={(e) => onChangeLayerOpacity(key, parseFloat(e.target.value))}
-                  className="flex-1 h-0.5 bg-white/15 rounded appearance-none cursor-pointer accent-white"
+                  className="flex-1 h-0.5 bg-[var(--eef-border-strong)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
                 />
 
-                <span className="text-[10px] text-white/50 w-6 text-right">{(ls.opacity * 100).toFixed(0)}%</span>
+                <span className="text-[10px] tnum text-[var(--eef-text-3)] w-6 text-right">{(ls.opacity * 100).toFixed(0)}%</span>
               </div>
             );
           })}

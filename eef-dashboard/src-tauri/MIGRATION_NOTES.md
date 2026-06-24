@@ -16,10 +16,17 @@ that result.
 
 ### Done
 
-- **Window shell**: `tauri.conf.json` `app.windows[0]` matches the Electron
-  `BrowserWindow` config exactly — 1440x900, minWidth 1024, minHeight 680,
-  `backgroundColor: #030307` (prevents the white flash on load Electron also
-  guards against).
+- **Window shell**: `tauri.conf.json` `app.windows[0]` mirrors the Electron
+  `BrowserWindow` config — `label: "main"`, 1440x900, minWidth 1024,
+  minHeight 680, `titleBarStyle: "Overlay"` + `hiddenTitle: true` (the
+  `hiddenInset` traffic-light look), and `backgroundColor: #EEF2F8` — the
+  light canvas of the new Lucid Glass UI, so the load flash matches the app
+  background instead of the old near-black `#030307`.
+- **Capabilities**: `src-tauri/capabilities/default.json` grants the main
+  window Tauri's `core:default` permission set. This file is required by
+  Tauri v2 (the hand-built spike scaffold was missing it; the spike didn't
+  trip on it only because the frontend makes no Tauri API calls yet). When
+  the updater is wired, add `updater:default` + `process:default` here.
 - **Identity**: `productName: "EEF Dashboard"`, `identifier: com.eef.dashboard`,
   `version: 0.2.0` — all three match `package.json` / the Electron
   `build.appId`/`productName` exactly, so update channels and OS-level app
@@ -70,17 +77,17 @@ that result.
     automatically; Tauri's updater needs `cargo tauri build` run with
     `TAURI_SIGNING_PRIVATE_KEY` set, or an explicit `tauri-action`-equivalent
     step, to produce the signed manifest).
-- **App icon** — `src-tauri/icons/` is currently populated from a
-  *placeholder* 1024x1024 source (`icon-source.png`/`.svg`, generated with
-  ImageMagick purely to unblock the spike build) run through `cargo tauri
-  icon`. **Electron-builder never had a real icon configured either** (no
-  `mac.icon` was set in `package.json`'s `build` block, so Electron app
-  builds were already running with whatever default Electron/Chromium icon
-  electron-builder falls back to) — so this isn't a regression, but it does
-  mean a real design pass is needed: get an actual EEF Dashboard icon design
-  (1024x1024 source, ideally as a vector/SVG), then re-run `cargo tauri
-  icon path/to/real-icon.png` from `src-tauri/` to regenerate
-  `icons/icon.icns` (and the rest of the set) before any real beta ships.
+- **App icon** — DONE. `src-tauri/icons/` is now generated from a real,
+  on-brand EEF mark: `icon-source.svg` (hand-authored — a frosted light
+  squircle with stacked cobalt spectral/terrain bands and a soft
+  remote-sensing "sun", the app's literal visual signature) rendered to
+  `icon-source.png` (1024x1024, via a Playwright/Chromium rasteriser because
+  ImageMagick's SVG delegate mangled the gradients/clipPath) and run through
+  `cargo tauri icon`. The full desktop set (`icon.icns` 240KB, `icon.ico`,
+  the PNG sizes, Windows logos) is committed; the generated android/ios
+  subdirs were removed (macOS desktop beta only). This replaces both the
+  earlier placeholder AND the old Electron default — Electron-builder never
+  had a real `mac.icon` configured.
 - **Size verification** — the spike's 175MB binary is an unstripped *debug*
   build (`cargo build`, not `cargo tauri build --release`); the actual
   release/bundle size relevant to the Sprint 2 <100MB goal has not been

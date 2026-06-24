@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Core capability for the main EEF Dashboard window. Grants only Tauri's default core permissions (window, webview, event, path, app). The frontend is a self-contained client-side app served over Tauri's asset protocol, so no extra plugin permissions are required for the beta. When the auto-updater is wired in a later phase, add `updater:default` and `process:default` here (see ../MIGRATION_NOTES.md).",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

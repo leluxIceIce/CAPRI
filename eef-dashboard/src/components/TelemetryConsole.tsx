@@ -176,46 +176,49 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
   };
 
   return (
-    <div className="@container flex flex-col gap-4 text-white h-full select-none">
+    <div className="@container flex flex-col gap-4 text-[var(--eef-text)] h-full select-none">
 
       {/* 0. Fisherman Bloom Alert Card (Squad F) — plain-language HAB readout */}
       {bloomSummary && (() => {
         const level = bloomSummary.level;
         const palette = level === "RED"
-          ? { dot: "🔴", title: "BLOOM ALERT — HIGH RISK", border: "border-red-500/40", bg: "bg-red-500/10", text: "text-red-300" }
+          ? { dot: "var(--eef-alert)", title: "Bloom alert — high risk", borderColor: "var(--eef-alert)", bg: "var(--eef-alert-soft)", text: "var(--eef-alert)" }
           : level === "AMBER"
-            ? { dot: "🟡", title: "CAUTION — ELEVATED RISK", border: "border-amber-500/40", bg: "bg-amber-500/10", text: "text-amber-300" }
-            : { dot: "🟢", title: "SAFE FOR FISHING", border: "border-emerald-500/40", bg: "bg-emerald-500/10", text: "text-emerald-300" };
+            ? { dot: "var(--eef-warn)", title: "Caution — elevated risk", borderColor: "var(--eef-warn)", bg: "var(--eef-warn-soft)", text: "var(--eef-warn)" }
+            : { dot: "var(--eef-ok)", title: "Safe for fishing", borderColor: "var(--eef-ok)", bg: "var(--eef-ok-soft)", text: "var(--eef-ok)" };
         const trend = bloomSummary.direction === "growing"
-          ? { arrow: "↑", label: "Growing — worse than last scan", cls: "text-red-300" }
+          ? { arrow: "↑", label: "Growing — worse than last scan", cls: "var(--eef-alert)" }
           : bloomSummary.direction === "retreating"
-            ? { arrow: "↓", label: "Retreating — improving", cls: "text-emerald-300" }
-            : { arrow: "→", label: "Stable", cls: "text-white/60" };
+            ? { arrow: "↓", label: "Retreating — improving", cls: "var(--eef-ok)" }
+            : { arrow: "→", label: "Stable", cls: "var(--eef-text-3)" };
         const driverLabel = VARIABLE_METADATA[bloomSummary.driver]?.label ?? bloomSummary.driver;
         return (
-          <div className={`glass-panel rounded-lg p-3.5 flex flex-col gap-2 border ${palette.border} ${palette.bg}`}>
+          <div
+            className="glass-panel rounded-xl p-3.5 flex flex-col gap-2"
+            style={{ borderColor: palette.borderColor, background: palette.bg }}
+          >
             <div className="flex items-center justify-between">
-              <span className={`text-[13px] font-bold uppercase tracking-wider flex items-center gap-2 ${palette.text}`}>
-                <span className="text-base leading-none">{palette.dot}</span> {palette.title}
+              <span className="text-[13px] font-semibold flex items-center gap-2" style={{ color: palette.text }}>
+                <span className="w-2 h-2 rounded-full eef-live-dot" style={{ background: palette.dot }} /> {palette.title}
               </span>
-              <span className="text-[10px] font-mono text-white/40 font-bold">HAB_ALERT</span>
+              <span className="text-[10px] text-[var(--eef-text-3)] font-medium">Bloom alert</span>
             </div>
-            <div className="text-xs text-white/80 font-mono">
-              <span className="text-lg font-bold">{bloomSummary.unsafePercent}%</span> of zone unsafe for fishing
+            <div className="text-xs text-[var(--eef-text-2)]">
+              <span className="text-lg font-semibold tnum text-[var(--eef-text)]">{bloomSummary.unsafePercent}%</span> of zone unsafe for fishing
             </div>
-            <div className={`text-[11px] font-mono flex items-center gap-1.5 ${trend.cls}`}>
-              <span className="text-sm font-bold">{trend.arrow}</span> {trend.label}
+            <div className="text-[11px] flex items-center gap-1.5" style={{ color: trend.cls }}>
+              <span className="text-sm font-semibold">{trend.arrow}</span> {trend.label}
             </div>
-            <div className="text-[10px] font-mono text-white/50">
-              Main driver: <span className="text-white/75">{driverLabel}</span>
+            <div className="text-[10px] text-[var(--eef-text-3)]">
+              Main driver: <span className="text-[var(--eef-text-2)]">{driverLabel}</span>
             </div>
             {onToggleBloomOverlay && (
-              <label className="flex items-center gap-2 text-[10px] font-mono text-white/55 cursor-pointer mt-0.5">
+              <label className="flex items-center gap-2 text-[10px] text-[var(--eef-text-3)] cursor-pointer mt-0.5">
                 <input
                   type="checkbox"
                   checked={!!bloomOverlayVisible}
                   onChange={onToggleBloomOverlay}
-                  className="accent-emerald-500"
+                  className="accent-[var(--eef-accent)]"
                 />
                 Show safe-zone map on 3D terrain
               </label>
@@ -225,70 +228,70 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
       })()}
 
       {/* 1. Header Toggles for Data Source */}
-      <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1.5">
-          <Database size={13} className="text-white/60" /> LOAD SCENE — Choose a data source to populate the 3D terrain
+      <div className="glass-panel rounded-xl p-3.5 flex flex-col gap-2">
+        <span className="text-[11px] font-semibold text-[var(--eef-text-2)] flex items-center gap-1.5">
+          <Database size={13} className="text-[var(--eef-accent)]" /> Load scene — choose a data source for the 3D terrain
         </span>
 
         {/* Tab Selection */}
         <div className="grid grid-cols-2 @lg:grid-cols-5 gap-1.5 mt-1">
           <button
             onClick={() => handlePresetSelect("synthetic")}
-            className={`text-xs px-2 py-1.5 rounded font-medium border transition-all ${
+            className={`text-xs px-2 py-1.5 rounded-lg font-medium border transition-all ${
               config.mode === "synthetic"
-                ? "bg-white/15 border-white/40 text-white shadow-[0_0_12px_rgba(255,255,255,0.1)]"
-                : "bg-white/3 border-transparent text-white/60 hover:bg-white/8 hover:text-white"
+                ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-2)] hover:bg-[var(--eef-surface-2)] hover:text-[var(--eef-text)]"
             }`}
           >
-            Synthetic Stream
+            Synthetic stream
           </button>
           <button
             onClick={() => handlePresetSelect("preset_coastal")}
-            className={`text-xs px-2 py-1.5 rounded font-medium border transition-all ${
+            className={`text-xs px-2 py-1.5 rounded-lg font-medium border transition-all ${
               config.mode === "preset_coastal"
-                ? "bg-white/15 border-white/40 text-white shadow-[0_0_12px_rgba(255,255,255,0.1)]"
-                : "bg-white/3 border-transparent text-white/60 hover:bg-white/8 hover:text-white"
+                ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-2)] hover:bg-[var(--eef-surface-2)] hover:text-[var(--eef-text)]"
             }`}
           >
-            Coastal Preset
+            Coastal preset
           </button>
           <button
             onClick={() => handlePresetSelect("preset_deepsea")}
-            className={`text-xs px-2 py-1.5 rounded font-medium border transition-all ${
+            className={`text-xs px-2 py-1.5 rounded-lg font-medium border transition-all ${
               config.mode === "preset_deepsea"
-                ? "bg-white/15 border-white/40 text-white shadow-[0_0_12px_rgba(255,255,255,0.1)]"
-                : "bg-white/3 border-transparent text-white/60 hover:bg-white/8 hover:text-white"
+                ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-2)] hover:bg-[var(--eef-surface-2)] hover:text-[var(--eef-text)]"
             }`}
           >
-            Pelagic Preset
+            Pelagic preset
           </button>
           <button
             onClick={() => handlePresetSelect("preset_estuary")}
-            className={`text-xs px-2 py-1.5 rounded font-medium border transition-all ${
+            className={`text-xs px-2 py-1.5 rounded-lg font-medium border transition-all ${
               config.mode === "preset_estuary"
-                ? "bg-white/15 border-white/40 text-white shadow-[0_0_12px_rgba(255,255,255,0.1)]"
-                : "bg-white/3 border-transparent text-white/60 hover:bg-white/8 hover:text-white"
+                ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-2)] hover:bg-[var(--eef-surface-2)] hover:text-[var(--eef-text)]"
             }`}
           >
-            Estuary Preset
+            Estuary preset
           </button>
           <button
             onClick={() => handlePresetSelect("uploaded")}
             disabled={!activeCSVFileName}
-            className={`text-xs col-span-2 @lg:col-span-1 px-2 py-1.5 rounded font-medium border transition-all flex items-center justify-center gap-1 ${
+            className={`text-xs col-span-2 @lg:col-span-1 px-2 py-1.5 rounded-lg font-medium border transition-all flex items-center justify-center gap-1 ${
               config.mode === "uploaded"
-                ? "bg-white/15 border-white/40 text-white shadow-[0_0_12px_rgba(255,255,255,0.1)]"
+                ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
                 : activeCSVFileName
-                ? "bg-white/3 border-transparent text-white/60 hover:bg-white/8 hover:text-white"
-                : "opacity-30 cursor-not-allowed bg-black/20 text-white/30 border-transparent"
+                ? "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-2)] hover:bg-[var(--eef-surface-2)] hover:text-[var(--eef-text)]"
+                : "opacity-40 cursor-not-allowed bg-[var(--eef-inset)] text-[var(--eef-text-3)] border-[var(--eef-border)]"
             }`}
           >
-            <FileSpreadsheet size={12} /> CSV Playback
+            <FileSpreadsheet size={12} /> CSV playback
           </button>
         </div>
 
         {/* Data provenance caption — clarifies what each source actually represents */}
-        <p className="text-[10px] font-mono text-white/35 leading-relaxed mt-1">
+        <p className="text-[10px] text-[var(--eef-text-3)] leading-relaxed mt-1">
           {config.mode === "uploaded"
             ? "User-supplied CSV grid data, played back frame-by-frame as uploaded."
             : "Illustrative synthetic parameter set generated locally — not derived from satellite observations or real sensor data."}
@@ -299,23 +302,23 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
       <div className="grid grid-cols-1 @lg:grid-cols-3 gap-3">
 
         {/* CSV File Drop Box */}
-        <div className="@lg:col-span-2 glass-panel rounded-lg p-3.5 flex flex-col justify-center">
+        <div className="@lg:col-span-2 glass-panel rounded-xl p-3.5 flex flex-col justify-center">
           <div
             onDragEnter={handleDrag}
             onDragOver={handleDrag}
             onDragLeave={handleDrag}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border border-dashed rounded-lg p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 ${
-              dragActive ? "border-white bg-white/10" : "border-white/15 hover:border-white/40 hover:bg-white/5"
+            className={`border border-dashed rounded-xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1.5 ${
+              dragActive ? "border-[var(--eef-accent)] bg-[var(--eef-accent-soft)]" : "border-[var(--eef-border-strong)] hover:border-[var(--eef-accent-ring)] hover:bg-[var(--eef-inset)]"
             }`}
           >
-            <Upload className="text-white/40" size={20} />
-            <span className="text-xs text-white/95">
-              Drag-and-Drop <span className="text-white font-bold underline decoration-white/45">satellite.csv</span> or browse
+            <Upload className="text-[var(--eef-text-3)]" size={20} />
+            <span className="text-xs text-[var(--eef-text)]">
+              Drag and drop <span className="text-[var(--eef-accent)] font-semibold underline decoration-[var(--eef-accent-ring)]">satellite.csv</span> or browse
             </span>
-            <span className="text-[10px] text-white/40 font-mono">
-              Accepts 20x20 cell vectors (400 samples/row-mesh)
+            <span className="text-[10px] text-[var(--eef-text-3)]">
+              Accepts 20×20 cell vectors (400 samples per row-mesh)
             </span>
             <input
               type="file"
@@ -327,17 +330,17 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
           </div>
 
           {errorMsg && (
-            <div className="mt-2 text-[11px] text-rose-300 font-mono text-center border border-rose-500/20 bg-rose-500/5 rounded p-1.5">
-              ERROR: {errorMsg}
+            <div className="mt-2 text-[11px] text-[var(--eef-alert)] text-center border border-[var(--eef-alert)] bg-[var(--eef-alert-soft)] rounded-lg p-1.5">
+              Error: {errorMsg}
             </div>
           )}
 
           {activeCSVFileName && (
-            <div className="mt-2 text-xs flex items-center justify-between border-t border-white/5 pt-2 text-white/50">
-              <span className="flex items-center gap-1 text-[11px] font-mono text-white/70">
-                <FileSpreadsheet size={11} className="text-white/50" /> {activeCSVFileName.length > 25 ? activeCSVFileName.substring(0, 25) + "..." : activeCSVFileName}
+            <div className="mt-2 text-xs flex items-center justify-between border-t border-[var(--eef-divider)] pt-2 text-[var(--eef-text-3)]">
+              <span className="flex items-center gap-1 text-[11px] text-[var(--eef-text-2)]">
+                <FileSpreadsheet size={11} className="text-[var(--eef-text-3)]" /> {activeCSVFileName.length > 25 ? activeCSVFileName.substring(0, 25) + "..." : activeCSVFileName}
               </span>
-              <span className="text-[10px] font-mono">
+              <span className="text-[10px] tnum">
                 Frame {currentCSVFrameIdx + 1} of {csvFramesCount}
               </span>
             </div>
@@ -345,22 +348,25 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
         </div>
 
         {/* Real-time Status Gauge & Master Stream Triggers */}
-        <div className="glass-panel rounded-lg p-3.5 flex flex-col justify-between">
+        <div className="glass-panel rounded-xl p-3.5 flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-white/80">STREAM STATUS</span>
-              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-widest ${
-                isStreaming ? "bg-white/10 text-white pulse-teal-glow shadow-[0_0_8px_rgba(255,255,255,0.1)]" : "bg-white/5 text-white/40"
-              }`}>
-                ● {isStreaming ? "COUPLED" : "STANDBY"}
+              <span className="text-[11px] font-semibold text-[var(--eef-text-2)]">Stream status</span>
+              <span
+                className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-md text-[10px] font-medium"
+                style={isStreaming
+                  ? { background: "var(--eef-ok-soft)", color: "var(--eef-ok)" }
+                  : { background: "var(--eef-inset)", color: "var(--eef-text-3)" }}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${isStreaming ? "eef-live-dot" : ""}`} style={{ background: "currentColor" }} /> {isStreaming ? "Live" : "Standby"}
               </span>
             </div>
-            
+
             {/* Status explanation */}
-            <p className="text-[10px] text-white/40 mt-1.5 leading-relaxed font-mono">
-              {isStreaming 
-                ? `Syncing dynamic spatial cubes at ${config.speedHz}Hz intervals to telemetry core.` 
-                : "Active coupling offline. Spatial grids are static. Ready to fire stream."
+            <p className="text-[10px] text-[var(--eef-text-3)] mt-1.5 leading-relaxed">
+              {isStreaming
+                ? `Refreshing spatial grids at ${config.speedHz} Hz.`
+                : "Stream paused. Spatial grids are static. Ready to resume."
               }
             </p>
           </div>
@@ -368,27 +374,27 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
           <div className="flex gap-2 mt-3">
             <button
               onClick={onToggleStreaming}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded font-medium text-xs border transition-all ${
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium text-xs border transition-all ${
                 isStreaming
-                  ? "bg-white/10 border-white/10 hover:bg-white/15 text-white"
-                  : "bg-white/5 border-white/20 hover:bg-white/10 text-white font-bold"
+                  ? "bg-[var(--eef-inset)] border-[var(--eef-border)] hover:bg-[var(--eef-surface-2)] text-[var(--eef-text-2)]"
+                  : "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] hover:bg-[var(--eef-accent-soft)] text-[var(--eef-accent)] font-semibold"
               }`}
             >
               {isStreaming ? (
                 <>
-                  <Pause size={12} fill="currentColor" /> MUTE COUPLING
+                  <Pause size={12} fill="currentColor" /> Pause stream
                 </>
               ) : (
                 <>
-                  <Play size={12} fill="currentColor" /> COUPLE TELEMETRY
+                  <Play size={12} fill="currentColor" /> Resume stream
                 </>
               )}
             </button>
-            
+
             <button
               onClick={onResetStream}
-              title="Reset Calibration & Phase"
-              className="px-2.5 py-2 rounded bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all"
+              title="Reset calibration and phase"
+              className="px-2.5 py-2 rounded-lg bg-[var(--eef-inset)] border border-[var(--eef-border)] text-[var(--eef-text-2)] hover:bg-[var(--eef-surface-2)] hover:border-[var(--eef-border-strong)] transition-all"
             >
               <RefreshCw size={12} className={isStreaming ? "animate-spin-[duration:8s]" : ""} />
             </button>
@@ -400,18 +406,18 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
       <div className="grid grid-cols-1 @2xl:grid-cols-3 gap-4">
 
         {/* Dynamic Controls Sliders (Left 2 columns) */}
-        <div className="@2xl:col-span-2 glass-panel rounded-lg p-3.5 flex flex-col gap-2.5">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1">
-            <Sliders size={13} className="text-white/60" /> STREAM SIGNAL MODULATORS & PHYSICAL ANOMALIES
+        <div className="@2xl:col-span-2 glass-panel rounded-xl p-3.5 flex flex-col gap-2.5">
+          <span className="text-[11px] font-semibold text-[var(--eef-text-2)] flex items-center gap-1">
+            <Sliders size={13} className="text-[var(--eef-accent)]" /> Signal controls and anomalies
           </span>
 
           <div className="grid grid-cols-1 @lg:grid-cols-2 gap-x-4 gap-y-3 pt-1">
-            
+
             {/* Mosaic Graph Scale */}
-            <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-white/5">
-              <div className="flex justify-between items-center text-[11px] font-mono text-[#aaccff]">
-                <span className="flex items-center gap-1"><Sparkles size={10} /> Ecological Mosaic Scale</span>
-                <span className="font-bold">{config.mosaicScale} Nodes</span>
+            <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-[var(--eef-divider)]">
+              <div className="flex justify-between items-center text-[11px] text-[var(--eef-text-2)]">
+                <span className="flex items-center gap-1"><Sparkles size={10} className="text-[var(--eef-accent)]" /> Ecological mosaic scale</span>
+                <span className="font-semibold tnum text-[var(--eef-text)]">{config.mosaicScale} nodes</span>
               </div>
               <input
                 type="range"
@@ -420,16 +426,16 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                 step="20"
                 value={config.mosaicScale}
                 onChange={(e) => onChangeConfig({ mosaicScale: parseInt(e.target.value) })}
-                className="h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#aaccff]"
+                className="h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
               />
-              <span className="text-[9px] text-white/30">Dynamically scale the multi-tile affinity graph size (20-node steps).</span>
+              <span className="text-[9px] text-[var(--eef-text-3)]">Dynamically scale the multi-tile affinity graph size (20-node steps).</span>
             </div>
 
             {/* Coupling Velocity / Stream Speed */}
             <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-[11px] font-mono">
-                <span className="text-white/60">Coupling Velocity (Hz)</span>
-                <span className="text-white font-bold">{config.speedHz} fps (Hz)</span>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[var(--eef-text-2)]">Stream speed</span>
+                <span className="text-[var(--eef-text)] font-semibold tnum">{config.speedHz} Hz</span>
               </div>
               <input
                 type="range"
@@ -438,16 +444,16 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                 step="0.5"
                 value={config.speedHz}
                 onChange={(e) => onChangeConfig({ speedHz: parseFloat(e.target.value) })}
-                className="h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                className="h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
               />
-              <span className="text-[9px] text-white/30">Amplifies edge weights in the Ecological Affinity Graph.</span>
+              <span className="text-[9px] text-[var(--eef-text-3)]">Amplifies edge weights in the ecological affinity graph.</span>
             </div>
 
             {/* Current Flow Speed */}
             <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-[11px] font-mono">
-                <span className="text-white/60">Fluid Current Velocity</span>
-                <span className="text-white font-bold">×{config.flowSpeed.toFixed(1)}</span>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[var(--eef-text-2)]">Current velocity</span>
+                <span className="text-[var(--eef-text)] font-semibold tnum">×{config.flowSpeed.toFixed(1)}</span>
               </div>
               <input
                 type="range"
@@ -456,16 +462,16 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                 step="0.2"
                 value={config.flowSpeed}
                 onChange={(e) => onChangeConfig({ flowSpeed: parseFloat(e.target.value) })}
-                className="h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                className="h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
               />
-              <span className="text-[9px] text-white/30">Adds directional bias to branch propagation and clustering.</span>
+              <span className="text-[9px] text-[var(--eef-text-3)]">Adds directional bias to branch propagation and clustering.</span>
             </div>
 
             {/* Signal Noise Injection */}
             <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-[11px] font-mono">
-                <span className="text-white/60">Gaussian Noise Injector (RMS)</span>
-                <span className="text-white font-bold">{config.noiseLevel.toFixed(2)} σ</span>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[var(--eef-text-2)]">Gaussian noise (RMS)</span>
+                <span className="text-[var(--eef-text)] font-semibold tnum">{config.noiseLevel.toFixed(2)} σ</span>
               </div>
               <input
                 type="range"
@@ -474,16 +480,16 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                 step="0.02"
                 value={config.noiseLevel}
                 onChange={(e) => onChangeConfig({ noiseLevel: parseFloat(e.target.value) })}
-                className="h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                className="h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
               />
-              <span className="text-[9px] text-white/30">Controls embedding perturbation (similarity edge dropout).</span>
+              <span className="text-[9px] text-[var(--eef-text-3)]">Controls embedding perturbation (similarity edge dropout).</span>
             </div>
 
             {/* Physical Anomaly pulser */}
             <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-[11px] font-mono">
-                <span className="text-white/60">Eutrophic/Thermal Front Impulser</span>
-                <span className="text-white font-bold">{(config.currentAnomaly * 100).toFixed(0)}% Intensity</span>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[var(--eef-text-2)]">Thermal front intensity</span>
+                <span className="text-[var(--eef-text)] font-semibold tnum">{(config.currentAnomaly * 100).toFixed(0)}%</span>
               </div>
               <input
                 type="range"
@@ -492,16 +498,16 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                 step="0.1"
                 value={config.currentAnomaly}
                 onChange={(e) => onChangeConfig({ currentAnomaly: parseFloat(e.target.value) })}
-                className="h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                className="h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
               />
-              <span className="text-[9px] text-white/30">Adjusts spatial clustering thresholds (sharpens regime boundaries).</span>
+              <span className="text-[9px] text-[var(--eef-text-3)]">Adjusts spatial clustering thresholds (sharpens regime boundaries).</span>
             </div>
 
             {/* Sensor Calibration Drift */}
             <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center text-[11px] font-mono">
-                <span className="text-white/60">Radiometer Calibration Decay (Drift)</span>
-                <span className="text-white font-bold">{config.driftFactor.toFixed(2)} Δ</span>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[var(--eef-text-2)]">Calibration drift</span>
+                <span className="text-[var(--eef-text)] font-semibold tnum">{config.driftFactor.toFixed(2)} Δ</span>
               </div>
               <input
                 type="range"
@@ -510,17 +516,17 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                 step="0.01"
                 value={config.driftFactor}
                 onChange={(e) => onChangeConfig({ driftFactor: parseFloat(e.target.value) })}
-                className="h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                className="h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
               />
-              <span className="text-[9px] text-white/30">Simulates temporal decay and gain loss in specific wavebands.</span>
+              <span className="text-[9px] text-[var(--eef-text-3)]">Simulates temporal decay and gain loss in specific wavebands.</span>
             </div>
 
             {/* If uploaded custom CSV files layout frame selector */}
             {config.mode === "uploaded" && (
               <div className="flex flex-col gap-1 select-none animate-fade-in">
-                <div className="flex justify-between items-center text-[11px] font-mono">
-                  <span className="text-white/60">Animate Frame Sweep</span>
-                  <span className="text-white font-bold">Frame {currentCSVFrameIdx + 1} / {csvFramesCount}</span>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-[var(--eef-text-2)]">Frame sweep</span>
+                  <span className="text-[var(--eef-text)] font-semibold tnum">Frame {currentCSVFrameIdx + 1} / {csvFramesCount}</span>
                 </div>
                 <input
                   type="range"
@@ -529,27 +535,27 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                   step="1"
                   value={currentCSVFrameIdx}
                   onChange={(e) => onChangeCSVFrameIdx(parseInt(e.target.value))}
-                  className="h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+                  className="h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
                 />
-                <span className="text-[9px] text-white/30">Step manually through multi-frame temporal sequences.</span>
+                <span className="text-[9px] text-[var(--eef-text-3)]">Step manually through multi-frame temporal sequences.</span>
               </div>
             )}
           </div>
         </div>
 
         {/* High-Contrast Interactive Layer Controls (Right column) */}
-        <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2 justify-between">
-          
+        <div className="glass-panel rounded-xl p-3.5 flex flex-col gap-2 justify-between">
+
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1">
-              <Settings size={13} className="text-white/60" /> 3D RENDER ENGINE CALIBRATION
+            <span className="text-[11px] font-semibold text-[var(--eef-text-2)] flex items-center gap-1">
+              <Settings size={13} className="text-[var(--eef-accent)]" /> Render settings
             </span>
-            
+
             <div className="flex flex-col gap-2.5 mt-2.5">
               <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-white/40">Vertical Layer Gap</span>
-                  <span className="text-white font-bold">{spacing.toFixed(1)}</span>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[var(--eef-text-2)]">Layer gap</span>
+                  <span className="text-[var(--eef-text)] font-semibold tnum">{spacing.toFixed(1)}</span>
                 </div>
                 <input
                   type="range"
@@ -558,14 +564,14 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                   step="0.5"
                   value={spacing}
                   onChange={(e) => onChangeSpacing(parseFloat(e.target.value))}
-                  className="w-full h-1 bg-white/10 rounded appearance-none cursor-pointer accent-white"
+                  className="w-full h-1 bg-[var(--eef-border)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-white/40">Displacement Gain</span>
-                  <span className="text-white font-bold">{displacementGain.toFixed(1)}</span>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[var(--eef-text-2)]">Displacement gain</span>
+                  <span className="text-[var(--eef-text)] font-semibold tnum">{displacementGain.toFixed(1)}</span>
                 </div>
                 <input
                   type="range"
@@ -574,71 +580,71 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                   step="0.1"
                   value={displacementGain}
                   onChange={(e) => onChangeDisplacementGain(parseFloat(e.target.value))}
-                  className="w-full h-1 bg-white/10 rounded appearance-none cursor-pointer accent-white"
+                  className="w-full h-1 bg-[var(--eef-border)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
                 />
               </div>
 
               <div className="flex flex-wrap gap-1 mt-1">
                 <button
                   onClick={() => onChangeShowTerrain(!showTerrain)}
-                  className={`text-[10px] font-mono flex-1 min-w-[80px] py-1 rounded transition-all border ${
+                  className={`text-[10px] flex-1 min-w-[80px] py-1 rounded-lg transition-all border ${
                     showTerrain
-                      ? "bg-white/15 border-white/40 text-white"
-                      : "bg-white/3 border-white/5 text-white/40 hover:bg-white/8 hover:text-white"
+                      ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                      : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-3)] hover:bg-[var(--eef-surface-2)] hover:text-[var(--eef-text)]"
                   }`}
                 >
-                  3D TERRAIN
+                  Terrain
                 </button>
                 <button
                   onClick={() => onChangeShowWireframe(!showWireframe)}
-                  className={`text-[10px] font-mono flex-1 min-w-[80px] py-1 rounded transition-all border ${
+                  className={`text-[10px] flex-1 min-w-[80px] py-1 rounded-lg transition-all border ${
                     showWireframe
-                      ? "bg-white/15 border-white/40 text-white"
-                      : "bg-white/3 border-white/5 text-white/40 hover:bg-white/8 hover:text-white"
+                      ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                      : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-3)] hover:bg-[var(--eef-surface-2)] hover:text-[var(--eef-text)]"
                   }`}
                 >
-                  WIREFRAME
+                  Wireframe
                 </button>
                 <button
                   onClick={() => onChangeShowLabels(!showLabels)}
-                  className={`text-[10px] font-mono flex-1 min-w-[80px] py-1 rounded transition-all border ${
+                  className={`text-[10px] flex-1 min-w-[80px] py-1 rounded-lg transition-all border ${
                     showLabels
-                      ? "bg-white/15 border-white/40 text-white"
-                      : "bg-white/3 border-white/5 text-white/40 hover:bg-white/8 hover:text-white"
+                      ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                      : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-3)] hover:bg-[var(--eef-surface-2)] hover:text-[var(--eef-text)]"
                   }`}
                 >
-                  BILLBOARDS
+                  Labels
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="border-t border-white/5 pt-2 mt-2">
-            <span className="text-[10px] font-bold text-white/40 block tracking-wider font-mono">CAMERA MATRIX ANGLE presets</span>
+          <div className="border-t border-[var(--eef-divider)] pt-2 mt-2">
+            <span className="text-[10px] font-semibold text-[var(--eef-text-3)] block">Camera angle</span>
             <div className="flex gap-1.5 mt-1.5">
               <button
                 onClick={() => onChangeCameraPreset("iso")}
-                className={`text-[10px] font-mono flex-1 py-1 rounded transition-all ${
-                  cameraPreset === "iso" ? "bg-white text-black font-extrabold shadow-[0_0_10px_rgba(255,255,255,0.15)]" : "bg-white/5 text-white/50 hover:bg-white/10"
+                className={`text-[10px] flex-1 py-1 rounded-lg transition-all border ${
+                  cameraPreset === "iso" ? "bg-[var(--eef-accent)] border-[var(--eef-accent)] text-white font-semibold" : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-2)] hover:bg-[var(--eef-surface-2)]"
                 }`}
               >
-                ISOMETRIC (30°)
+                Isometric
               </button>
               <button
                 onClick={() => onChangeCameraPreset("top")}
-                className={`text-[10px] font-mono flex-1 py-1 rounded transition-all ${
-                  cameraPreset === "top" ? "bg-white text-black font-extrabold shadow-[0_0_10px_rgba(255,255,255,0.15)]" : "bg-white/5 text-white/50 hover:bg-white/10"
+                className={`text-[10px] flex-1 py-1 rounded-lg transition-all border ${
+                  cameraPreset === "top" ? "bg-[var(--eef-accent)] border-[var(--eef-accent)] text-white font-semibold" : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-2)] hover:bg-[var(--eef-surface-2)]"
                 }`}
               >
-                PLAN VIEW (90°)
+                Plan view
               </button>
               <button
                 onClick={() => onChangeCameraPreset("profile")}
-                className={`text-[10px] font-mono flex-1 py-1 rounded transition-all ${
-                  cameraPreset === "profile" ? "bg-white text-black font-extrabold shadow-[0_0_10px_rgba(255,255,255,0.15)]" : "bg-white/5 text-white/50 hover:bg-white/10"
+                className={`text-[10px] flex-1 py-1 rounded-lg transition-all border ${
+                  cameraPreset === "profile" ? "bg-[var(--eef-accent)] border-[var(--eef-accent)] text-white font-semibold" : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-2)] hover:bg-[var(--eef-surface-2)]"
                 }`}
               >
-                ELEVATION (0°)
+                Elevation
               </button>
             </div>
           </div>
@@ -647,11 +653,11 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
       </div>
 
       {/* 4. Real-time Channel Sparkline Cockpit Gauges */}
-      <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-white/85 flex items-center gap-1.5">
-          <Zap size={13} className="text-white/60 pulse-teal-glow rounded-full p-0.5" /> REAL-TIME SATELLITE BAND MATRIX TELEMETRY (SPARKLINES)
+      <div className="glass-panel rounded-xl p-3.5 flex flex-col gap-2">
+        <span className="text-[11px] font-semibold text-[var(--eef-text-2)] flex items-center gap-1.5">
+          <Zap size={13} className="text-[var(--eef-accent)]" /> Satellite bands
         </span>
-        
+
         <div className="@container grid grid-cols-2 @sm:grid-cols-3 @lg:grid-cols-7 gap-2.5 mt-1">
           {(Object.keys(VARIABLE_METADATA) as VariableName[]).map((key) => {
             const meta = VARIABLE_METADATA[key];
@@ -660,26 +666,26 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
             const stats = dataCube.stats[key] || { min: 0, max: 1, mean: 0.5 };
 
             return (
-              <div key={key} className="flex flex-col border border-white/8 rounded glass-panel p-2 relative group hover:border-white/20 transition-colors">
+              <div key={key} className="flex flex-col border border-[var(--eef-border)] rounded-lg glass-panel p-2 relative group hover:border-[var(--eef-border-strong)] transition-colors">
                 <div className="absolute top-0 left-0 w-1 h-full rounded-l" style={{ backgroundColor: meta.color }} />
-                
-                <div className="flex justify-between items-center text-xs font-mono ml-1">
-                  <span className="font-extrabold" style={{ color: meta.color }}>{key.replace(/_/g, " ")}</span>
+
+                <div className="flex justify-between items-center text-xs ml-1">
+                  <span className="font-semibold" style={{ color: meta.color }}>{key.replace(/_/g, " ")}</span>
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-white/40">{meta.unit}</span>
+                    <span className="text-[10px] text-[var(--eef-text-3)]">{meta.unit}</span>
                     {onExportLayer && (
                       <button
                         type="button"
                         title={`Export ${key} layer as PNG`}
                         onClick={() => onExportLayer(key)}
-                        className="text-white/40 hover:text-white/70 text-[10px] leading-none px-0.5 transition-colors"
+                        className="text-[var(--eef-text-3)] hover:text-[var(--eef-accent)] text-[10px] leading-none px-0.5 transition-colors"
                       >↓</button>
                     )}
                   </div>
                 </div>
 
                 {/* Sparkling value */}
-                <div className="text-base font-bold font-mono tracking-tight text-white/95 mt-1 ml-1 flex items-baseline gap-0.5 justify-between">
+                <div className="text-base font-semibold tnum tracking-tight text-[var(--eef-text)] mt-1 ml-1 flex items-baseline gap-0.5 justify-between">
                   <span>{avg.toFixed(3)}</span>
                   <span className="text-[9px] font-normal" style={{ color: meta.color }}>avg</span>
                 </div>
@@ -687,7 +693,7 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                 {/* SVG sparkline representing running history */}
                 <div className="h-6 mt-1.5 ml-1">
                   <svg className="w-full h-full overflow-visible" viewBox="0 0 110 24" preserveAspectRatio="none">
-                    {/* Glowing background path */}
+                    {/* Running history path */}
                     <path
                       d={drawSparkline(history)}
                       fill="none"
@@ -702,13 +708,12 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                       cy={24 - ((history[history.length - 1] - 0) / (1 - 0)) * 20 - 2}
                       r="2.5"
                       fill={meta.color}
-                      className="animate-pulse"
                     />
                   </svg>
                 </div>
 
                 {/* Visual Scale and physical limits */}
-                <div className="mt-2.5 ml-1 pt-2 border-t border-white/5 flex flex-col gap-1">
+                <div className="mt-2.5 ml-1 pt-2 border-t border-[var(--eef-divider)] flex flex-col gap-1">
                   <ColorPickerPopover
                     label={key}
                     gradient={getCSSGradient(key, customColors[key], customColorsFrom?.[key])}
@@ -720,7 +725,7 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                     defaultFromHex="#050508"
                     onChangeFrom={onChangeCustomColorFrom ? (hex) => onChangeCustomColorFrom(key, hex) : undefined}
                   />
-                  <div className="flex justify-between items-center text-[9px] font-mono text-white/40 leading-none">
+                  <div className="flex justify-between items-center text-[9px] tnum text-[var(--eef-text-3)] leading-none">
                     <span>{stats.min.toFixed(2)}</span>
                     <span>{stats.max.toFixed(2)}</span>
                   </div>

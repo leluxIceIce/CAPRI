@@ -9,7 +9,7 @@ interface CSVInspectorPanelProps {
 const PAGE_SIZE = 15;
 
 const selectClass =
-  "flex-1 bg-white/5 border border-white/10 rounded px-1.5 py-1 text-[10px] font-mono text-white/70 focus:outline-none focus:border-white/20 cursor-pointer";
+  "flex-1 bg-[var(--eef-inset)] border border-[var(--eef-border)] rounded px-1.5 py-1 text-[10px] text-[var(--eef-text-2)] focus:outline-none focus:border-[var(--eef-accent)] cursor-pointer";
 
 // Raw-row table + sortable column chart for an uploaded CSV — looks at the data the
 // way the user's own spreadsheet does (original rows/columns), as a separate, simpler
@@ -85,8 +85,8 @@ export const CSVInspectorPanel: React.FC<CSVInspectorPanelProps> = ({ raw }) => 
     <div className="flex flex-col gap-3 text-[11px]">
       {/* Column chart with row-range zoom */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className="text-white/40 w-14">Column</span>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-[var(--eef-text-3)] w-14">Column</span>
           <select
             value={chartColIdx}
             onChange={(e) => setChartColIdx(parseInt(e.target.value))}
@@ -98,19 +98,19 @@ export const CSVInspectorPanel: React.FC<CSVInspectorPanelProps> = ({ raw }) => 
           </select>
         </div>
 
-        <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-28 bg-white/[0.03] border border-white/10 rounded">
+        <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-28 glass-well">
           {linePath && (
-            <path d={linePath} fill="none" stroke="#7dd3fc" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            <path d={linePath} fill="none" stroke="var(--eef-accent)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
           )}
         </svg>
 
-        <div className="flex justify-between font-mono text-[9px] text-white/30">
-          <span>min {chartStats.min.toFixed(3)}</span>
-          <span>mean {chartStats.mean.toFixed(3)}</span>
-          <span>max {chartStats.max.toFixed(3)}</span>
+        <div className="flex justify-between text-[9px] text-[var(--eef-text-3)]">
+          <span>min <span className="tnum">{chartStats.min.toFixed(3)}</span></span>
+          <span>mean <span className="tnum">{chartStats.mean.toFixed(3)}</span></span>
+          <span>max <span className="tnum">{chartStats.max.toFixed(3)}</span></span>
         </div>
 
-        <div className="flex items-center gap-2 text-[9px] font-mono text-white/40">
+        <div className="flex items-center gap-2 text-[9px] text-[var(--eef-text-3)]">
           <span className="w-14">Zoom rows</span>
           <input
             type="range"
@@ -118,7 +118,7 @@ export const CSVInspectorPanel: React.FC<CSVInspectorPanelProps> = ({ raw }) => 
             max={rows.length - 1}
             value={clampedStart}
             onChange={(e) => setZoomStart(parseInt(e.target.value))}
-            className="flex-1 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+            className="flex-1 h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
           />
           <input
             type="range"
@@ -126,22 +126,22 @@ export const CSVInspectorPanel: React.FC<CSVInspectorPanelProps> = ({ raw }) => 
             max={rows.length - 1}
             value={clampedEnd}
             onChange={(e) => setZoomEnd(parseInt(e.target.value))}
-            className="flex-1 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+            className="flex-1 h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
           />
-          <span className="w-16 text-right">{clampedStart}–{clampedEnd}</span>
+          <span className="w-16 text-right tnum">{clampedStart}–{clampedEnd}</span>
         </div>
       </div>
 
       {/* Raw-row sortable table */}
-      <div className="overflow-x-auto border border-white/10 rounded">
-        <table className="w-full text-[10px] font-mono">
+      <div className="overflow-x-auto border border-[var(--eef-border)] rounded">
+        <table className="w-full text-[10px]">
           <thead>
-            <tr className="bg-white/5">
+            <tr className="bg-[var(--eef-surface-2)]">
               {headers.map((h, i) => (
                 <th
                   key={i}
                   onClick={() => handleSortClick(i)}
-                  className="px-2 py-1 text-left text-white/60 cursor-pointer hover:text-white whitespace-nowrap select-none"
+                  className="px-2 py-1 text-left text-[var(--eef-text-2)] cursor-pointer hover:text-[var(--eef-text)] whitespace-nowrap select-none"
                 >
                   <span className="inline-flex items-center gap-1">
                     {h}
@@ -157,9 +157,16 @@ export const CSVInspectorPanel: React.FC<CSVInspectorPanelProps> = ({ raw }) => 
           </thead>
           <tbody>
             {pageRows.map((row, ri) => (
-              <tr key={ri} className={ri % 2 === 0 ? "bg-white/0" : "bg-white/[0.02]"}>
+              <tr
+                key={ri}
+                className={
+                  ri % 2 === 0
+                    ? "bg-[var(--eef-surface)]"
+                    : "bg-[var(--eef-inset)]"
+                }
+              >
                 {row.map((v, ci) => (
-                  <td key={ci} className="px-2 py-0.5 text-white/70 whitespace-nowrap">
+                  <td key={ci} className="px-2 py-0.5 text-[var(--eef-text-2)] whitespace-nowrap tnum border-t border-[var(--eef-divider)]">
                     {Number.isInteger(v) ? v : v.toFixed(4)}
                   </td>
                 ))}
@@ -169,21 +176,21 @@ export const CSVInspectorPanel: React.FC<CSVInspectorPanelProps> = ({ raw }) => 
         </table>
       </div>
 
-      <div className="flex items-center justify-between font-mono text-[9px] text-white/40">
-        <span>{sortedRows.length} rows total</span>
+      <div className="flex items-center justify-between text-[9px] text-[var(--eef-text-3)]">
+        <span><span className="tnum">{sortedRows.length}</span> rows total</span>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}
-            className="px-2 py-0.5 rounded bg-white/5 border border-white/10 disabled:opacity-30"
+            className="px-2 py-0.5 rounded bg-[var(--eef-inset)] border border-[var(--eef-border)] text-[var(--eef-text-2)] hover:border-[var(--eef-border-strong)] disabled:opacity-30"
           >
             Prev
           </button>
-          <span>Page {page + 1} / {pageCount}</span>
+          <span>Page <span className="tnum">{page + 1}</span> / <span className="tnum">{pageCount}</span></span>
           <button
             onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
             disabled={page >= pageCount - 1}
-            className="px-2 py-0.5 rounded bg-white/5 border border-white/10 disabled:opacity-30"
+            className="px-2 py-0.5 rounded bg-[var(--eef-inset)] border border-[var(--eef-border)] text-[var(--eef-text-2)] hover:border-[var(--eef-border-strong)] disabled:opacity-30"
           >
             Next
           </button>

@@ -5,7 +5,11 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    // Relative base is required for Electron to load dist/ via file:// protocol
+    // Relative base. Works for all three deploy targets the app ships to:
+    //  - Tauri (macOS): dist/ is served from the asset protocol's root origin,
+    //    so relative asset paths resolve correctly under tauri://localhost.
+    //  - GitHub Pages: served from the /CAPRI/ sub-path with a HashRouter.
+    //  - (legacy) Electron: loaded dist/ via the file:// protocol.
     base: './',
     plugins: [react(), tailwindcss()],
     resolve: {

@@ -28,7 +28,7 @@ interface SpatialEncodingPanelProps {
 }
 
 const selectClass =
-  "flex-1 bg-white/5 border border-white/10 rounded px-1.5 py-1 text-[10px] font-mono text-white/70 focus:outline-none focus:border-white/20 cursor-pointer";
+  "flex-1 glass-well rounded px-1.5 py-1 text-[10px] text-[var(--eef-text-2)] focus:outline-none focus:border-[var(--eef-accent-ring)] cursor-pointer";
 
 export const SpatialEncodingPanel: React.FC<SpatialEncodingPanelProps> = ({
   spatialOverlay,
@@ -46,26 +46,26 @@ export const SpatialEncodingPanel: React.FC<SpatialEncodingPanelProps> = ({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* SPATIAL STRUCTURE OVERLAY */}
+      {/* Spatial structure overlay */}
       <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2">
         <div className="flex justify-between items-center">
-          <h3 className="text-[11px] font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-            <Layers size={11} className="text-white/40" /> SPATIAL STRUCTURE OVERLAY
+          <h3 className="text-[11px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
+            <Layers size={11} className="text-[var(--eef-text-3)]" /> Spatial structure
           </h3>
           <button
             onClick={() => onChangeSpatialOverlay({ ...spatialOverlay, visible: !spatialOverlay.visible })}
-            className={`text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded border transition-colors ${
+            className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
               spatialOverlay.visible
-                ? "bg-white/15 border-white/30 text-white"
-                : "bg-transparent border-white/10 text-white/40"
+                ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                : "bg-transparent border-[var(--eef-border)] text-[var(--eef-text-3)]"
             }`}
           >
-            {spatialOverlay.visible ? "ON" : "OFF"}
+            {spatialOverlay.visible ? "On" : "Off"}
           </button>
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className="text-white/40 w-14">Variable</span>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-[var(--eef-text-3)] w-14">Variable</span>
           <select
             value={spatialOverlay.variable ?? ""}
             onChange={(e) =>
@@ -85,8 +85,8 @@ export const SpatialEncodingPanel: React.FC<SpatialEncodingPanelProps> = ({
           </select>
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className="text-white/40 w-14">Descriptor</span>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-[var(--eef-text-3)] w-14">Descriptor</span>
           <select
             value={spatialOverlay.descriptor ?? ""}
             onChange={(e) =>
@@ -106,38 +106,38 @@ export const SpatialEncodingPanel: React.FC<SpatialEncodingPanelProps> = ({
           </select>
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className="text-white/40">Opacity</span>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-[var(--eef-text-3)]">Opacity</span>
           <input
             type="range" min="0.1" max="1" step="0.05"
             value={spatialOverlay.opacity}
             onChange={(e) => onChangeSpatialOverlay({ ...spatialOverlay, opacity: parseFloat(e.target.value) })}
-            className="flex-1 h-0.5 bg-slate-100 rounded appearance-none cursor-pointer accent-white"
+            className="flex-1 h-0.5 bg-[var(--eef-inset)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
           />
-          <span className="text-white/60 w-6 text-right">{(spatialOverlay.opacity * 100).toFixed(0)}%</span>
+          <span className="tnum text-[var(--eef-text-2)] w-6 text-right">{(spatialOverlay.opacity * 100).toFixed(0)}%</span>
         </div>
       </div>
 
-      {/* RELATIONSHIP GRAPH OVERLAY */}
+      {/* Relationship graph overlay */}
       <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2">
         <div className="flex justify-between items-center">
-          <h3 className="text-[11px] font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-            <Network size={11} className="text-white/40" /> RELATIONSHIP GRAPH OVERLAY
+          <h3 className="text-[11px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
+            <Network size={11} className="text-[var(--eef-text-3)]" /> Relationship graph
           </h3>
           <button
             onClick={() => onChangeRelationshipGraph({ ...relationshipGraph, visible: !relationshipGraph.visible })}
-            className={`text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded border transition-colors ${
+            className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
               relationshipGraph.visible
-                ? "bg-white/15 border-white/30 text-white"
-                : "bg-transparent border-white/10 text-white/40"
+                ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                : "bg-transparent border-[var(--eef-border)] text-[var(--eef-text-3)]"
             }`}
           >
-            {relationshipGraph.visible ? "ON" : "OFF"}
+            {relationshipGraph.visible ? "On" : "Off"}
           </button>
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className="text-white/40 w-14">Channel</span>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-[var(--eef-text-3)] w-14">Channel</span>
           <select
             value={relationshipGraph.channelName ?? ""}
             onChange={(e) =>
@@ -180,62 +180,62 @@ export const SpatialEncodingPanel: React.FC<SpatialEncodingPanelProps> = ({
           </select>
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className="text-white/40">Threshold</span>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-[var(--eef-text-3)]">Threshold</span>
           <input
             type="range" min="0" max="1" step="0.05"
             value={relationshipGraph.threshold}
             onChange={(e) => onChangeRelationshipGraph({ ...relationshipGraph, threshold: parseFloat(e.target.value) })}
-            className="flex-1 h-0.5 bg-white/10 rounded appearance-none cursor-pointer accent-white"
+            className="flex-1 h-0.5 bg-[var(--eef-inset)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
           />
-          <span className="text-white/60 w-8 text-right">{relationshipGraph.threshold.toFixed(2)}</span>
+          <span className="tnum text-[var(--eef-text-2)] w-8 text-right">{relationshipGraph.threshold.toFixed(2)}</span>
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className="text-white/40">Opacity</span>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-[var(--eef-text-3)]">Opacity</span>
           <input
             type="range" min="0.1" max="1" step="0.05"
             value={relationshipGraph.opacity}
             onChange={(e) => onChangeRelationshipGraph({ ...relationshipGraph, opacity: parseFloat(e.target.value) })}
-            className="flex-1 h-0.5 bg-slate-100 rounded appearance-none cursor-pointer accent-white"
+            className="flex-1 h-0.5 bg-[var(--eef-inset)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
           />
-          <span className="text-white/60 w-6 text-right">{(relationshipGraph.opacity * 100).toFixed(0)}%</span>
+          <span className="tnum text-[var(--eef-text-2)] w-6 text-right">{(relationshipGraph.opacity * 100).toFixed(0)}%</span>
         </div>
       </div>
 
-      {/* DATA QUALITY / CONFIDENCE OVERLAY */}
+      {/* Data quality / confidence overlay */}
       {confidenceOverlay && onChangeConfidenceOverlay && (
         <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2">
           <div className="flex justify-between items-center">
-            <h3 className="text-[11px] font-bold uppercase tracking-widest text-white flex items-center gap-1.5">
-              <ShieldCheck size={11} className="text-white/40" /> DATA QUALITY / CONFIDENCE OVERLAY
+            <h3 className="text-[11px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
+              <ShieldCheck size={11} className="text-[var(--eef-text-3)]" /> Data confidence
             </h3>
             <button
               onClick={() => onChangeConfidenceOverlay({ ...confidenceOverlay, visible: !confidenceOverlay.visible })}
-              className={`text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded border transition-colors ${
+              className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
                 confidenceOverlay.visible
-                  ? "bg-white/15 border-white/30 text-white"
-                  : "bg-transparent border-white/10 text-white/40"
+                  ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                  : "bg-transparent border-[var(--eef-border)] text-[var(--eef-text-3)]"
               }`}
             >
-              {confidenceOverlay.visible ? "ON" : "OFF"}
+              {confidenceOverlay.visible ? "On" : "Off"}
             </button>
           </div>
 
-          <p className="text-[9px] text-white/30 leading-snug font-mono -mt-1">
+          <p className="text-[9px] text-[var(--eef-text-3)] leading-snug -mt-1">
             Per-cell aerosol-derived confidence weight (T865), 0=low to 1=high.
-            Rendered as a red→green plane above the terrain stack.
+            Rendered as a red-to-green plane above the terrain stack.
           </p>
 
-          <div className="flex items-center gap-2 text-[10px] font-mono">
-            <span className="text-white/40">Opacity</span>
+          <div className="flex items-center gap-2 text-[10px]">
+            <span className="text-[var(--eef-text-3)]">Opacity</span>
             <input
               type="range" min="0.1" max="1" step="0.05"
               value={confidenceOverlay.opacity}
               onChange={(e) => onChangeConfidenceOverlay({ ...confidenceOverlay, opacity: parseFloat(e.target.value) })}
-              className="flex-1 h-0.5 bg-slate-100 rounded appearance-none cursor-pointer accent-white"
+              className="flex-1 h-0.5 bg-[var(--eef-inset)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
             />
-            <span className="text-white/60 w-6 text-right">{(confidenceOverlay.opacity * 100).toFixed(0)}%</span>
+            <span className="tnum text-[var(--eef-text-2)] w-6 text-right">{(confidenceOverlay.opacity * 100).toFixed(0)}%</span>
           </div>
         </div>
       )}

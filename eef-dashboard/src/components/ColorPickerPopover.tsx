@@ -74,34 +74,34 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
         ref={triggerRef}
         type="button"
         onClick={openPopover}
-        className="w-full h-3 rounded-sm border border-white/10 hover:border-white/30 transition-colors cursor-pointer"
+        className="w-full h-3 rounded-sm border border-[var(--eef-border)] hover:border-[var(--eef-border-strong)] transition-colors cursor-pointer"
         style={{ background: gradient }}
         title={`Customize ${label} color`}
       />
       {open && createPortal(
         <div
           ref={popoverRef}
-          className="fixed z-50 bg-[#0a0a14] border border-white/10 rounded-lg p-2.5 shadow-xl flex flex-col gap-2 min-w-[160px]"
-          style={{ top: pos.top, left: pos.left }}
+          className="glass-panel fixed z-50 rounded-lg p-2.5 flex flex-col gap-2 min-w-[160px]"
+          style={{ top: pos.top, left: pos.left, boxShadow: "var(--eef-shadow-lg)" }}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono text-white/50 uppercase tracking-widest">{label} Color</span>
+            <span className="text-[11px] text-[var(--eef-text-2)]">{label} color</span>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-white/40 hover:text-white/80 text-sm leading-none px-1"
+              className="text-[var(--eef-text-3)] hover:text-[var(--eef-text)] text-sm leading-none px-1"
               title="Close"
             >&times;</button>
           </div>
           {onChangeFrom && (
             <div className="flex flex-col gap-1">
-              <span className="text-[9px] font-mono text-white/40 uppercase tracking-widest">From (dark end)</span>
+              <span className="text-[10px] text-[var(--eef-text-3)]">From (dark end)</span>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
                   value={fromValue || defaultFromHex || "#000000"}
                   onChange={(e) => { setFromHexInput(e.target.value); if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) onChangeFrom(e.target.value); }}
-                  className="w-7 h-7 rounded cursor-pointer bg-transparent border border-white/15"
+                  className="w-7 h-7 rounded cursor-pointer bg-transparent border border-[var(--eef-border-strong)]"
                 />
                 <input
                   type="text"
@@ -109,14 +109,14 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
                   onChange={(e) => setFromHexInput(e.target.value)}
                   onBlur={() => { if (/^#[0-9a-fA-F]{6}$/.test(fromHexInput)) onChangeFrom(fromHexInput); }}
                   onKeyDown={(e) => { if (e.key === "Enter" && /^#[0-9a-fA-F]{6}$/.test(fromHexInput)) onChangeFrom(fromHexInput); }}
-                  className="flex-1 bg-white/5 border border-white/10 rounded px-1.5 py-1 text-[11px] font-mono text-white/70 w-20"
+                  className="tnum flex-1 bg-[var(--eef-inset)] border border-[var(--eef-border)] rounded px-1.5 py-1 text-[11px] text-[var(--eef-text-2)] w-20"
                   placeholder="#rrggbb"
                 />
               </div>
             </div>
           )}
           <div className="flex flex-col gap-1">
-            <span className="text-[9px] font-mono text-white/40 uppercase tracking-widest">To (bright peak)</span>
+            <span className="text-[10px] text-[var(--eef-text-3)]">To (bright peak)</span>
             <div className="flex items-center gap-2">
               <input
                 type="color"
@@ -125,7 +125,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
                   setHexInput(e.target.value);
                   commitHex(e.target.value);
                 }}
-                className="w-7 h-7 rounded cursor-pointer bg-transparent border border-white/15"
+                className="w-7 h-7 rounded cursor-pointer bg-transparent border border-[var(--eef-border-strong)]"
               />
               <input
                 type="text"
@@ -135,7 +135,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") commitHex(hexInput);
                 }}
-                className="flex-1 bg-white/5 border border-white/10 rounded px-1.5 py-1 text-[11px] font-mono text-white/70 w-20"
+                className="tnum flex-1 bg-[var(--eef-inset)] border border-[var(--eef-border)] rounded px-1.5 py-1 text-[11px] text-[var(--eef-text-2)] w-20"
                 placeholder="#rrggbb"
               />
             </div>
@@ -146,7 +146,7 @@ export const ColorPickerPopover: React.FC<ColorPickerPopoverProps> = ({
               onReset();
               setOpen(false);
             }}
-            className="text-[10px] font-mono text-white/40 hover:text-white/70 uppercase tracking-widest text-left"
+            className="text-[10px] text-[var(--eef-text-3)] hover:text-[var(--eef-accent)] text-left"
           >
             Reset to default
           </button>
