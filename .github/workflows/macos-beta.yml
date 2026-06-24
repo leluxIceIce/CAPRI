@@ -1,0 +1,98 @@
+name: Build macOS beta (.dmg)
+
+# Produces the EEF Dashboard macOS .dmg from the Tauri app in eef-dashboard/.
+# Runs on an Apple-Silicon runner so the aarch64-apple-darwin bundle builds
+# natively. The build is intentionally manual (workflow_dispatch) or tag-driven
+# so it does not consume macOS CI minutes on every push. The .dmg is uploaded
+# as an artifact and the job enforces the Sprint 2 < 100MB size target.
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-dmg:
+    runs-on: macos-14 # Apple Silicon (arm64)
+    defaults:
+      run:
+        working-directory: eef-dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: eef-dashboard/package-lock.json
+
+      - name: Set up Rust (with macOS arm64 target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache cargo registry + build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            eef-dashboard/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('eef-dashboard/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # `npm run tauri:build` -> `tauri build --target aarch64-apple-darwin`.
+      # tauri.conf.json's beforeBuildCommand runs `npm run build` (Vite) first,
+      # so the frontend bundle is produced as part of this step. The build is
+      # unsigned (no Apple Developer cert in CI) — fine for a beta; users open
+      # it via right-click -> Open the first time.
+      - name: Build Tauri .dmg
+        run: npm run tauri:build
+
+      - name: Locate the .dmg and report its size
+        id: dmg
+        run: |
+          DMG=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -n1)
+          if [ -z "$DMG" ]; then
+            echo "No .dmg produced — bundle step failed." >&2
+            exit 1
+          fi
+          SIZE_BYTES=$(stat -f%z "$DMG")
+          SIZE_MB=$(echo "scale=1; $SIZE_BYTES / 1048576" | bc)
+          echo "dmg_path=$DMG" >> "$GITHUB_OUTPUT"
+          echo "size_mb=$SIZE_MB" >> "$GITHUB_OUTPUT"
+          echo "Built: $DMG"
+          echo "Size: ${SIZE_MB} MB"
+          {
+            echo "### macOS beta build"
+            echo ""
+            echo "- **Artifact:** \`$(basename "$DMG")\`"
+            echo "- **Size:** ${SIZE_MB} MB (target: < 100 MB)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Upload BEFORE the size gate so the artifact is always available, even
+      # if the build came in over budget and the gate fails.
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eef-dashboard-macos-arm64-dmg
+          path: ${{ steps.dmg.outputs.dmg_path }}
+          if-no-files-found: error
+
+      - name: Enforce < 100MB Sprint 2 size target
+        run: |
+          SIZE_MB="${{ steps.dmg.outputs.size_mb }}"
+          echo "Final .dmg size: ${SIZE_MB} MB"
+          if [ "$(echo "$SIZE_MB > 100" | bc)" -eq 1 ]; then
+            echo "::error::.dmg is ${SIZE_MB} MB, over the 100 MB Sprint 2 target." >&2
+            exit 1
+          fi
+          echo "Under the 100 MB target. ✅"
