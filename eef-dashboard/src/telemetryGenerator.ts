@@ -129,9 +129,20 @@ export function generateFlowingGrid(
         anomalyMask = Math.exp(-(anomalyDist * anomalyDist) / 0.12) * config.currentAnomaly * anomalyPulse;
       }
 
-      // High frequency ripple — also driven by flowSpeed for visible turbulence
+      // High frequency ripple — fBm-style octave sum, also driven by flowSpeed for
+      // visible turbulence. Octave count scales with gridSize so a higher-resolution
+      // grid genuinely resolves finer spatial structure (each added octave doubles
+      // frequency and halves amplitude) instead of just resampling the same texture
+      // more smoothly. At the default gridSize=20 this reduces to exactly one octave,
+      // matching prior behavior.
       const rippleSpeed = offsetTime * 3;
-      const highFreq = Math.sin(x * gridSize * 0.3 + rippleSpeed) * Math.cos(y * gridSize * 0.3 - rippleSpeed * 0.83) * 0.05;
+      const octaveCount = Math.max(1, Math.floor(Math.log2(gridSize / 10)));
+      let highFreq = 0;
+      for (let o = 0; o < octaveCount; o++) {
+        const freq = 6 * Math.pow(2, o);
+        const amp = 0.05 * Math.pow(0.6, o);
+        highFreq += Math.sin(x * freq + rippleSpeed) * Math.cos(y * freq - rippleSpeed * 0.83) * amp;
+      }
 
       // Noise — doubled range so max noiseLevel (0.2) produces ±0.2 grain
       const noise = (Math.random() - 0.5) * config.noiseLevel * 2.0;

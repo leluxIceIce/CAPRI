@@ -43,8 +43,8 @@ interface TelemetryConsoleProps {
   dataCube: DataCube;
   onExportLayer?: (varName: VariableName) => void;
   bloomSummary?: FishermanSummary;
-  bloomOverlayVisible?: boolean;
-  onToggleBloomOverlay?: () => void;
+  gridResolution: number;
+  onChangeGridResolution: (val: number) => void;
 }
 
 export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
@@ -82,8 +82,8 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
   dataCube,
   onExportLayer,
   bloomSummary,
-  bloomOverlayVisible,
-  onToggleBloomOverlay,
+  gridResolution,
+  onChangeGridResolution,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const geotiffInputRef = useRef<HTMLInputElement>(null);
@@ -134,7 +134,7 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
     reader.onload = (event) => {
       try {
         const text = event.target?.result as string;
-        const cubes = parseCSVToCubes(text);
+        const cubes = parseCSVToCubes(text, gridResolution);
         const raw = parseCSVRaw(text);
         onUploadCSVData(cubes, file.name, raw);
         onChangeConfig({ mode: "uploaded" });
@@ -165,7 +165,7 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
   const processUploadedGeoTIFF = async (file: File) => {
     setErrorMsg(null);
     try {
-      const input = await geoTiffFileToInput(file);
+      const input = await geoTiffFileToInput(file, gridResolution);
       const cube = rasterToDataCube(input);
       const mapping = Object.entries(input.bandMap)
         .map(([b, v]) => `band ${b} → ${v}`)
@@ -245,17 +245,6 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
             <div className="text-[10px] text-[var(--eef-text-3)]">
               Main driver: <span className="text-[var(--eef-text-2)]">{driverLabel}</span>
             </div>
-            {onToggleBloomOverlay && (
-              <label className="flex items-center gap-2 text-[10px] text-[var(--eef-text-3)] cursor-pointer mt-0.5">
-                <input
-                  type="checkbox"
-                  checked={!!bloomOverlayVisible}
-                  onChange={onToggleBloomOverlay}
-                  className="accent-[var(--eef-accent)]"
-                />
-                Show safe-zone map on 3D terrain
-              </label>
-            )}
           </div>
         );
       })()}
@@ -501,6 +490,24 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                 className="h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
               />
               <span className="text-[9px] text-[var(--eef-text-3)]">Dynamically scale the multi-tile affinity graph size (20-node steps).</span>
+            </div>
+
+            {/* 3D Terrain Grid Resolution */}
+            <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-[var(--eef-divider)]">
+              <div className="flex justify-between items-center text-[11px] text-[var(--eef-text-2)]">
+                <span className="flex items-center gap-1"><Sliders size={10} className="text-[var(--eef-accent)]" /> 3D terrain resolution</span>
+                <span className="font-semibold tnum text-[var(--eef-text)]">{gridResolution}×{gridResolution}</span>
+              </div>
+              <input
+                type="range"
+                min="20"
+                max="100"
+                step="20"
+                value={gridResolution}
+                onChange={(e) => onChangeGridResolution(parseInt(e.target.value))}
+                className="h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
+              />
+              <span className="text-[9px] text-[var(--eef-text-3)]">Cells per side of the terrain grid. Re-upload CSV/GeoTIFF after changing this to apply the new resolution.</span>
             </div>
 
             {/* Coupling Velocity / Stream Speed */}

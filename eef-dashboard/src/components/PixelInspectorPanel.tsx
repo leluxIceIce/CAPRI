@@ -98,6 +98,12 @@ export const PixelInspectorPanel: React.FC<PixelInspectorPanelProps> = ({
           <div className="tnum text-sm font-semibold text-[var(--eef-text)]">
             [{selectedStats.coord.row}, {selectedStats.coord.col}]
           </div>
+          {dataCube.coords && (
+            <div className="tnum text-[10px] text-[var(--eef-text-3)] mt-0.5">
+              {dataCube.coords[selectedStats.coord.row][selectedStats.coord.col].lat.toFixed(4)}°,{" "}
+              {dataCube.coords[selectedStats.coord.row][selectedStats.coord.col].lon.toFixed(4)}°
+            </div>
+          )}
         </div>
       </div>
 

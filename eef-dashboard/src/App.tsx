@@ -34,7 +34,7 @@ import {
 import { computeRootAnalysis, type RootAnalysis } from "./utils/eigenmath";
 import { computeSpatialTensor, getSpatialChannelGrid, spatialChannelIndex } from "./utils/spatialTensor";
 import { computeRelationshipTensor } from "./utils/relationshipTensor";
-import { summarize as summarizeBloom, findHotspots, type FishermanSummary } from "./utils/bloomDetector";
+import { summarize as summarizeBloom, type FishermanSummary } from "./utils/bloomDetector";
 import { generateEcologicalGraph } from "./utils/affinityGraph";
 import { ThreeViewport, type ThreeViewportHandle, type PixelClickEvent } from "./components/ThreeViewport";
 import { ViewportErrorBoundary } from "./components/ViewportErrorBoundary";
@@ -71,7 +71,6 @@ interface SessionSnapshot {
   spatialOverlayState: SpatialOverlayState;
   relationshipGraphState: RelationshipGraphState;
   confidenceOverlayState: ConfidenceOverlayState;
-  bloomOverlayState: { visible: boolean; opacity: number };
   gate2Visible: boolean;
 }
 
@@ -89,6 +88,11 @@ export default function App() {
 
   const [isStreaming, setIsStreaming] = useState(true);
   const [stepSeconds, setStepSeconds] = useState(0);
+
+  // 3D terrain grid resolution (NxN cells). Drives generateDataCube/parseCSVToCubes/
+  // rasterToDataCube AND the plane geometry's segment count in ThreeViewport — distinct
+  // from config.mosaicScale, which only sizes the separate ecological affinity graph.
+  const [gridResolution, setGridResolution] = useState(20);
 
   // 2. Custom Uploaded CSV Data Player States
   const [uploadedCubes, setUploadedCubes] = useState<DataCube[]>([]);
@@ -201,7 +205,7 @@ export default function App() {
       driftFactor: 0.0,
       flowSpeed: 1.0,
       mosaicScale: 20,
-    });
+    }, gridResolution);
   });
 
   const [activeEcologicalGraph, setActiveEcologicalGraph] = useState(() => {
@@ -235,7 +239,7 @@ export default function App() {
         // Generate synthetic or preset fluid streams
         setStepSeconds((prevSec) => {
           const nextSec = prevSec + (1 / config.speedHz);
-          const nextCube = generateDataCube(nextSec, config);
+          const nextCube = generateDataCube(nextSec, config, gridResolution);
           setActiveDataCube(nextCube);
           if (ecoTickCount % ECO_GRAPH_EVERY === 0) {
             setActiveEcologicalGraph(generateEcologicalGraph(nextSec, config));
@@ -248,7 +252,7 @@ export default function App() {
 
     const timer = setInterval(tick, intervalMs);
     return () => clearInterval(timer);
-  }, [isStreaming, config, uploadedCubes]);
+  }, [isStreaming, config, uploadedCubes, gridResolution]);
 
   // Handle manual frame slide for custom CSV player (when playing or paused)
   const handleCSVFrameIndexChange = (idx: number) => {
@@ -258,16 +262,16 @@ export default function App() {
     }
   };
 
-  // Re-run spatial calculations when mode changes directly
+  // Re-run spatial calculations when mode or grid resolution changes directly
   useEffect(() => {
     if (config.mode !== "uploaded") {
-      const initialCube = generateDataCube(stepSeconds, config);
+      const initialCube = generateDataCube(stepSeconds, config, gridResolution);
       setActiveDataCube(initialCube);
       setActiveEcologicalGraph(generateEcologicalGraph(stepSeconds, config));
     } else if (uploadedCubes.length > 0) {
       setActiveDataCube(uploadedCubes[currentCSVFrameIdx] || uploadedCubes[0]);
     }
-  }, [config.mode, config.mosaicScale]);
+  }, [config.mode, config.mosaicScale, gridResolution]);
 
   // 6. Multi-dimensional Scientific Analyst (calculates GMM, Novelty, Boundaries & reasons on active snapshot)
   const analysisResult = useMemo(() => {
@@ -294,18 +298,6 @@ export default function App() {
   useEffect(() => {
     prevBloomRiskRef.current = bloomState.risk;
   }, [bloomState]);
-  // Contiguous high-risk blobs (red zone) reduced to one centroid marker each —
-  // the "go here" / "avoid here" list for real-world fishing decisions. Real
-  // lat/lon are only attached when activeDataCube actually carries geo-tagged coords.
-  const bloomHotspots = useMemo(() => {
-    return findHotspots(activeDataCube, bloomState.risk, bloomState.zones.zones);
-  }, [activeDataCube, bloomState]);
-  // Safe-zone overlay (3D categorical green/amber/red plane); on by default.
-  const [bloomOverlayState, setBloomOverlayState] = useState<{ visible: boolean; opacity: number }>({
-    visible: true,
-    opacity: 0.65,
-  });
-
   // Gate 2 visibility state
   const [gate2Visible, setGate2Visible] = useState(false);
 
@@ -323,6 +315,25 @@ export default function App() {
   // Confidence grid for the active data cube (defaults to all-ones 20x20 if absent)
   const confidenceGrid = useMemo(() => {
     return activeDataCube.confidence ?? Array.from({ length: 20 }, () => Array(20).fill(1));
+  }, [activeDataCube]);
+
+  // "Spectral layers · N × N grid" stage label, with the real lat/lon bounding
+  // box appended when the active cube was built from geo-tagged CSV rows.
+  const stageLabel = useMemo(() => {
+    const n = activeDataCube.gridSize;
+    const base = `Spectral layers · ${n} × ${n} grid`;
+    const coords = activeDataCube.coords;
+    if (!coords) return base;
+    let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
+    for (const row of coords) {
+      for (const { lat, lon } of row) {
+        if (lat < latMin) latMin = lat;
+        if (lat > latMax) latMax = lat;
+        if (lon < lonMin) lonMin = lon;
+        if (lon > lonMax) lonMax = lon;
+      }
+    }
+    return `${base} · ${latMin.toFixed(2)}°–${latMax.toFixed(2)}°N, ${lonMin.toFixed(2)}°–${lonMax.toFixed(2)}°E`;
   }, [activeDataCube]);
 
   const spatialTensor = useMemo(() => computeSpatialTensor(activeDataCube), [activeDataCube]);
@@ -434,7 +445,7 @@ export default function App() {
       currentAnomaly: 0,
       driftFactor: 0,
       noiseLevel: 0.02
-    });
+    }, gridResolution);
     setActiveDataCube(blank);
     setConfig(prev => ({
       ...prev,
@@ -477,7 +488,6 @@ export default function App() {
       spatialOverlayState,
       relationshipGraphState,
       confidenceOverlayState,
-      bloomOverlayState,
       gate2Visible,
     };
     const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
@@ -508,7 +518,6 @@ export default function App() {
         if (snapshot.spatialOverlayState) setSpatialOverlayState(snapshot.spatialOverlayState);
         if (snapshot.relationshipGraphState) setRelationshipGraphState(snapshot.relationshipGraphState);
         if (snapshot.confidenceOverlayState) setConfidenceOverlayState(snapshot.confidenceOverlayState);
-        if (snapshot.bloomOverlayState) setBloomOverlayState(snapshot.bloomOverlayState);
         if (typeof snapshot.gate2Visible === "boolean") setGate2Visible(snapshot.gate2Visible);
       } catch {
         window.alert("Could not load this session file — it may be corrupted or from an incompatible version.");
@@ -631,6 +640,8 @@ export default function App() {
                     onResetStream={handleResetStream}
                     onUploadCSVData={handleUploadCSVData}
                     onUploadGeoTIFF={handleUploadGeoTIFF}
+                    gridResolution={gridResolution}
+                    onChangeGridResolution={setGridResolution}
                     dataSourceKind={dataSourceKind}
                     geotiffBandInfo={geotiffBandInfo}
                     customColors={customColors}
@@ -658,8 +669,6 @@ export default function App() {
                     dataCube={activeDataCube}
                     onExportLayer={(v) => mainViewportRef.current?.exportLayerPng(v)}
                     bloomSummary={bloomState.summary}
-                    bloomOverlayVisible={bloomOverlayState.visible}
-                    onToggleBloomOverlay={() => setBloomOverlayState((s) => ({ ...s, visible: !s.visible }))}
                   />
                 </div>
               </div>
@@ -682,7 +691,7 @@ export default function App() {
                     </span>
                   </div>
                   <p className="text-[11px] text-[var(--eef-text-3)] leading-none mt-1">
-                    Spectral layers · 20 × 20 grid
+                    {stageLabel}
                   </p>
                 </div>
 
@@ -718,9 +727,6 @@ export default function App() {
                     confidenceOverlay={confidenceOverlayState}
                     confidenceOverlayGrid={confidenceGrid}
                     latentOverlayVisible={false}
-                    bloomOverlay={bloomOverlayState}
-                    bloomZones={bloomState.zones.zones}
-                    bloomHotspots={bloomHotspots}
                     onPixelClick={handlePixelClick}
                   />
                   </ViewportErrorBoundary>
@@ -781,7 +787,7 @@ export default function App() {
                   onClick={() => setGate2Visible(true)}
                   style={toggleButtonStyle(gate2Visible)}
                 >
-                  Open latent ecology
+                  Correlations &amp; latent ecology
                 </button>
 
                 {csvRawData && (
@@ -829,6 +835,8 @@ export default function App() {
               onResetStream={handleResetStream}
               onUploadCSVData={handleUploadCSVData}
               onUploadGeoTIFF={handleUploadGeoTIFF}
+              gridResolution={gridResolution}
+              onChangeGridResolution={setGridResolution}
               dataSourceKind={dataSourceKind}
               geotiffBandInfo={geotiffBandInfo}
               customColors={customColors}
@@ -855,8 +863,6 @@ export default function App() {
               onChangeDisplacementGain={setDisplacementGain}
               dataCube={activeDataCube}
               bloomSummary={bloomState.summary}
-              bloomOverlayVisible={bloomOverlayState.visible}
-              onToggleBloomOverlay={() => setBloomOverlayState((s) => ({ ...s, visible: !s.visible }))}
             />
           </div>
 
@@ -869,7 +875,7 @@ export default function App() {
                 </span>
               </div>
               <p className="text-[11px] text-[var(--eef-text-3)] leading-none mt-1">
-                Spectral layers · 20 × 20 grid
+                {stageLabel}
               </p>
             </div>
             <div className="flex-1 w-full h-full">
@@ -945,7 +951,7 @@ export default function App() {
               onClick={() => setGate2Visible(true)}
               style={toggleButtonStyle(gate2Visible)}
             >
-              Open latent ecology
+              Correlations &amp; latent ecology
             </button>
           </div>
 
