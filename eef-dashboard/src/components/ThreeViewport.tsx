@@ -188,13 +188,14 @@ function ThreeViewportInner(
 
     // Effect Composer for Bloom (Glassmorphic Perception Layer)
     const renderScene = new RenderPass(scene, camera);
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.18, 0.4, 0.95);
-    // On a LIGHT background additive bloom blows everything toward white, so it is
-    // kept very restrained: a high luminance threshold means only the genuinely
-    // bright accent elements (hotspot dots, high-dominance root cores) glow faintly.
-    // The terrain planes and labels must stay crisp and readable, never hazed out.
-    bloomPass.threshold = 0.95;
-    bloomPass.strength = 0.18; // Barely-there glow reserved for the brightest accents only
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.08, 0.3, 0.99);
+    // On a LIGHT background additive bloom blows everything toward white. The
+    // near-white label chips (rgba(255,255,255,0.96)) were tripping the bloom and
+    // hazing the dark text on top so it became unreadable. The threshold is now
+    // pushed to 0.99 (only truly blown-out accent highlights bloom at all) and the
+    // strength dropped to a whisper, so labels and terrain stay crisp and legible.
+    bloomPass.threshold = 0.99;
+    bloomPass.strength = 0.08; // Whisper-faint; reserved for the very brightest accents only
     bloomPass.radius = 0.3;
 
     const composer = new EffectComposer(renderer);
