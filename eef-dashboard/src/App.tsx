@@ -22,7 +22,6 @@ import {
   VARIABLE_METADATA,
   LayerState,
   DataCube,
-  RootVisualizationState,
   SpatialOverlayState,
   RelationshipGraphState,
   ConfidenceOverlayState
@@ -36,7 +35,6 @@ import { computeRootAnalysis, type RootAnalysis } from "./utils/eigenmath";
 import { computeSpatialTensor, getSpatialChannelGrid, spatialChannelIndex } from "./utils/spatialTensor";
 import { computeRelationshipTensor } from "./utils/relationshipTensor";
 import { summarize as summarizeBloom, type FishermanSummary } from "./utils/bloomDetector";
-import { generateEcologicalGraph } from "./utils/affinityGraph";
 import { ThreeViewport, type ThreeViewportHandle, type PixelClickEvent } from "./components/ThreeViewport";
 import { ViewportErrorBoundary } from "./components/ViewportErrorBoundary";
 import { TelemetryConsole } from "./components/TelemetryConsole";
@@ -50,7 +48,6 @@ import { LatentEcologyPanel } from "./components/LatentEcologyPanel";
 const UmapPanel = lazy(() => import("./components/UmapPanel").then((m) => ({ default: m.UmapPanel })));
 const RFRegressionPanel = lazy(() => import("./components/RFRegressionPanel").then((m) => ({ default: m.RFRegressionPanel })));
 import { CSVInspectorPanel } from "./components/CSVInspectorPanel";
-import { SizeClassPanel } from "./components/SizeClassPanel";
 import { UpdateNotifier } from "./components/UpdateNotifier";
 import { type PixelInspectorState } from "./gate1_pixel_inspector/types";
 import { exploreLatentEcology, type LatentEcologyState } from "./gate2_understanding_roots/latentEcologyExplorer";
@@ -60,7 +57,7 @@ import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "reac
 const isElectron = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron");
 
 // A serializable snapshot of view/visualization settings only — never raw data
-// (activeDataCube/uploadedCubes/activeEcologicalGraph), so save/load stays a tiny JSON file.
+// (activeDataCube/uploadedCubes), so save/load stays a tiny JSON file.
 interface SessionSnapshot {
   version: 1;
   config: TelemetryStreamConfig;
@@ -72,7 +69,6 @@ interface SessionSnapshot {
   showWireframe: boolean;
   showLabels: boolean;
   cameraPreset: "iso" | "top" | "profile";
-  rootState: RootVisualizationState;
   layerState: Record<VariableName, LayerState>;
   spatialOverlayState: SpatialOverlayState;
   relationshipGraphState: RelationshipGraphState;
@@ -89,15 +85,13 @@ export default function App() {
     currentAnomaly: 0.0,
     driftFactor: 0.0,
     flowSpeed: 1.0,
-    mosaicScale: 20,
   });
 
   const [isStreaming, setIsStreaming] = useState(true);
   const [stepSeconds, setStepSeconds] = useState(0);
 
   // 3D terrain grid resolution (NxN cells). Drives generateDataCube/parseCSVToCubes/
-  // rasterToDataCube AND the plane geometry's segment count in ThreeViewport — distinct
-  // from config.mosaicScale, which only sizes the separate ecological affinity graph.
+  // rasterToDataCube AND the plane geometry's segment count in ThreeViewport.
   const [gridResolution, setGridResolution] = useState(20);
 
   // 2. Custom Uploaded CSV Data Player States
@@ -114,7 +108,6 @@ export default function App() {
   // looks at the data the way the user's spreadsheet does rather than the 20x20 grid.
   const [csvRawData, setCsvRawData] = useState<RawCSVData | null>(null);
   const [csvInspectorVisible, setCsvInspectorVisible] = useState(false);
-  const [sizeClassVisible, setSizeClassVisible] = useState(false);
 
   // Custom per-variable accent colors (bright peak), persisted across sessions
   const [customColors, setCustomColors] = useState<Partial<Record<VariableName, string>>>(() => {
@@ -151,11 +144,6 @@ export default function App() {
   const [showWireframe, setShowWireframe] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
   const [cameraPreset, setCameraPreset] = useState<"iso" | "top" | "profile">("iso");
-
-  // Root visualization state
-  const [rootState, setRootState] = useState<RootVisualizationState>({
-    visible: true, opacity: 0.85, depth: 3, colorMode: 'cluster', selectedCluster: null
-  });
 
   // Ref to main ThreeViewport for imperative PNG export
   const mainViewportRef = useRef<ThreeViewportHandle>(null);
@@ -210,20 +198,7 @@ export default function App() {
       currentAnomaly: 0.0,
       driftFactor: 0.0,
       flowSpeed: 1.0,
-      mosaicScale: 20,
     }, gridResolution);
-  });
-
-  const [activeEcologicalGraph, setActiveEcologicalGraph] = useState(() => {
-    return generateEcologicalGraph(0, {
-      mode: "synthetic",
-      speedHz: 1.5,
-      noiseLevel: 0.03,
-      currentAnomaly: 0.0,
-      driftFactor: 0.0,
-      flowSpeed: 1.0,
-      mosaicScale: 20,
-    });
   });
 
   // Master telemetry tick generator loop
@@ -231,8 +206,6 @@ export default function App() {
     if (!isStreaming) return;
 
     const intervalMs = 1000 / config.speedHz;
-    let ecoTickCount = 0;
-    const ECO_GRAPH_EVERY = 5; // Regenerate ecological graph every 5 ticks (~3s at 1.5Hz)
 
     const tick = () => {
       if (config.mode === "uploaded" && uploadedCubes.length > 0) {
@@ -247,10 +220,6 @@ export default function App() {
           const nextSec = prevSec + (1 / config.speedHz);
           const nextCube = generateDataCube(nextSec, config, gridResolution);
           setActiveDataCube(nextCube);
-          if (ecoTickCount % ECO_GRAPH_EVERY === 0) {
-            setActiveEcologicalGraph(generateEcologicalGraph(nextSec, config));
-          }
-          ecoTickCount++;
           return nextSec;
         });
       }
@@ -273,18 +242,17 @@ export default function App() {
     if (config.mode !== "uploaded") {
       const initialCube = generateDataCube(stepSeconds, config, gridResolution);
       setActiveDataCube(initialCube);
-      setActiveEcologicalGraph(generateEcologicalGraph(stepSeconds, config));
     } else if (uploadedCubes.length > 0) {
       setActiveDataCube(uploadedCubes[currentCSVFrameIdx] || uploadedCubes[0]);
     }
-  }, [config.mode, config.mosaicScale, gridResolution]);
+  }, [config.mode, gridResolution]);
 
   // 6. Multi-dimensional Scientific Analyst (calculates GMM, Novelty, Boundaries & reasons on active snapshot)
   const analysisResult = useMemo(() => {
     return evaluateScientificDiagnostics(activeDataCube);
   }, [activeDataCube]);
 
-  // 7. Eigenvalue root analysis (PCA + clustering for root visualization)
+  // 7. Eigenvalue root analysis (PCA + clustering) — feeds the 3D latent-space overlay
   const rootAnalysis = useMemo(() => {
     return computeRootAnalysis(activeDataCube, 5);
   }, [activeDataCube]);
@@ -475,8 +443,8 @@ export default function App() {
   };
 
   // 9. Session save/load — a JSON snapshot of view/visualization settings, deliberately
-  // excluding raw data (activeDataCube/uploadedCubes/activeEcologicalGraph) since that's
-  // either regenerable (synthetic) or re-uploaded by the user, and would bloat the file.
+  // excluding raw data (activeDataCube/uploadedCubes) since that's either regenerable
+  // (synthetic) or re-uploaded by the user, and would bloat the file.
   const sessionFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportSession = () => {
@@ -491,7 +459,6 @@ export default function App() {
       showWireframe,
       showLabels,
       cameraPreset,
-      rootState,
       layerState,
       spatialOverlayState,
       relationshipGraphState,
@@ -521,7 +488,6 @@ export default function App() {
         if (typeof snapshot.showWireframe === "boolean") setShowWireframe(snapshot.showWireframe);
         if (typeof snapshot.showLabels === "boolean") setShowLabels(snapshot.showLabels);
         if (snapshot.cameraPreset) setCameraPreset(snapshot.cameraPreset);
-        if (snapshot.rootState) setRootState(snapshot.rootState);
         if (snapshot.layerState) setLayerState(snapshot.layerState);
         if (snapshot.spatialOverlayState) setSpatialOverlayState(snapshot.spatialOverlayState);
         if (snapshot.relationshipGraphState) setRelationshipGraphState(snapshot.relationshipGraphState);
@@ -726,8 +692,6 @@ export default function App() {
                     customColors={customColors}
                     customColorsFrom={customColorsFrom}
                     rootAnalysis={rootAnalysis}
-                    ecologicalGraph={activeEcologicalGraph}
-                    rootState={rootState}
                     spatialOverlay={spatialOverlayState}
                     spatialOverlayGrid={spatialOverlayGrid}
                     relationshipGraph={relationshipGraphState}
@@ -767,9 +731,6 @@ export default function App() {
                     customColorsFrom={customColorsFrom}
                     onChangeCustomColor={handleChangeCustomColor}
                     onResetCustomColor={handleResetCustomColor}
-                    rootAnalysis={rootAnalysis}
-                    rootState={rootState}
-                    onChangeRootState={setRootState}
                   />
                 </div>
 
@@ -817,15 +778,6 @@ export default function App() {
                     {csvInspectorVisible && <CSVInspectorPanel raw={csvRawData} />}
                   </>
                 )}
-
-                <button
-                  onClick={() => setSizeClassVisible(!sizeClassVisible)}
-                  style={toggleButtonStyle(sizeClassVisible)}
-                >
-                  {sizeClassVisible ? "Hide size classes" : "Show size classes"}
-                </button>
-
-                {sizeClassVisible && <SizeClassPanel activeDataCube={activeDataCube} />}
               </div>
             </section>
           </Panel>
@@ -906,8 +858,6 @@ export default function App() {
                 cameraPreset={cameraPreset}
                 customColors={customColors}
                 rootAnalysis={rootAnalysis}
-                ecologicalGraph={activeEcologicalGraph}
-                rootState={rootState}
                 confidenceOverlay={confidenceOverlayState}
                 confidenceOverlayGrid={confidenceGrid}
               />
@@ -931,9 +881,6 @@ export default function App() {
               customColors={customColors}
               onChangeCustomColor={handleChangeCustomColor}
               onResetCustomColor={handleResetCustomColor}
-              rootAnalysis={rootAnalysis}
-              rootState={rootState}
-              onChangeRootState={setRootState}
             />
           </div>
 
@@ -994,21 +941,6 @@ export default function App() {
             </div>
           )}
 
-          <div className="glass-panel rounded-xl p-4 flex flex-col gap-3">
-            <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-2.5">
-              <h2 className="text-[13px] font-semibold tracking-tight text-[var(--eef-text)] flex items-center gap-2">
-                <Layers size={13} className="text-[var(--eef-accent)]" />Size classes
-              </h2>
-              <span className="text-[11px] text-[var(--eef-text-3)]">Pico · nano · micro</span>
-            </div>
-            <button
-              onClick={() => setSizeClassVisible(!sizeClassVisible)}
-              style={toggleButtonStyle(sizeClassVisible)}
-            >
-              {sizeClassVisible ? "Hide size classes" : "Show size classes"}
-            </button>
-            {sizeClassVisible && <SizeClassPanel activeDataCube={activeDataCube} />}
-          </div>
         </div>
       </main>
 

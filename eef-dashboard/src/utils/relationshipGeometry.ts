@@ -1,8 +1,8 @@
 // EEF Gate A Stage 2 — Relationship Graph Geometry
 //
 // Builds a thin-cylinder "edge" mesh connecting neighboring grid cells whose
-// relationship-tensor channel value exceeds a threshold. Mirrors the merged
-// BufferGeometry tube pattern used by rootGeometry.ts (buildRootMesh).
+// relationship-tensor channel value exceeds a threshold, using a merged
+// BufferGeometry tube pattern.
 
 import * as THREE from "three";
 import { getRelationshipChannelGrid, type RelationshipTensor } from "./relationshipTensor";
@@ -17,7 +17,7 @@ export interface RelationshipEdge {
 }
 
 // Maps a (row, col) grid cell to its world-space (x, z) position, matching
-// the PlaneGeometry(16,16) convention used across rootGeometry.ts/lsystem.ts.
+// the PlaneGeometry(16,16) convention used in ThreeViewport.tsx.
 function cellToWorld(row: number, col: number, gridSize: number): [number, number] {
   const x = (col / (gridSize - 1)) * 16 - 8;
   const z = (row / (gridSize - 1)) * 16 - 8;

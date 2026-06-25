@@ -7,15 +7,12 @@ import {
   VARIABLE_METADATA,
   SIGNED_VARIABLES,
   VariableName,
-  RootVisualizationState,
   SpatialOverlayState,
   RelationshipGraphState,
   ConfidenceOverlayState
 } from "../types";
 import { interpolateColormap, generateRampFromHex, generateRampFromTwoHex, getScalarFieldColor } from "../utils/colormaps";
 import { type RootAnalysis } from "../utils/eigenmath";
-import { generateAllRoots, generateGraphRoots } from "../utils/lsystem";
-import { buildRootMesh } from "../utils/rootGeometry";
 import { type RelationshipTensor, relationshipChannelIndex } from "../utils/relationshipTensor";
 import { buildRelationshipEdges, buildRelationshipMesh } from "../utils/relationshipGeometry";
 
@@ -41,8 +38,6 @@ interface ThreeViewportProps {
   customColors?: Partial<Record<VariableName, string>>;
   customColorsFrom?: Partial<Record<VariableName, string>>;
   rootAnalysis?: RootAnalysis;
-  ecologicalGraph?: any; // To avoid strict type issues if missing in some imports
-  rootState?: RootVisualizationState;
   spatialOverlay?: SpatialOverlayState;
   spatialOverlayGrid?: Float32Array | null;
   relationshipGraph?: RelationshipGraphState;
@@ -66,8 +61,6 @@ function ThreeViewportInner(
   customColors,
   customColorsFrom,
   rootAnalysis,
-  ecologicalGraph,
-  rootState,
   spatialOverlay,
   spatialOverlayGrid,
   relationshipGraph,
@@ -87,10 +80,6 @@ function ThreeViewportInner(
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const meshesGroupRef = useRef<THREE.Group | null>(null);
-  const rootMeshRef = useRef<THREE.Mesh | null>(null);
-  const prevRootAnalysisRef = useRef<RootAnalysis | null>(null);
-  const prevEcologicalGraphRef = useRef<any>(null);
-  const prevRootDepthRef = useRef<number | null>(null);
 
   // Freeze-to-white recovery. A lost WebGL context (GPU process death in the
   // Tauri WebView, driver hiccup, too many live contexts) clears the canvas to
@@ -725,78 +714,6 @@ function ThreeViewportInner(
     });
 
   }, [dataCube, layerState, spacing, displacementGain, showTerrain, showWireframe, showLabels, customColors, customColorsFrom, remountKey]);
-
-  // Root system mesh lifecycle
-  useEffect(() => {
-    const scene = sceneRef.current;
-    const group = meshesGroupRef.current;
-    if (!scene || !group) return;
-
-    const visible = rootState?.visible ?? false;
-    const depth = rootState?.depth ?? 3;
-    const opacity = rootState?.opacity ?? 0.85;
-
-    if (!visible || !rootAnalysis) {
-      if (rootMeshRef.current) {
-        group.remove(rootMeshRef.current);
-        rootMeshRef.current.geometry.dispose();
-        (rootMeshRef.current.material as THREE.Material).dispose();
-        rootMeshRef.current = null;
-      }
-      prevRootAnalysisRef.current = null;
-      prevRootDepthRef.current = null;
-      return;
-    }
-
-    const needsRebuild =
-      !rootMeshRef.current ||
-      (ecologicalGraph ? prevEcologicalGraphRef.current !== ecologicalGraph : prevRootAnalysisRef.current !== rootAnalysis) ||
-      prevRootDepthRef.current !== depth;
-
-    if (needsRebuild) {
-      if (rootMeshRef.current) {
-        group.remove(rootMeshRef.current);
-        rootMeshRef.current.geometry.dispose();
-        (rootMeshRef.current.material as THREE.Material).dispose();
-        rootMeshRef.current = null;
-      }
-
-      prevRootAnalysisRef.current = rootAnalysis;
-      prevEcologicalGraphRef.current = ecologicalGraph;
-      prevRootDepthRef.current = depth;
-
-      let segments;
-      if (ecologicalGraph) {
-        // Epic 12/14: Use graph roots
-        const numLayers = Object.keys(VARIABLE_METADATA).length;
-        const anchorY = (0 - (numLayers - 1) / 2) * spacing;
-        segments = generateGraphRoots(ecologicalGraph, anchorY);
-      } else {
-        // Local tile roots fallback
-        segments = generateAllRoots(
-          rootAnalysis.projections,
-          rootAnalysis.eigenvalues,
-          dataCube.gridSize,
-          spacing,
-          depth
-        );
-      }
-
-      if (segments.length === 0) return;
-
-      // Since graph roots might not have valid cluster labels per node in the same format,
-      // we pass a dummy array or modify buildRootMesh to not depend solely on it if missing.
-      // Actually, rootGeometry.ts buildRootMesh handles cellIndex.
-      const clusterLabels = rootAnalysis ? rootAnalysis.clusterLabels : new Uint8Array(segments.length).fill(0);
-      const mesh = buildRootMesh(segments, clusterLabels);
-      group.add(mesh);
-      rootMeshRef.current = mesh;
-    }
-
-    if (rootMeshRef.current?.material instanceof THREE.MeshPhysicalMaterial || rootMeshRef.current?.material instanceof THREE.MeshStandardMaterial) {
-      rootMeshRef.current.material.opacity = opacity;
-    }
-  }, [rootAnalysis, ecologicalGraph, rootState?.visible, rootState?.depth, rootState?.opacity, spacing, dataCube.gridSize, remountKey]);
 
   // Spatial overlay plane lifecycle (Gate A Stage 2)
   useEffect(() => {

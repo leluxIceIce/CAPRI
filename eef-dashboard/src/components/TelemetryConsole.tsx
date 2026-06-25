@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Play, Pause, RefreshCw, Upload, FileSpreadsheet, Settings, Sliders, Zap, Sparkles, Database } from "lucide-react";
+import { Play, Pause, RefreshCw, Upload, FileSpreadsheet, Settings, Sliders, Zap, Database } from "lucide-react";
 import { TelemetryStreamConfig, VariableName, VARIABLE_METADATA, StreamMode, DataCube } from "../types";
 import type { FishermanSummary } from "../utils/bloomDetector";
 import { parseCSVToCubes, parseCSVRaw, type RawCSVData } from "../telemetryGenerator";
@@ -473,24 +473,6 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
           </span>
 
           <div className="grid grid-cols-1 @lg:grid-cols-2 gap-x-4 gap-y-3 pt-1">
-
-            {/* Mosaic Graph Scale */}
-            <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-[var(--eef-divider)]">
-              <div className="flex justify-between items-center text-[11px] text-[var(--eef-text-2)]">
-                <span className="flex items-center gap-1"><Sparkles size={10} className="text-[var(--eef-accent)]" /> Ecological mosaic scale</span>
-                <span className="font-semibold tnum text-[var(--eef-text)]">{config.mosaicScale} nodes</span>
-              </div>
-              <input
-                type="range"
-                min="20"
-                max="100"
-                step="20"
-                value={config.mosaicScale}
-                onChange={(e) => onChangeConfig({ mosaicScale: parseInt(e.target.value) })}
-                className="h-1 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
-              />
-              <span className="text-[9px] text-[var(--eef-text-3)]">Dynamically scale the multi-tile affinity graph size (20-node steps).</span>
-            </div>
 
             {/* 3D Terrain Grid Resolution */}
             <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-[var(--eef-divider)]">

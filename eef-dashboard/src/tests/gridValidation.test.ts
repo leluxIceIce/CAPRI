@@ -44,8 +44,7 @@ const baseConfig: TelemetryStreamConfig = {
   noiseLevel: 0.1,
   currentAnomaly: 0.3,
   driftFactor: 0.05,
-  flowSpeed: 0.5,
-  mosaicScale: 20
+  flowSpeed: 0.5
 };
 
 // Test V.1.1 — 20×20 Grid Correctness

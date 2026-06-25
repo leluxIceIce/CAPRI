@@ -1,11 +1,8 @@
 import React from "react";
 import { AlertTriangle, ShieldCheck, Waves, Info, Radio, Compass, BarChart2 } from "lucide-react";
-import { AnalysisResult, VariableName, VARIABLE_METADATA, DataCube, RootVisualizationState } from "../types";
+import { AnalysisResult, VariableName, VARIABLE_METADATA, DataCube } from "../types";
 import { getCSSGradient } from "../utils/colormaps";
 import { ColorPickerPopover } from "./ColorPickerPopover";
-import { type RootAnalysis } from "../utils/eigenmath";
-
-const VARS: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA08", "OA09", "OA10", "OA11", "OA13"];
 
 interface DiagnosticsPanelProps {
   analysis: AnalysisResult;
@@ -16,9 +13,6 @@ interface DiagnosticsPanelProps {
   customColors: Partial<Record<VariableName, string>>;
   onChangeCustomColor: (name: VariableName, hex: string) => void;
   onResetCustomColor: (name: VariableName) => void;
-  rootAnalysis?: RootAnalysis;
-  rootState?: RootVisualizationState;
-  onChangeRootState?: (state: RootVisualizationState) => void;
 }
 
 export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
@@ -30,9 +24,6 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
   customColors,
   onChangeCustomColor,
   onResetCustomColor,
-  rootAnalysis,
-  rootState,
-  onChangeRootState
 }) => {
   // Translate entropy to risk levels
   const entropyPercent = (analysis.transitionEntropy * 100).toFixed(1);
@@ -207,93 +198,6 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
           {analysis.scientificJustification}
         </p>
       </div>
-
-      {/* EIGENVALUE ROOT SYSTEM */}
-      {rootAnalysis && rootState && onChangeRootState && (
-        <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2">
-          <div className="flex justify-between items-center">
-            <h3 className="text-[12px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
-              <Compass size={11} className="text-[var(--eef-text-3)]" /> Eigenvalue root system
-            </h3>
-            <button
-              onClick={() => onChangeRootState({ ...rootState, visible: !rootState.visible })}
-              className={`text-[9px] font-medium px-1.5 py-0.5 rounded border transition-colors ${
-                rootState.visible
-                  ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent)] text-[var(--eef-accent)]"
-                  : "bg-transparent border-[var(--eef-border)] text-[var(--eef-text-3)]"
-              }`}
-            >
-              {rootState.visible ? "On" : "Off"}
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <span className="text-[9px] text-[var(--eef-text-3)]">Eigenvalue spectrum (λ₁…λ₉)</span>
-            <div className="flex gap-[2px] h-5 items-end">
-              {Array.from(rootAnalysis.eigenvalues, (val: number, i: number) => ({ val, i })).map(({ val, i }) => {
-                const maxVal = rootAnalysis.eigenvalues[0] || 1;
-                const h = Math.max(2, (Math.max(0, val) / maxVal) * 100);
-                return (
-                  <div
-                    key={i}
-                    className="flex-1 rounded-t-sm transition-all"
-                    style={{
-                      height: `${h}%`,
-                      backgroundColor: i < 3 ? `rgba(46,107,230,${0.7 - i * 0.18})` : "rgba(23,39,64,0.12)",
-                    }}
-                    title={`λ${i + 1} = ${val.toFixed(3)} (${VARS[i]})`}
-                  />
-                );
-              })}
-            </div>
-            <span className="text-[9px] text-[var(--eef-text-3)]">
-              PC1-3 capture {(rootAnalysis.varianceExplained[2] * 100).toFixed(0)}% of variance
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <span className="text-[9px] text-[var(--eef-text-3)]">Root clusters</span>
-            <div className="flex gap-1 flex-wrap">
-              {(() => {
-                const counts = new Array(rootAnalysis.clusterCount).fill(0);
-                rootAnalysis.clusterLabels.forEach(l => { if (l < counts.length) counts[l]++; });
-                const palette = ["#C8553D","#1FA38A","#736AD9","#C2843A","#5A8BC2","#B36AA0","#5A993D","#D97A6A"];
-                return counts.map((c, i) => (
-                  <span
-                    key={i}
-                    className="text-[9px] tnum px-1.5 py-0.5 rounded border border-[var(--eef-border)]"
-                    style={{ backgroundColor: palette[i % palette.length] + "22", color: palette[i % palette.length] }}
-                  >
-                    C{i + 1}: {c}
-                  </span>
-                ));
-              })()}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 text-[10px]">
-            <span className="text-[var(--eef-text-3)]">Depth</span>
-            <input
-              type="range" min="1" max="4" step="1"
-              value={rootState.depth}
-              onChange={(e) => onChangeRootState({ ...rootState, depth: parseInt(e.target.value) })}
-              className="flex-1 h-0.5 bg-[var(--eef-border-strong)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
-            />
-            <span className="text-[var(--eef-text-2)] tnum w-4 text-right">{rootState.depth}</span>
-          </div>
-
-          <div className="flex items-center gap-2 text-[10px]">
-            <span className="text-[var(--eef-text-3)]">Opacity</span>
-            <input
-              type="range" min="0.1" max="1" step="0.05"
-              value={rootState.opacity}
-              onChange={(e) => onChangeRootState({ ...rootState, opacity: parseFloat(e.target.value) })}
-              className="flex-1 h-0.5 bg-[var(--eef-border-strong)] rounded appearance-none cursor-pointer accent-[var(--eef-accent)]"
-            />
-            <span className="text-[var(--eef-text-2)] tnum w-6 text-right">{(rootState.opacity * 100).toFixed(0)}%</span>
-          </div>
-        </div>
-      )}
 
       {/* 5. Layer HUD Quick Toggles & Opacity */}
       <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2">
