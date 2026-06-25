@@ -93,6 +93,11 @@ export default function App() {
   // 2. Custom Uploaded CSV Data Player States
   const [uploadedCubes, setUploadedCubes] = useState<DataCube[]>([]);
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
+  // Tracks what the ACTIVE data actually is, so the UI can state provenance
+  // honestly: 'synthetic' = procedurally generated demo, 'csv'/'geotiff' = real
+  // user-supplied data. 'geotiff' is the only genuinely-observational source.
+  const [dataSourceKind, setDataSourceKind] = useState<"synthetic" | "csv" | "geotiff">("synthetic");
+  const [geotiffBandInfo, setGeotiffBandInfo] = useState<string | null>(null);
   const [currentCSVFrameIdx, setCurrentCSVFrameIdx] = useState(0);
   // Raw, un-binned CSV rows (original columns) kept alongside the spatially-binned
   // DataCube grid — powers the CSV Inspector's raw-row table + column chart, which
@@ -342,6 +347,12 @@ export default function App() {
 
   // Master handles
   const handleConfigChange = (newConfig: Partial<TelemetryStreamConfig>) => {
+    // Switching back to the synthetic generator means the active data is no
+    // longer real — keep the provenance label truthful.
+    if (newConfig.mode === "synthetic") {
+      setDataSourceKind("synthetic");
+      setGeotiffBandInfo(null);
+    }
     setConfig(prev => ({ ...prev, ...newConfig }));
   };
 
@@ -354,11 +365,27 @@ export default function App() {
     setActiveDataCube(cubes[0]);
     setConfig(prev => ({ ...prev, mode: "uploaded" }));
     setCsvRawData(raw ?? null);
+    setDataSourceKind("csv");
+    setGeotiffBandInfo(null);
     try {
       localStorage.setItem("eef.uploadedCubes", JSON.stringify({ cubes, fileName: name }));
     } catch {
       // localStorage unavailable or quota exceeded — uploaded data won't persist
     }
+  };
+
+  // Real ocean-colour GeoTIFF tile → the same analysis pipeline the synthetic
+  // generator feeds. A single tile is one frame, so playback streaming is paused.
+  const handleUploadGeoTIFF = (cube: DataCube, fileName: string, bandInfo: string) => {
+    setUploadedCubes([cube]);
+    setActiveFileName(fileName);
+    setCurrentCSVFrameIdx(0);
+    setActiveDataCube(cube);
+    setConfig(prev => ({ ...prev, mode: "uploaded" }));
+    setCsvRawData(null);
+    setDataSourceKind("geotiff");
+    setGeotiffBandInfo(bandInfo);
+    setIsStreaming(false);
   };
 
   // Restore previously uploaded CSV playback data on mount
@@ -372,6 +399,7 @@ export default function App() {
         setActiveFileName(fileName);
         setActiveDataCube(cubes[0]);
         setConfig(prev => ({ ...prev, mode: "uploaded" }));
+        setDataSourceKind("csv");
       }
     } catch {
       // ignore malformed/missing persisted data
@@ -602,6 +630,9 @@ export default function App() {
                     onToggleStreaming={() => setIsStreaming(!isStreaming)}
                     onResetStream={handleResetStream}
                     onUploadCSVData={handleUploadCSVData}
+                    onUploadGeoTIFF={handleUploadGeoTIFF}
+                    dataSourceKind={dataSourceKind}
+                    geotiffBandInfo={geotiffBandInfo}
                     customColors={customColors}
                     customColorsFrom={customColorsFrom}
                     onChangeCustomColor={handleChangeCustomColor}
@@ -797,6 +828,9 @@ export default function App() {
               onToggleStreaming={() => setIsStreaming(!isStreaming)}
               onResetStream={handleResetStream}
               onUploadCSVData={handleUploadCSVData}
+              onUploadGeoTIFF={handleUploadGeoTIFF}
+              dataSourceKind={dataSourceKind}
+              geotiffBandInfo={geotiffBandInfo}
               customColors={customColors}
               onChangeCustomColor={handleChangeCustomColor}
               customColorsFrom={customColorsFrom}
