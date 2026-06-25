@@ -188,11 +188,11 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
 
         {analysis.isNovel ? (
           <div className="text-[10.5px] border border-[var(--eef-alert)] bg-[var(--eef-alert-soft)] text-[var(--eef-text)] rounded p-2.5 leading-relaxed mt-1">
-            <strong className="text-[var(--eef-alert)]">High system novelty:</strong> Current geospatial signature exceeds 95% threshold of historical baseline archives. Anomaly status is active.
+            <strong className="text-[var(--eef-alert)]">High system novelty:</strong> Current frame's misfit distance is high relative to the synthetic demo baseline (there is no historical observational archive behind this). Heuristic anomaly flag is active.
           </div>
         ) : (
           <div className="text-[10px] bg-[var(--eef-ok-soft)] border border-[var(--eef-border)] text-[var(--eef-text-2)] rounded p-2 leading-normal text-center">
-            State resides safely within historical margins (confidence {((1.0 - analysis.stateNoveltyPValue) * 100).toFixed(0)}%)
+            State resides within the synthetic demo baseline margins (heuristic confidence {((1.0 - analysis.stateNoveltyPValue) * 100).toFixed(0)}%)
           </div>
         )}
       </div>

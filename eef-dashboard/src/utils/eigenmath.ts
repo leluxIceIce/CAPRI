@@ -138,8 +138,21 @@ export function kMeansClusters(
   const centroids = new Float64Array(k * dims);
   const labels = new Uint8Array(n);
 
+  // Deterministic RNG (mulberry32). k-means previously used Math.random(), so the
+  // latent-ecology regimes, cluster colours, and "dominant regime" prose changed
+  // on every run for identical input — which (rightly) made the output look
+  // arbitrary. Seeding from the problem size makes identical input reproducible.
+  let seed = (0x9e3779b9 ^ (n * 2654435761) ^ (dims * 40503)) >>> 0;
+  const rng = () => {
+    seed = (seed + 0x6d2b79f5) >>> 0;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
   // k-means++ initialization
-  const firstIdx = Math.floor(Math.random() * n);
+  const firstIdx = Math.floor(rng() * n);
   for (let d = 0; d < dims; d++) centroids[d] = desc[firstIdx * dims + d];
 
   const dists = new Float64Array(n).fill(Infinity);
@@ -154,7 +167,7 @@ export function kMeansClusters(
     }
     let total = 0;
     for (let i = 0; i < n; i++) total += dists[i];
-    let r = Math.random() * total;
+    let r = rng() * total;
     let chosen = 0;
     for (let i = 0; i < n; i++) {
       r -= dists[i];
