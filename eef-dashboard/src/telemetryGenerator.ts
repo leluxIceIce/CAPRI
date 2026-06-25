@@ -1,4 +1,14 @@
 import { DataCube, VariableName, VariableStats, TelemetryStreamConfig, AnalysisResult, VARIABLE_METADATA, CellCoord } from "./types";
+import {
+  seededKMeans,
+  normalizedEntropy,
+  moransI,
+  meanGradientMagnitude,
+  mahalanobisOutlierTest,
+  cellVectors,
+  informativeChannels,
+  standardizeColumns,
+} from "./utils/sceneStatistics";
 
 // Helper to make a blank grid of size NxN
 export function makeBlankGrid(size: number, fill = 0): number[][] {
@@ -541,146 +551,117 @@ export function parseCSVToCubes(csvText: string, gridSize = 20): DataCube[] {
   return results;
 }
 
-// ── TELEMETRY SCIENTIFIC DIAGNOSTIC & GMM BRAIN ────────────────────────────────
+// ── SCENE DIAGNOSTICS (genuine statistics) ─────────────────────────────────────
+// Replaces the old hand-tuned "GMM brain" (fixed prototype vectors, magic-number
+// thresholds, a fabricated novelty p-value) with statistics computed from the
+// cube's actual cells: k-means regime mixture, Moran's I / gradient front index,
+// and a Mahalanobis χ² multivariate-outlier test for novelty. See
+// utils/sceneStatistics.ts.
 
-// Simulated GMM Profiles for 3 primary regimes
-const EXTREME_PROFILERS = {
-  coastal_bloom: { CHL: 0.70, TSM: 0.65, ADG: 0.60, bbp: 0.55 },
-  shallow_sea:   { CHL: 0.40, TSM: 0.35, ADG: 0.40, bbp: 0.32 },
-  deep_pelagic:  { CHL: 0.10, TSM: 0.08, ADG: 0.08, bbp: 0.05 }
-};
+const CLUSTER_CHANNELS: VariableName[] = ["CHL", "TSM", "ADG", "bbp"];
+const NOVELTY_CHANNELS: VariableName[] = ["CHL", "TSM", "ADG", "bbp", "KD490", "PAR", "aphy", "FLH"];
+
+/** Descriptive name for a discovered cluster from its trophic/turbidity rank
+ *  (0 = most productive/turbid of the discovered clusters). Honest: it labels a
+ *  genuinely-clustered group by its own centroid magnitude, not a fixed prototype. */
+function regimeName(productivityRank: number, totalClusters: number): string {
+  if (totalClusters <= 1) return "Uniform optical field";
+  if (productivityRank === 0) return "Productive / turbid waters";
+  if (productivityRank === totalClusters - 1) return "Clear / oligotrophic waters";
+  return "Intermediate / mixed waters";
+}
 
 export function evaluateScientificDiagnostics(cube: DataCube): AnalysisResult {
-  const chlMean = cube.stats.CHL.mean;
-  const tsmMean = cube.stats.TSM.mean;
-  const adgMean = cube.stats.ADG.mean;
-  const bbpMean = cube.stats.bbp.mean;
-  const parMean = cube.stats.PAR.mean;
-  const kd490Mean = cube.stats.KD490?.mean || 0.5;
+  // 1. Regime mixture via genuine seeded k-means on the cells themselves.
+  const clusterCh = informativeChannels(cube, CLUSTER_CHANNELS);
+  let regime = "Uniform optical field";
+  let regimeId = 0;
+  let probabilities: Record<string, number> = { "Uniform optical field": 1 };
+  let entropy = 0;
 
-  // 1. Calculate Multi-dimensional Gaussian Mixture probabilities
-  // We compute similarity score using simple squared exponential distance (RBF)
-  const calcDist = (profile: typeof EXTREME_PROFILERS.coastal_bloom) => {
-    return Math.pow(chlMean - profile.CHL, 2) +
-           Math.pow(tsmMean - profile.TSM, 2) +
-           Math.pow(adgMean - profile.ADG, 2) +
-           Math.pow(bbpMean - profile.bbp, 2);
-  };
+  if (clusterCh.length >= 1) {
+    const rawRows = cellVectors(cube, clusterCh);
+    const { z } = standardizeColumns(rawRows);
+    const k = Math.min(3, rawRows.length);
+    const km = seededKMeans(z, k);
+    const n = rawRows.length;
 
-  const distCoastal = calcDist(EXTREME_PROFILERS.coastal_bloom);
-  const distShallow = calcDist(EXTREME_PROFILERS.shallow_sea);
-  const distPelagic = calcDist(EXTREME_PROFILERS.deep_pelagic);
+    // Per-cluster productivity = mean raw sum of optical channels (for naming).
+    const prod = new Array(km.centroids.length).fill(0);
+    const cnt = new Array(km.centroids.length).fill(0);
+    for (let i = 0; i < n; i++) {
+      const l = km.labels[i];
+      prod[l] += rawRows[i].reduce((a, b) => a + b, 0);
+      cnt[l] += 1;
+    }
+    for (let c = 0; c < prod.length; c++) prod[c] = cnt[c] > 0 ? prod[c] / cnt[c] : 0;
 
-  // Convert to unnormalized probability densities (higher density for smaller distances)
-  const densCoastal = Math.exp(-distCoastal / 0.08);
-  const densShallow = Math.exp(-distShallow / 0.08);
-  const densPelagic = Math.exp(-distPelagic / 0.08);
+    // Rank clusters by productivity (desc) -> rank 0 = most productive.
+    const order = prod.map((p, c) => ({ p, c })).sort((a, b) => b.p - a.p);
+    const rankOf = new Map<number, number>();
+    order.forEach((o, rank) => rankOf.set(o.c, rank));
 
-  const totalDensity = densCoastal + densShallow + densPelagic || 1e-9;
-  const probCoastal = densCoastal / totalDensity;
-  const probShallow = densShallow / totalDensity;
-  const probPelagic = densPelagic / totalDensity;
+    const proportions = km.sizes.map((s) => s / n);
+    entropy = normalizedEntropy(proportions);
 
-  // Identify primary classification
-  let regime = "Deep Pelagic Ocean Core";
-  let regimeId = 2;
-  let primary_prob = probPelagic;
+    // Probabilities keyed by descriptive regime name = genuine cluster shares.
+    probabilities = {};
+    km.sizes.forEach((s, c) => {
+      probabilities[regimeName(rankOf.get(c)!, km.centroids.length)] = s / n;
+    });
 
-  if (probCoastal > probShallow && probCoastal > probPelagic) {
-    regime = "Coastal Eutrophic Upwelling Zone";
-    regimeId = 0;
-    primary_prob = probCoastal;
-  } else if (probShallow > probCoastal && probShallow > probPelagic) {
-    regime = "Shallow Sediment Estuary Front";
-    regimeId = 1;
-    primary_prob = probShallow;
+    // Dominant regime = largest cluster.
+    let domCluster = 0;
+    for (let c = 1; c < km.sizes.length; c++) if (km.sizes[c] > km.sizes[domCluster]) domCluster = c;
+    regimeId = rankOf.get(domCluster)!;
+    regime = regimeName(regimeId, km.centroids.length);
   }
 
-  // 2. Evaluate Transition Risk via Shannon Entropy of the GMM outputs
-  // entropy = - sum (p * log2(p))
-  const p1 = probCoastal + 1e-9;
-  const p2 = probShallow + 1e-9;
-  const p3 = probPelagic + 1e-9;
-  const entropy = -(p1 * Math.log2(p1) + p2 * Math.log2(p2) + p3 * Math.log2(p3)) / Math.log2(3);
-
+  // Interpret the genuine mixture entropy as transition risk (an even split
+  // across regimes = a mixing/boundary scene).
   let transitionRisk: AnalysisResult["transitionRisk"] = "Low (Stable)";
-  if (entropy > 0.72) {
-    transitionRisk = "High (State Boundary)";
-  } else if (entropy > 0.45) {
-    transitionRisk = "Moderate (Mixing)";
-  }
+  if (entropy > 0.72) transitionRisk = "High (State Boundary)";
+  else if (entropy > 0.45) transitionRisk = "Moderate (Mixing)";
 
-  // 3. Evaluate State Novelty (measures if current values exceed expected profiles)
-  // Highly driven by extreme value departures or high standard deviation anomalies
-  const globalMisfit = (chlMean > 0.9 || tsmMean > 0.9 || bbpMean > 0.85 || chlMean < 0.03);
-  let stateNoveltyScore = Math.max(0.05, Math.abs(chlMean - 0.4) * 1.5 + Math.abs(tsmMean - 0.35) * 1.2);
-  
-  if (globalMisfit) {
-    stateNoveltyScore *= 1.8;
-  }
+  // 2. Spatial front index — Moran's I autocorrelation + gradient magnitude on
+  // the most informative biological channel (CHL when it varies).
+  const frontChannel: VariableName = (cube.stats.CHL?.std ?? 0) > 1e-4
+    ? "CHL"
+    : (informativeChannels(cube, NOVELTY_CHANNELS)[0] ?? "CHL");
+  const frontGrid = cube.channels[frontChannel];
+  const moran = moransI(frontGrid);
+  const gradIndex = meanGradientMagnitude(frontGrid);
+  // Low spatial autocorrelation => patchy / frontal structure.
+  const isBoundaryZone = moran < 0.4;
 
-  const isNovel = stateNoveltyScore > 0.75;
-  // Derive the pseudo p-value monotonically from the misfit score rather than
-  // snapping to a fabricated literal (it used to hard-code 0.004 when "novel",
-  // which implied a precision the heuristic does not have). It remains an
-  // illustrative heuristic, not a validated statistical test.
-  const stateNoveltyPValue = Math.max(0.001, 1.0 - Math.min(0.99, stateNoveltyScore));
-  const confidence = `${((1.0 - stateNoveltyPValue) * 100).toFixed(1)}% Confidence`;
+  // 3. Novelty — Mahalanobis multivariate-outlier test against the scene's own
+  // χ² law (no invented historical archive).
+  const novCh = informativeChannels(cube, NOVELTY_CHANNELS);
+  const outlier = mahalanobisOutlierTest(cellVectors(cube, novCh));
+  const stateNoveltyScore = outlier.outlierFraction;
+  const stateNoveltyPValue = outlier.pValue;
+  // Genuinely novel = significantly more multivariate outliers than a Gaussian
+  // of the same mean/covariance would produce.
+  const isNovel = outlier.pValue < 0.01 && outlier.outlierFraction > outlier.expectedFraction * 2;
 
-  // 4. Boundary Zone detection (spatial fluid gradients)
-  // Assesses local spatial variance. If there's high standard deviation across pixels, it's a front!
-  const chlStd = cube.stats.CHL.std;
-  const tsmStd = cube.stats.TSM.std;
-  const isBoundaryZone = (chlStd > 0.16 || tsmStd > 0.18);
-
-  // 5. Generate rich scientific rationale justification
-  const drivers: string[] = [];
-  if (chlMean > 0.6) {
-    drivers.push("extreme concentrations of chlorophyll-a, signaling high levels of phytoplankton biomass");
-  } else if (chlMean > 0.3) {
-    drivers.push("moderate chlorophyll pigments indicating stable biological productivity");
-  } else {
-    drivers.push("highly depauperate chlorophyll concentrations representing oligotrophic/desert ocean cores");
-  }
-
-  if (tsmMean > 0.5) {
-    drivers.push("exceptionally heavy particulate loading and abiotic suspended sediment density");
-  } else {
-    drivers.push("superb water clarity indicating extremely sparse light-scattering mineral solids");
-  }
-
-  if (kd490Mean > 0.5) {
-    drivers.push("rapid light transmission loss (high attenuation) in the blue-green spectrum");
-  } else {
-    drivers.push("excellent downwelling solar penetration depths");
-  }
-
-  if (parMean < 0.4) {
-    drivers.push("restricted incident solar irradiance representing potential light-limited biological settings");
-  } else {
-    drivers.push("unfettered surface solar energy availability");
-  }
-
-  let scientificJustification = `System is locked in the ${regime}. Driven fundamentally by ${drivers.join(" combined with ")}.`;
-  
-  if (isBoundaryZone) {
-    scientificJustification += " High local spatial variance confirms placement in a hydrodynamic front, inducing high patchiness, rapid spatial gradients, and increased ecological mixing.";
-  } else {
-    scientificJustification += " Consistent low spatial variance suggests placement inside a highly homogeneous regional ocean core with strong self-affinity.";
-  }
-
-  if (transitionRisk === "High (State Boundary)") {
-    scientificJustification += " IMPORTANT: GMM state entropy exceeds 72%, flagging active critical transition or boundary shearing with high vulnerability to ecological regime tipping points.";
-  }
+  // 4. Narrative built entirely from the computed numbers.
+  const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
+  let scientificJustification =
+    `k-means (seeded) resolves the scene into ${Object.keys(probabilities).length} cluster(s); ` +
+    `the dominant regime is "${regime}" (${pct(Math.max(...Object.values(probabilities)))} of cells), ` +
+    `mixture entropy ${entropy.toFixed(2)}. ` +
+    `Spatial autocorrelation of ${frontChannel} is Moran's I = ${moran.toFixed(2)} ` +
+    `(${isBoundaryZone ? "weak — patchy/frontal structure" : "strong — smooth, homogeneous field"}; ` +
+    `gradient index ${gradIndex.toFixed(3)}). ` +
+    `A Mahalanobis test over ${outlier.dims} channels flags ${pct(stateNoveltyScore)} of cells as ` +
+    `multivariate outliers vs the χ²₍0.975₎ threshold (a Gaussian expects ${pct(outlier.expectedFraction)}), ` +
+    `one-sided p = ${stateNoveltyPValue.toFixed(3)}` +
+    `${isNovel ? " — significantly heavier-tailed than normal." : " — consistent with a single Gaussian population."}`;
 
   return {
     regime,
     regimeId,
-    probabilities: {
-      Coastal: probCoastal,
-      Shallow: probShallow,
-      Pelagic: probPelagic
-    },
+    probabilities,
     transitionRisk,
     transitionEntropy: entropy,
     stateNoveltyScore,

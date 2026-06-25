@@ -52,7 +52,7 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
         {/* Entropy / Tipping point Risk Gauge */}
         <div className="glass-panel rounded-lg p-3.5 flex flex-col justify-between">
           <div>
-            <span className="text-[10px] font-medium text-[var(--eef-text-3)] block leading-tight">Tipping point entropy</span>
+            <span className="text-[10px] font-medium text-[var(--eef-text-3)] block leading-tight">Regime mixing entropy</span>
             <div className="text-xl tnum font-semibold mt-2 text-[var(--eef-text)]">{entropyPercent}%</div>
           </div>
 
@@ -115,12 +115,12 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
           <span className="text-[12px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
             <Radio size={13} className="text-[var(--eef-accent)] eef-live-dot rounded-full p-0.5" /> Regime classification
           </span>
-          <span className="text-[9px] text-[var(--eef-text-3)]">heuristic demo</span>
+          <span className="text-[9px] text-[var(--eef-text-3)]">k-means · seeded</span>
         </div>
         <p className="text-[9px] text-[var(--eef-text-3)] leading-snug -mt-1">
-          Regime score, entropy, and probability mixtures below are computed from
-          hand-tuned heuristics for demonstrating the encoding pipeline — not
-          outputs of a trained or peer-reviewed model.
+          Regimes are discovered by seeded k-means clustering of this frame's
+          cells (CHL/TSM/ADG/bbp). Shares below are the genuine fraction of cells
+          in each cluster; names describe each cluster by its own optical level.
         </p>
 
         {/* Dynamic Big classification badge */}
@@ -132,9 +132,9 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
           </div>
         </div>
 
-        {/* GMM Progress Bars */}
+        {/* Cluster share bars */}
         <div className="flex flex-col gap-1.5 mt-1 border-t border-[var(--eef-divider)] pt-2">
-          <span className="text-[10px] font-medium text-[var(--eef-text-3)] block">GMM posterior probability mixtures</span>
+          <span className="text-[10px] font-medium text-[var(--eef-text-3)] block">Regime cluster shares (fraction of cells)</span>
 
           {Object.entries(analysis.probabilities).map(([key, prob]) => {
             const numProb = prob as number;
@@ -143,7 +143,7 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
             return (
               <div key={key} className="flex flex-col gap-1">
                 <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-[var(--eef-text-2)]">{key} upwelling profile</span>
+                  <span className="text-[var(--eef-text-2)]">{key}</span>
                   <span className="tnum font-semibold text-[var(--eef-text)]">{widthPct}</span>
                 </div>
                 {/* Horizontal progress bar */}
@@ -167,32 +167,33 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
           <span className="text-[12px] font-semibold flex items-center gap-1.5 text-[var(--eef-text)]">
             <Compass size={13} className={analysis.isNovel ? "text-[var(--eef-alert)] eef-live-dot rounded-full p-0.5" : "text-[var(--eef-text-3)]"} /> {analysis.isNovel ? "Critical anomaly alert" : "State system integrity"}
           </span>
-          <span className="text-[9px] text-[var(--eef-text-3)]">heuristic p-value</span>
+          <span className="text-[9px] text-[var(--eef-text-3)]">Mahalanobis χ² test</span>
         </div>
         <p className="text-[9px] text-[var(--eef-text-3)] leading-snug">
-          Misfit distance and p-value are illustrative heuristics comparing the
-          current frame to a synthetic baseline — not a validated statistical test.
+          Each cell's Mahalanobis distance is tested against the scene's own
+          χ²₍0.975₎ threshold. The score is the fraction of multivariate-outlier
+          cells; the p-value tests whether that exceeds the 2.5% a Gaussian yields.
         </p>
 
         <div className="flex justify-between items-baseline mt-1 gap-2">
           <div>
-            <div className="text-[9px] text-[var(--eef-text-3)]">Misfit distance score</div>
-            <div className="text-lg tnum font-semibold text-[var(--eef-text)]">{analysis.stateNoveltyScore.toFixed(3)}</div>
+            <div className="text-[9px] text-[var(--eef-text-3)]">Outlier-cell fraction</div>
+            <div className="text-lg tnum font-semibold text-[var(--eef-text)]">{(analysis.stateNoveltyScore * 100).toFixed(1)}%</div>
           </div>
 
           <div className="text-right">
-            <div className="text-[9px] text-[var(--eef-text-3)]">Baseline significance</div>
+            <div className="text-[9px] text-[var(--eef-text-3)]">vs-Gaussian significance</div>
             <div className="text-[11px] tnum font-semibold text-[var(--eef-text)]">p={analysis.stateNoveltyPValue.toFixed(4)}</div>
           </div>
         </div>
 
         {analysis.isNovel ? (
           <div className="text-[10.5px] border border-[var(--eef-alert)] bg-[var(--eef-alert-soft)] text-[var(--eef-text)] rounded p-2.5 leading-relaxed mt-1">
-            <strong className="text-[var(--eef-alert)]">High system novelty:</strong> Current frame's misfit distance is high relative to the synthetic demo baseline (there is no historical observational archive behind this). Heuristic anomaly flag is active.
+            <strong className="text-[var(--eef-alert)]">Anomalous structure:</strong> the scene has significantly more multivariate-outlier cells ({(analysis.stateNoveltyScore * 100).toFixed(1)}%) than a single Gaussian of the same mean/covariance would produce (p={analysis.stateNoveltyPValue.toFixed(3)}).
           </div>
         ) : (
           <div className="text-[10px] bg-[var(--eef-ok-soft)] border border-[var(--eef-border)] text-[var(--eef-text-2)] rounded p-2 leading-normal text-center">
-            State resides within the synthetic demo baseline margins (heuristic confidence {((1.0 - analysis.stateNoveltyPValue) * 100).toFixed(0)}%)
+            Outlier fraction is consistent with a single Gaussian population (p={analysis.stateNoveltyPValue.toFixed(3)})
           </div>
         )}
       </div>
