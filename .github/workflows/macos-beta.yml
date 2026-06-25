@@ -9,9 +9,16 @@ name: Build macOS beta (.dmg)
 
 on:
   # Manual trigger from the Actions tab, plus automatic builds on version tags
-  # (e.g. v0.1.0). The temporary feature-branch push trigger was removed after
-  # the first beta build was produced and the branch merged to main.
-  workflow_dispatch: {}
+  # (e.g. v0.1.0). Provide the `version` input on a manual run to also publish
+  # the .dmg as a Release *without* pushing a git tag — the workflow creates the
+  # tag + Release for you. The temporary feature-branch push trigger was removed
+  # after the first beta build was produced and the branch merged to main.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to publish the .dmg under (e.g. v0.1.0-beta). Leave blank to only build the artifact."
+        required: false
+        default: ""
   push:
     tags:
       - "v*"
@@ -106,22 +113,26 @@ jobs:
           fi
           echo "Under the 100 MB target. ✅"
 
-      # On a version tag (e.g. v0.1.0-beta) publish the .dmg as a GitHub Release
-      # asset so it is a permanent, one-click download from the repo's Releases
-      # page — far easier to find than a buried, 90-day-expiring Actions
-      # artifact. Skipped on manual/workflow_dispatch runs (no tag to release).
+      # Publish the .dmg as a GitHub Release asset so it is a permanent,
+      # one-click download from the repo's Releases page — far easier to find
+      # than a buried, 90-day-expiring Actions artifact. Runs either on a
+      # version tag (v*) or on a manual run that supplied a `version` input
+      # (in which case the action creates the tag + Release itself). A manual
+      # run with a blank version skips this and only uploads the artifact.
       - name: Publish .dmg to a GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.version != '' }}
         uses: softprops/action-gh-release@v2
         with:
-          name: EEF Dashboard ${{ github.ref_name }}
+          tag_name: ${{ inputs.version || github.ref_name }}
+          name: EEF Dashboard ${{ inputs.version || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: ${{ steps.dmg.outputs.dmg_path }}
           fail_on_unmatched_files: true
           prerelease: true
           body: |
             macOS (Apple Silicon) beta build of the EEF Dashboard — **${{ steps.dmg.outputs.size_mb }} MB**.
 
-            Download `${{ github.ref_name }}`'s `.dmg` below, open it, and drag the app to Applications.
+            Download the `.dmg` below, open it, and drag the app to Applications.
 
             > This beta is **unsigned** (no Apple Developer cert yet), so on first launch
             > macOS will block it. Right-click the app → **Open** → **Open** to run it once;
