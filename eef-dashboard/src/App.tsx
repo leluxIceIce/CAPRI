@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, CSSProperties } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense, CSSProperties } from "react";
 import {
   Database,
   Radio,
@@ -13,7 +13,8 @@ import {
   Layers,
   Save,
   Upload,
-  X
+  X,
+  BrainCircuit
 } from "lucide-react";
 import {
   TelemetryStreamConfig,
@@ -43,6 +44,11 @@ import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { SpatialEncodingPanel } from "./components/SpatialEncodingPanel";
 import { PixelInspectorPanel } from "./components/PixelInspectorPanel";
 import { LatentEcologyPanel } from "./components/LatentEcologyPanel";
+// UMAP + RandomForest pull in umap-js / ml-random-forest (~140kB). They're only
+// used inside the ML-tools modal, so lazy-load them into an on-demand chunk to
+// keep the initial bundle light.
+const UmapPanel = lazy(() => import("./components/UmapPanel").then((m) => ({ default: m.UmapPanel })));
+const RFRegressionPanel = lazy(() => import("./components/RFRegressionPanel").then((m) => ({ default: m.RFRegressionPanel })));
 import { CSVInspectorPanel } from "./components/CSVInspectorPanel";
 import { SizeClassPanel } from "./components/SizeClassPanel";
 import { UpdateNotifier } from "./components/UpdateNotifier";
@@ -300,6 +306,8 @@ export default function App() {
   }, [bloomState]);
   // Gate 2 visibility state
   const [gate2Visible, setGate2Visible] = useState(false);
+  // ML tools (UMAP + Random-Forest regression) modal visibility
+  const [mlToolsVisible, setMlToolsVisible] = useState(false);
 
   // 8. Gate A — spatial structure & relationship tensors (Layer 2 / Layer 3 ports)
   const [spatialOverlayState, setSpatialOverlayState] = useState<SpatialOverlayState>({
@@ -790,6 +798,13 @@ export default function App() {
                   Correlations &amp; latent ecology
                 </button>
 
+                <button
+                  onClick={() => setMlToolsVisible(true)}
+                  style={toggleButtonStyle(mlToolsVisible)}
+                >
+                  ML tools — UMAP &amp; random forest
+                </button>
+
                 {csvRawData && (
                   <>
                     <button
@@ -953,6 +968,12 @@ export default function App() {
             >
               Correlations &amp; latent ecology
             </button>
+            <button
+              onClick={() => setMlToolsVisible(true)}
+              style={toggleButtonStyle(mlToolsVisible)}
+            >
+              ML tools — UMAP &amp; random forest
+            </button>
           </div>
 
           {csvRawData && (
@@ -1031,6 +1052,44 @@ export default function App() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               <LatentEcologyPanel activeDataCube={activeDataCube} visible={true} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ML tools — UMAP embedding + Random-Forest regression. Same large-modal
+          treatment so the scatter plots and importance bars get real room. */}
+      {mlToolsVisible && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Machine-learning tools"
+        >
+          <div
+            className="absolute inset-0 bg-[rgba(20,28,44,0.45)] backdrop-blur-sm"
+            onClick={() => setMlToolsVisible(false)}
+          />
+          <div className="glass-panel relative z-10 flex h-[90vh] w-full max-w-[1100px] flex-col overflow-hidden rounded-2xl shadow-[var(--eef-shadow)]">
+            <div className="flex items-center justify-between border-b border-[var(--eef-divider)] px-5 py-3.5">
+              <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-[var(--eef-text)]">
+                <BrainCircuit size={16} className="text-[var(--eef-accent)]" /> Dimensionality reduction &amp; regression
+              </h2>
+              <button
+                onClick={() => setMlToolsVisible(false)}
+                aria-label="Close ML tools"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--eef-border)] bg-[var(--eef-surface-2)] text-[var(--eef-text-2)] transition-colors hover:bg-[var(--eef-surface)] hover:text-[var(--eef-text)]"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <Suspense fallback={<div className="flex items-center justify-center gap-2 p-8 text-[12px] text-[var(--eef-text-3)]"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--eef-border)] border-t-[var(--eef-accent)]" /> Loading ML tools…</div>}>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <UmapPanel dataCube={activeDataCube} />
+                  <RFRegressionPanel dataCube={activeDataCube} />
+                </div>
+              </Suspense>
             </div>
           </div>
         </div>
