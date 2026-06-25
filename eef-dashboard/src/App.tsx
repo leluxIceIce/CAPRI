@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, CSSProperties } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense, CSSProperties } from "react";
 import {
   Database,
   Radio,
@@ -13,7 +13,8 @@ import {
   Layers,
   Save,
   Upload,
-  X
+  X,
+  BrainCircuit
 } from "lucide-react";
 import {
   TelemetryStreamConfig,
@@ -21,7 +22,6 @@ import {
   VARIABLE_METADATA,
   LayerState,
   DataCube,
-  RootVisualizationState,
   SpatialOverlayState,
   RelationshipGraphState,
   ConfidenceOverlayState
@@ -34,8 +34,7 @@ import {
 import { computeRootAnalysis, type RootAnalysis } from "./utils/eigenmath";
 import { computeSpatialTensor, getSpatialChannelGrid, spatialChannelIndex } from "./utils/spatialTensor";
 import { computeRelationshipTensor } from "./utils/relationshipTensor";
-import { summarize as summarizeBloom, findHotspots, type FishermanSummary } from "./utils/bloomDetector";
-import { generateEcologicalGraph } from "./utils/affinityGraph";
+import { summarize as summarizeBloom, type FishermanSummary } from "./utils/bloomDetector";
 import { ThreeViewport, type ThreeViewportHandle, type PixelClickEvent } from "./components/ThreeViewport";
 import { ViewportErrorBoundary } from "./components/ViewportErrorBoundary";
 import { TelemetryConsole } from "./components/TelemetryConsole";
@@ -43,8 +42,12 @@ import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { SpatialEncodingPanel } from "./components/SpatialEncodingPanel";
 import { PixelInspectorPanel } from "./components/PixelInspectorPanel";
 import { LatentEcologyPanel } from "./components/LatentEcologyPanel";
+// UMAP + RandomForest pull in umap-js / ml-random-forest (~140kB). They're only
+// used inside the ML-tools modal, so lazy-load them into an on-demand chunk to
+// keep the initial bundle light.
+const UmapPanel = lazy(() => import("./components/UmapPanel").then((m) => ({ default: m.UmapPanel })));
+const RFRegressionPanel = lazy(() => import("./components/RFRegressionPanel").then((m) => ({ default: m.RFRegressionPanel })));
 import { CSVInspectorPanel } from "./components/CSVInspectorPanel";
-import { SizeClassPanel } from "./components/SizeClassPanel";
 import { UpdateNotifier } from "./components/UpdateNotifier";
 import { type PixelInspectorState } from "./gate1_pixel_inspector/types";
 import { exploreLatentEcology, type LatentEcologyState } from "./gate2_understanding_roots/latentEcologyExplorer";
@@ -54,7 +57,7 @@ import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "reac
 const isElectron = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron");
 
 // A serializable snapshot of view/visualization settings only — never raw data
-// (activeDataCube/uploadedCubes/activeEcologicalGraph), so save/load stays a tiny JSON file.
+// (activeDataCube/uploadedCubes), so save/load stays a tiny JSON file.
 interface SessionSnapshot {
   version: 1;
   config: TelemetryStreamConfig;
@@ -66,12 +69,10 @@ interface SessionSnapshot {
   showWireframe: boolean;
   showLabels: boolean;
   cameraPreset: "iso" | "top" | "profile";
-  rootState: RootVisualizationState;
   layerState: Record<VariableName, LayerState>;
   spatialOverlayState: SpatialOverlayState;
   relationshipGraphState: RelationshipGraphState;
   confidenceOverlayState: ConfidenceOverlayState;
-  bloomOverlayState: { visible: boolean; opacity: number };
   gate2Visible: boolean;
 }
 
@@ -84,11 +85,14 @@ export default function App() {
     currentAnomaly: 0.0,
     driftFactor: 0.0,
     flowSpeed: 1.0,
-    mosaicScale: 20,
   });
 
   const [isStreaming, setIsStreaming] = useState(true);
   const [stepSeconds, setStepSeconds] = useState(0);
+
+  // 3D terrain grid resolution (NxN cells). Drives generateDataCube/parseCSVToCubes/
+  // rasterToDataCube AND the plane geometry's segment count in ThreeViewport.
+  const [gridResolution, setGridResolution] = useState(20);
 
   // 2. Custom Uploaded CSV Data Player States
   const [uploadedCubes, setUploadedCubes] = useState<DataCube[]>([]);
@@ -104,7 +108,6 @@ export default function App() {
   // looks at the data the way the user's spreadsheet does rather than the 20x20 grid.
   const [csvRawData, setCsvRawData] = useState<RawCSVData | null>(null);
   const [csvInspectorVisible, setCsvInspectorVisible] = useState(false);
-  const [sizeClassVisible, setSizeClassVisible] = useState(false);
 
   // Custom per-variable accent colors (bright peak), persisted across sessions
   const [customColors, setCustomColors] = useState<Partial<Record<VariableName, string>>>(() => {
@@ -141,11 +144,6 @@ export default function App() {
   const [showWireframe, setShowWireframe] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
   const [cameraPreset, setCameraPreset] = useState<"iso" | "top" | "profile">("iso");
-
-  // Root visualization state
-  const [rootState, setRootState] = useState<RootVisualizationState>({
-    visible: true, opacity: 0.85, depth: 3, colorMode: 'cluster', selectedCluster: null
-  });
 
   // Ref to main ThreeViewport for imperative PNG export
   const mainViewportRef = useRef<ThreeViewportHandle>(null);
@@ -200,20 +198,7 @@ export default function App() {
       currentAnomaly: 0.0,
       driftFactor: 0.0,
       flowSpeed: 1.0,
-      mosaicScale: 20,
-    });
-  });
-
-  const [activeEcologicalGraph, setActiveEcologicalGraph] = useState(() => {
-    return generateEcologicalGraph(0, {
-      mode: "synthetic",
-      speedHz: 1.5,
-      noiseLevel: 0.03,
-      currentAnomaly: 0.0,
-      driftFactor: 0.0,
-      flowSpeed: 1.0,
-      mosaicScale: 20,
-    });
+    }, gridResolution);
   });
 
   // Master telemetry tick generator loop
@@ -221,8 +206,6 @@ export default function App() {
     if (!isStreaming) return;
 
     const intervalMs = 1000 / config.speedHz;
-    let ecoTickCount = 0;
-    const ECO_GRAPH_EVERY = 5; // Regenerate ecological graph every 5 ticks (~3s at 1.5Hz)
 
     const tick = () => {
       if (config.mode === "uploaded" && uploadedCubes.length > 0) {
@@ -235,12 +218,8 @@ export default function App() {
         // Generate synthetic or preset fluid streams
         setStepSeconds((prevSec) => {
           const nextSec = prevSec + (1 / config.speedHz);
-          const nextCube = generateDataCube(nextSec, config);
+          const nextCube = generateDataCube(nextSec, config, gridResolution);
           setActiveDataCube(nextCube);
-          if (ecoTickCount % ECO_GRAPH_EVERY === 0) {
-            setActiveEcologicalGraph(generateEcologicalGraph(nextSec, config));
-          }
-          ecoTickCount++;
           return nextSec;
         });
       }
@@ -248,7 +227,7 @@ export default function App() {
 
     const timer = setInterval(tick, intervalMs);
     return () => clearInterval(timer);
-  }, [isStreaming, config, uploadedCubes]);
+  }, [isStreaming, config, uploadedCubes, gridResolution]);
 
   // Handle manual frame slide for custom CSV player (when playing or paused)
   const handleCSVFrameIndexChange = (idx: number) => {
@@ -258,23 +237,22 @@ export default function App() {
     }
   };
 
-  // Re-run spatial calculations when mode changes directly
+  // Re-run spatial calculations when mode or grid resolution changes directly
   useEffect(() => {
     if (config.mode !== "uploaded") {
-      const initialCube = generateDataCube(stepSeconds, config);
+      const initialCube = generateDataCube(stepSeconds, config, gridResolution);
       setActiveDataCube(initialCube);
-      setActiveEcologicalGraph(generateEcologicalGraph(stepSeconds, config));
     } else if (uploadedCubes.length > 0) {
       setActiveDataCube(uploadedCubes[currentCSVFrameIdx] || uploadedCubes[0]);
     }
-  }, [config.mode, config.mosaicScale]);
+  }, [config.mode, gridResolution]);
 
   // 6. Multi-dimensional Scientific Analyst (calculates GMM, Novelty, Boundaries & reasons on active snapshot)
   const analysisResult = useMemo(() => {
     return evaluateScientificDiagnostics(activeDataCube);
   }, [activeDataCube]);
 
-  // 7. Eigenvalue root analysis (PCA + clustering for root visualization)
+  // 7. Eigenvalue root analysis (PCA + clustering) — feeds the 3D latent-space overlay
   const rootAnalysis = useMemo(() => {
     return computeRootAnalysis(activeDataCube, 5);
   }, [activeDataCube]);
@@ -294,20 +272,10 @@ export default function App() {
   useEffect(() => {
     prevBloomRiskRef.current = bloomState.risk;
   }, [bloomState]);
-  // Contiguous high-risk blobs (red zone) reduced to one centroid marker each —
-  // the "go here" / "avoid here" list for real-world fishing decisions. Real
-  // lat/lon are only attached when activeDataCube actually carries geo-tagged coords.
-  const bloomHotspots = useMemo(() => {
-    return findHotspots(activeDataCube, bloomState.risk, bloomState.zones.zones);
-  }, [activeDataCube, bloomState]);
-  // Safe-zone overlay (3D categorical green/amber/red plane); on by default.
-  const [bloomOverlayState, setBloomOverlayState] = useState<{ visible: boolean; opacity: number }>({
-    visible: true,
-    opacity: 0.65,
-  });
-
   // Gate 2 visibility state
   const [gate2Visible, setGate2Visible] = useState(false);
+  // ML tools (UMAP + Random-Forest regression) modal visibility
+  const [mlToolsVisible, setMlToolsVisible] = useState(false);
 
   // 8. Gate A — spatial structure & relationship tensors (Layer 2 / Layer 3 ports)
   const [spatialOverlayState, setSpatialOverlayState] = useState<SpatialOverlayState>({
@@ -323,6 +291,25 @@ export default function App() {
   // Confidence grid for the active data cube (defaults to all-ones 20x20 if absent)
   const confidenceGrid = useMemo(() => {
     return activeDataCube.confidence ?? Array.from({ length: 20 }, () => Array(20).fill(1));
+  }, [activeDataCube]);
+
+  // "Spectral layers · N × N grid" stage label, with the real lat/lon bounding
+  // box appended when the active cube was built from geo-tagged CSV rows.
+  const stageLabel = useMemo(() => {
+    const n = activeDataCube.gridSize;
+    const base = `Spectral layers · ${n} × ${n} grid`;
+    const coords = activeDataCube.coords;
+    if (!coords) return base;
+    let latMin = Infinity, latMax = -Infinity, lonMin = Infinity, lonMax = -Infinity;
+    for (const row of coords) {
+      for (const { lat, lon } of row) {
+        if (lat < latMin) latMin = lat;
+        if (lat > latMax) latMax = lat;
+        if (lon < lonMin) lonMin = lon;
+        if (lon > lonMax) lonMax = lon;
+      }
+    }
+    return `${base} · ${latMin.toFixed(2)}°–${latMax.toFixed(2)}°N, ${lonMin.toFixed(2)}°–${lonMax.toFixed(2)}°E`;
   }, [activeDataCube]);
 
   const spatialTensor = useMemo(() => computeSpatialTensor(activeDataCube), [activeDataCube]);
@@ -434,7 +421,7 @@ export default function App() {
       currentAnomaly: 0,
       driftFactor: 0,
       noiseLevel: 0.02
-    });
+    }, gridResolution);
     setActiveDataCube(blank);
     setConfig(prev => ({
       ...prev,
@@ -456,8 +443,8 @@ export default function App() {
   };
 
   // 9. Session save/load — a JSON snapshot of view/visualization settings, deliberately
-  // excluding raw data (activeDataCube/uploadedCubes/activeEcologicalGraph) since that's
-  // either regenerable (synthetic) or re-uploaded by the user, and would bloat the file.
+  // excluding raw data (activeDataCube/uploadedCubes) since that's either regenerable
+  // (synthetic) or re-uploaded by the user, and would bloat the file.
   const sessionFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportSession = () => {
@@ -472,12 +459,10 @@ export default function App() {
       showWireframe,
       showLabels,
       cameraPreset,
-      rootState,
       layerState,
       spatialOverlayState,
       relationshipGraphState,
       confidenceOverlayState,
-      bloomOverlayState,
       gate2Visible,
     };
     const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
@@ -503,12 +488,10 @@ export default function App() {
         if (typeof snapshot.showWireframe === "boolean") setShowWireframe(snapshot.showWireframe);
         if (typeof snapshot.showLabels === "boolean") setShowLabels(snapshot.showLabels);
         if (snapshot.cameraPreset) setCameraPreset(snapshot.cameraPreset);
-        if (snapshot.rootState) setRootState(snapshot.rootState);
         if (snapshot.layerState) setLayerState(snapshot.layerState);
         if (snapshot.spatialOverlayState) setSpatialOverlayState(snapshot.spatialOverlayState);
         if (snapshot.relationshipGraphState) setRelationshipGraphState(snapshot.relationshipGraphState);
         if (snapshot.confidenceOverlayState) setConfidenceOverlayState(snapshot.confidenceOverlayState);
-        if (snapshot.bloomOverlayState) setBloomOverlayState(snapshot.bloomOverlayState);
         if (typeof snapshot.gate2Visible === "boolean") setGate2Visible(snapshot.gate2Visible);
       } catch {
         window.alert("Could not load this session file — it may be corrupted or from an incompatible version.");
@@ -631,6 +614,8 @@ export default function App() {
                     onResetStream={handleResetStream}
                     onUploadCSVData={handleUploadCSVData}
                     onUploadGeoTIFF={handleUploadGeoTIFF}
+                    gridResolution={gridResolution}
+                    onChangeGridResolution={setGridResolution}
                     dataSourceKind={dataSourceKind}
                     geotiffBandInfo={geotiffBandInfo}
                     customColors={customColors}
@@ -658,8 +643,6 @@ export default function App() {
                     dataCube={activeDataCube}
                     onExportLayer={(v) => mainViewportRef.current?.exportLayerPng(v)}
                     bloomSummary={bloomState.summary}
-                    bloomOverlayVisible={bloomOverlayState.visible}
-                    onToggleBloomOverlay={() => setBloomOverlayState((s) => ({ ...s, visible: !s.visible }))}
                   />
                 </div>
               </div>
@@ -682,7 +665,7 @@ export default function App() {
                     </span>
                   </div>
                   <p className="text-[11px] text-[var(--eef-text-3)] leading-none mt-1">
-                    Spectral layers · 20 × 20 grid
+                    {stageLabel}
                   </p>
                 </div>
 
@@ -709,8 +692,6 @@ export default function App() {
                     customColors={customColors}
                     customColorsFrom={customColorsFrom}
                     rootAnalysis={rootAnalysis}
-                    ecologicalGraph={activeEcologicalGraph}
-                    rootState={rootState}
                     spatialOverlay={spatialOverlayState}
                     spatialOverlayGrid={spatialOverlayGrid}
                     relationshipGraph={relationshipGraphState}
@@ -718,9 +699,6 @@ export default function App() {
                     confidenceOverlay={confidenceOverlayState}
                     confidenceOverlayGrid={confidenceGrid}
                     latentOverlayVisible={false}
-                    bloomOverlay={bloomOverlayState}
-                    bloomZones={bloomState.zones.zones}
-                    bloomHotspots={bloomHotspots}
                     onPixelClick={handlePixelClick}
                   />
                   </ViewportErrorBoundary>
@@ -753,9 +731,6 @@ export default function App() {
                     customColorsFrom={customColorsFrom}
                     onChangeCustomColor={handleChangeCustomColor}
                     onResetCustomColor={handleResetCustomColor}
-                    rootAnalysis={rootAnalysis}
-                    rootState={rootState}
-                    onChangeRootState={setRootState}
                   />
                 </div>
 
@@ -781,7 +756,14 @@ export default function App() {
                   onClick={() => setGate2Visible(true)}
                   style={toggleButtonStyle(gate2Visible)}
                 >
-                  Open latent ecology
+                  Correlations &amp; latent ecology
+                </button>
+
+                <button
+                  onClick={() => setMlToolsVisible(true)}
+                  style={toggleButtonStyle(mlToolsVisible)}
+                >
+                  ML tools — UMAP &amp; random forest
                 </button>
 
                 {csvRawData && (
@@ -796,15 +778,6 @@ export default function App() {
                     {csvInspectorVisible && <CSVInspectorPanel raw={csvRawData} />}
                   </>
                 )}
-
-                <button
-                  onClick={() => setSizeClassVisible(!sizeClassVisible)}
-                  style={toggleButtonStyle(sizeClassVisible)}
-                >
-                  {sizeClassVisible ? "Hide size classes" : "Show size classes"}
-                </button>
-
-                {sizeClassVisible && <SizeClassPanel activeDataCube={activeDataCube} />}
               </div>
             </section>
           </Panel>
@@ -829,6 +802,8 @@ export default function App() {
               onResetStream={handleResetStream}
               onUploadCSVData={handleUploadCSVData}
               onUploadGeoTIFF={handleUploadGeoTIFF}
+              gridResolution={gridResolution}
+              onChangeGridResolution={setGridResolution}
               dataSourceKind={dataSourceKind}
               geotiffBandInfo={geotiffBandInfo}
               customColors={customColors}
@@ -855,8 +830,6 @@ export default function App() {
               onChangeDisplacementGain={setDisplacementGain}
               dataCube={activeDataCube}
               bloomSummary={bloomState.summary}
-              bloomOverlayVisible={bloomOverlayState.visible}
-              onToggleBloomOverlay={() => setBloomOverlayState((s) => ({ ...s, visible: !s.visible }))}
             />
           </div>
 
@@ -869,7 +842,7 @@ export default function App() {
                 </span>
               </div>
               <p className="text-[11px] text-[var(--eef-text-3)] leading-none mt-1">
-                Spectral layers · 20 × 20 grid
+                {stageLabel}
               </p>
             </div>
             <div className="flex-1 w-full h-full">
@@ -885,8 +858,6 @@ export default function App() {
                 cameraPreset={cameraPreset}
                 customColors={customColors}
                 rootAnalysis={rootAnalysis}
-                ecologicalGraph={activeEcologicalGraph}
-                rootState={rootState}
                 confidenceOverlay={confidenceOverlayState}
                 confidenceOverlayGrid={confidenceGrid}
               />
@@ -910,9 +881,6 @@ export default function App() {
               customColors={customColors}
               onChangeCustomColor={handleChangeCustomColor}
               onResetCustomColor={handleResetCustomColor}
-              rootAnalysis={rootAnalysis}
-              rootState={rootState}
-              onChangeRootState={setRootState}
             />
           </div>
 
@@ -945,7 +913,13 @@ export default function App() {
               onClick={() => setGate2Visible(true)}
               style={toggleButtonStyle(gate2Visible)}
             >
-              Open latent ecology
+              Correlations &amp; latent ecology
+            </button>
+            <button
+              onClick={() => setMlToolsVisible(true)}
+              style={toggleButtonStyle(mlToolsVisible)}
+            >
+              ML tools — UMAP &amp; random forest
             </button>
           </div>
 
@@ -967,21 +941,6 @@ export default function App() {
             </div>
           )}
 
-          <div className="glass-panel rounded-xl p-4 flex flex-col gap-3">
-            <div className="flex justify-between items-center border-b border-[var(--eef-divider)] pb-2.5">
-              <h2 className="text-[13px] font-semibold tracking-tight text-[var(--eef-text)] flex items-center gap-2">
-                <Layers size={13} className="text-[var(--eef-accent)]" />Size classes
-              </h2>
-              <span className="text-[11px] text-[var(--eef-text-3)]">Pico · nano · micro</span>
-            </div>
-            <button
-              onClick={() => setSizeClassVisible(!sizeClassVisible)}
-              style={toggleButtonStyle(sizeClassVisible)}
-            >
-              {sizeClassVisible ? "Hide size classes" : "Show size classes"}
-            </button>
-            {sizeClassVisible && <SizeClassPanel activeDataCube={activeDataCube} />}
-          </div>
         </div>
       </main>
 
@@ -1025,6 +984,44 @@ export default function App() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               <LatentEcologyPanel activeDataCube={activeDataCube} visible={true} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ML tools — UMAP embedding + Random-Forest regression. Same large-modal
+          treatment so the scatter plots and importance bars get real room. */}
+      {mlToolsVisible && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Machine-learning tools"
+        >
+          <div
+            className="absolute inset-0 bg-[rgba(20,28,44,0.45)] backdrop-blur-sm"
+            onClick={() => setMlToolsVisible(false)}
+          />
+          <div className="glass-panel relative z-10 flex h-[90vh] w-full max-w-[1100px] flex-col overflow-hidden rounded-2xl shadow-[var(--eef-shadow)]">
+            <div className="flex items-center justify-between border-b border-[var(--eef-divider)] px-5 py-3.5">
+              <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-[var(--eef-text)]">
+                <BrainCircuit size={16} className="text-[var(--eef-accent)]" /> Dimensionality reduction &amp; regression
+              </h2>
+              <button
+                onClick={() => setMlToolsVisible(false)}
+                aria-label="Close ML tools"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--eef-border)] bg-[var(--eef-surface-2)] text-[var(--eef-text-2)] transition-colors hover:bg-[var(--eef-surface)] hover:text-[var(--eef-text)]"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <Suspense fallback={<div className="flex items-center justify-center gap-2 p-8 text-[12px] text-[var(--eef-text-3)]"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--eef-border)] border-t-[var(--eef-accent)]" /> Loading ML tools…</div>}>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <UmapPanel dataCube={activeDataCube} />
+                  <RFRegressionPanel dataCube={activeDataCube} />
+                </div>
+              </Suspense>
             </div>
           </div>
         </div>

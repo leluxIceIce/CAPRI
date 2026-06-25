@@ -1,27 +1,20 @@
-import React, { useEffect, useImperativeHandle, useRef } from "react";
+import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import {
   DataCube,
   LayerState,
   VARIABLE_METADATA,
   SIGNED_VARIABLES,
   VariableName,
-  RootVisualizationState,
   SpatialOverlayState,
   RelationshipGraphState,
   ConfidenceOverlayState
 } from "../types";
 import { interpolateColormap, generateRampFromHex, generateRampFromTwoHex, getScalarFieldColor } from "../utils/colormaps";
 import { type RootAnalysis } from "../utils/eigenmath";
-import { generateAllRoots, generateGraphRoots } from "../utils/lsystem";
-import { buildRootMesh } from "../utils/rootGeometry";
 import { type RelationshipTensor, relationshipChannelIndex } from "../utils/relationshipTensor";
 import { buildRelationshipEdges, buildRelationshipMesh } from "../utils/relationshipGeometry";
-import { ZoneClass, type BloomHotspot } from "../utils/bloomDetector";
 
 export interface ThreeViewportHandle {
   exportLayerPng: (varName: VariableName) => void;
@@ -45,8 +38,6 @@ interface ThreeViewportProps {
   customColors?: Partial<Record<VariableName, string>>;
   customColorsFrom?: Partial<Record<VariableName, string>>;
   rootAnalysis?: RootAnalysis;
-  ecologicalGraph?: any; // To avoid strict type issues if missing in some imports
-  rootState?: RootVisualizationState;
   spatialOverlay?: SpatialOverlayState;
   spatialOverlayGrid?: Float32Array | null;
   relationshipGraph?: RelationshipGraphState;
@@ -54,9 +45,6 @@ interface ThreeViewportProps {
   confidenceOverlay?: ConfidenceOverlayState;
   confidenceOverlayGrid?: number[][];
   latentOverlayVisible?: boolean;
-  bloomOverlay?: { visible: boolean; opacity: number };
-  bloomZones?: Uint8Array | null;
-  bloomHotspots?: BloomHotspot[];
   onPixelClick?: (event: PixelClickEvent) => void;
 }
 
@@ -73,8 +61,6 @@ function ThreeViewportInner(
   customColors,
   customColorsFrom,
   rootAnalysis,
-  ecologicalGraph,
-  rootState,
   spatialOverlay,
   spatialOverlayGrid,
   relationshipGraph,
@@ -82,9 +68,6 @@ function ThreeViewportInner(
   confidenceOverlay,
   confidenceOverlayGrid,
   latentOverlayVisible = true,
-  bloomOverlay,
-  bloomZones,
-  bloomHotspots,
   onPixelClick,
   }: ThreeViewportProps,
   ref: React.Ref<ThreeViewportHandle>
@@ -97,11 +80,19 @@ function ThreeViewportInner(
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const meshesGroupRef = useRef<THREE.Group | null>(null);
-  const rootMeshRef = useRef<THREE.Mesh | null>(null);
-  const prevRootAnalysisRef = useRef<RootAnalysis | null>(null);
-  const prevEcologicalGraphRef = useRef<any>(null);
-  const prevRootDepthRef = useRef<number | null>(null);
-  const composerRef = useRef<EffectComposer | null>(null);
+
+  // Freeze-to-white recovery. A lost WebGL context (GPU process death in the
+  // Tauri WebView, driver hiccup, too many live contexts) clears the canvas to
+  // the white scene background and stops rendering. The browser does NOT always
+  // fire `webglcontextrestored` afterwards, so pausing-and-waiting can leave the
+  // viewport white forever. `remountKey` lets us tear down and rebuild the
+  // ENTIRE renderer + scene from scratch (guaranteed-fresh GL context) as an
+  // automatic last resort, with a manual "Reload viewport" button as the final
+  // fallback. `glStatus` drives the recovery overlay.
+  const [remountKey, setRemountKey] = useState(0);
+  const [glStatus, setGlStatus] = useState<"ok" | "lost" | "failed">("ok");
+  const autoRemountsRef = useRef(0);
+  const MAX_AUTO_REMOUNTS = 3;
 
   // Spatial overlay plane (Gate A Stage 2)
   const spatialOverlayMeshRef = useRef<THREE.Mesh | null>(null);
@@ -114,9 +105,6 @@ function ThreeViewportInner(
   // Latent-space geometric overlay (above CHL_disagreement layer)
   const latentOverlayGroupRef = useRef<THREE.Group | null>(null);
   const prevLatentAnalysisRef = useRef<RootAnalysis | null>(null);
-
-  // Bloom-risk heatmap overlay + hotspot markers (Squad F)
-  const bloomOverlayGroupRef = useRef<THREE.Group | null>(null);
 
   // Relationship graph mesh (Gate A Stage 2)
   const relationshipMeshRef = useRef<THREE.Mesh | null>(null);
@@ -186,22 +174,16 @@ function ThreeViewportInner(
     renderer.toneMappingExposure = 1.0;
     renderer.setClearColor(0xEEF2F8, 1);
 
-    // Effect Composer for Bloom (Glassmorphic Perception Layer)
-    const renderScene = new RenderPass(scene, camera);
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.08, 0.3, 0.99);
-    // On a LIGHT background additive bloom blows everything toward white. The
-    // near-white label chips (rgba(255,255,255,0.96)) were tripping the bloom and
-    // hazing the dark text on top so it became unreadable. The threshold is now
-    // pushed to 0.99 (only truly blown-out accent highlights bloom at all) and the
-    // strength dropped to a whisper, so labels and terrain stay crisp and legible.
-    bloomPass.threshold = 0.99;
-    bloomPass.strength = 0.08; // Whisper-faint; reserved for the very brightest accents only
-    bloomPass.radius = 0.3;
+    // NOTE: The UnrealBloom EffectComposer was removed here. It allocated several
+    // full-resolution render targets and re-rendered the whole scene through them
+    // every frame; on a Tauri WebView that sustained multi-target load was the
+    // documented trigger for the GPU dropping the WebGL context (the persistent
+    // "freeze to white" bug). Its visual contribution was a whisper (strength 0.08,
+    // threshold 0.99 — effectively invisible on the light canvas), so rendering the
+    // scene directly removes the crash source at no real visual cost.
 
-    const composer = new EffectComposer(renderer);
-    composer.addPass(renderScene);
-    composer.addPass(bloomPass);
-    composerRef.current = composer;
+    // A successful renderer construction means we have a live context again.
+    setGlStatus("ok");
 
     // Lights — rebalanced for a LIGHT scene. A bright hemisphere fill (white sky,
     // cool light-slate ground bounce) keeps the lit terrain readable against the
@@ -263,16 +245,38 @@ function ThreeViewportInner(
     // canvas freezes on the light clear colour (0xEEF2F8) — i.e. "blank white".
     // We pause rendering while the context is gone and resume once it's restored.
     let contextLost = false;
+    let restoreWatchdog: ReturnType<typeof setTimeout> | null = null;
     const onContextLost = (event: Event) => {
       // preventDefault() is REQUIRED for the context to become eligible for restore.
       event.preventDefault();
       contextLost = true;
+      setGlStatus("lost");
+      // Give the browser a window to restore the context on its own. If it never
+      // does (the common WebView failure mode), force a full renderer rebuild —
+      // up to a cap, after which we surface a manual "Reload viewport" button so
+      // we never thrash in an unrecoverable loop.
+      if (restoreWatchdog) clearTimeout(restoreWatchdog);
+      restoreWatchdog = setTimeout(() => {
+        if (!contextLost) return; // already restored
+        if (autoRemountsRef.current < MAX_AUTO_REMOUNTS) {
+          autoRemountsRef.current += 1;
+          setRemountKey((k) => k + 1);
+        } else {
+          setGlStatus("failed");
+        }
+      }, 1500);
     };
     const onContextRestored = () => {
       contextLost = false;
+      if (restoreWatchdog) { clearTimeout(restoreWatchdog); restoreWatchdog = null; }
+      setGlStatus("ok");
     };
     canvasRef.current?.addEventListener("webglcontextlost", onContextLost, false);
     canvasRef.current?.addEventListener("webglcontextrestored", onContextRestored, false);
+
+    // If the rebuilt context survives a while, refill the auto-remount budget so
+    // unrelated losses spread out over a long session don't permanently exhaust it.
+    const healthyTimer = setTimeout(() => { autoRemountsRef.current = 0; }, 30000);
 
     // Animation Loop. The whole body is crash-isolated in try/finally so that a
     // single bad frame (a lost GL context, a transient NaN, a driver hiccup) can
@@ -292,11 +296,7 @@ function ThreeViewportInner(
         });
 
         if (!contextLost) {
-          if (composerRef.current) {
-            composerRef.current.render();
-          } else {
-            renderer.render(scene, camera);
-          }
+          renderer.render(scene, camera);
         }
       } catch (err) {
         // Log once per failure but keep the loop alive; do not let a thrown
@@ -310,57 +310,68 @@ function ThreeViewportInner(
 
     // Resize Handler — observes the container element directly so resizable
     // panel drags (which don't fire window "resize") are picked up too.
+    // Wrapped in try/catch: this fires from a ResizeObserver callback, which
+    // runs outside both the tick() loop's own try/catch and React's render
+    // phase — an uncaught throw here (e.g. mid-resize WebGL/composer error)
+    // would otherwise silently kill the observer and freeze the viewport.
     const handleResize = () => {
-      if (!containerRef.current) return;
-      const w = containerRef.current.clientWidth;
-      const h = containerRef.current.clientHeight;
-      if (w === 0 || h === 0) return;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-      if (composerRef.current) composerRef.current.setSize(w, h);
+      try {
+        if (!containerRef.current) return;
+        const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
+        if (w === 0 || h === 0) return;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      } catch (err) {
+        console.error("[ThreeViewport] resize handler failed; viewport may be stale until next resize", err);
+      }
     };
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(containerRef.current);
 
     // Pixel Click Detection (Gate 1: Pixel Inspector)
     const handleCanvasClick = (event: MouseEvent) => {
-      if (!onPixelClick || !canvasRef.current) return;
+      try {
+        if (!onPixelClick || !canvasRef.current) return;
 
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const normalizedX = (x / rect.width) * 2 - 1;
-      const normalizedY = -(y / rect.height) * 2 + 1;
+        const rect = canvasRef.current.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        const normalizedX = (x / rect.width) * 2 - 1;
+        const normalizedY = -(y / rect.height) * 2 + 1;
 
-      const raycaster = new THREE.Raycaster();
-      const mouse = new THREE.Vector2(normalizedX, normalizedY);
-      raycaster.setFromCamera(mouse, camera);
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2(normalizedX, normalizedY);
+        raycaster.setFromCamera(mouse, camera);
 
-      // Check intersection with layer meshes
-      const meshes = Array.from(layersMeshesMap.current.values()).map(({ mesh }) => mesh);
-      const intersects = raycaster.intersectObjects(meshes);
+        // Check intersection with layer meshes
+        const meshes = Array.from(layersMeshesMap.current.values()).map(({ mesh }) => mesh);
+        const intersects = raycaster.intersectObjects(meshes);
 
-      if (intersects.length > 0) {
-        const intersection = intersects[0];
-        const gridSize = dataCube.gridSize;
+        if (intersects.length > 0) {
+          const intersection = intersects[0];
+          const gridSize = dataCube.gridSize;
 
-        // Get the geometry face index and convert to grid coordinates
-        if (intersection.face) {
-          const faceIndex = intersection.faceIndex ?? 0;
-          const row = Math.floor(faceIndex / (gridSize - 1) / 2);
-          const col = Math.floor((faceIndex / 2) % (gridSize - 1));
+          // Get the geometry face index and convert to grid coordinates
+          if (intersection.face) {
+            const faceIndex = intersection.faceIndex ?? 0;
+            const row = Math.floor(faceIndex / (gridSize - 1) / 2);
+            const col = Math.floor((faceIndex / 2) % (gridSize - 1));
 
-          // Clamp to valid grid bounds
-          const clampedRow = Math.min(Math.max(row, 0), gridSize - 1);
-          const clampedCol = Math.min(Math.max(col, 0), gridSize - 1);
+            // Clamp to valid grid bounds
+            const clampedRow = Math.min(Math.max(row, 0), gridSize - 1);
+            const clampedCol = Math.min(Math.max(col, 0), gridSize - 1);
 
-          onPixelClick({
-            gridSize,
-            row: clampedRow,
-            col: clampedCol
-          });
+            onPixelClick({
+              gridSize,
+              row: clampedRow,
+              col: clampedCol
+            });
+          }
         }
+      } catch (err) {
+        console.error("[ThreeViewport] pixel click handler failed", err);
       }
     };
 
@@ -371,6 +382,8 @@ function ThreeViewportInner(
       canvasRef.current?.removeEventListener("click", handleCanvasClick);
       canvasRef.current?.removeEventListener("webglcontextlost", onContextLost);
       canvasRef.current?.removeEventListener("webglcontextrestored", onContextRestored);
+      if (restoreWatchdog) clearTimeout(restoreWatchdog);
+      clearTimeout(healthyTimer);
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
       renderer.dispose();
@@ -430,7 +443,9 @@ function ThreeViewportInner(
         relationshipMeshRef.current = null;
       }
     };
-  }, []);
+    // `remountKey` is in the dep list so the recovery watchdog can force a full
+    // renderer/scene rebuild (fresh GL context) after an unrecoverable context loss.
+  }, [remountKey]);
 
   // 2. Camera Preset Adjustments
   useEffect(() => {
@@ -450,7 +465,7 @@ function ThreeViewportInner(
       controls.target.set(0, 0, 0);
     }
     controls.update();
-  }, [cameraPreset]);
+  }, [cameraPreset, remountKey]);
 
   // 3. Populate or Update Stack Layers
   useEffect(() => {
@@ -698,79 +713,7 @@ function ThreeViewportInner(
       (wireframe.material as THREE.LineBasicMaterial).color.copy(accentColor);
     });
 
-  }, [dataCube, layerState, spacing, displacementGain, showTerrain, showWireframe, showLabels, customColors, customColorsFrom]);
-
-  // Root system mesh lifecycle
-  useEffect(() => {
-    const scene = sceneRef.current;
-    const group = meshesGroupRef.current;
-    if (!scene || !group) return;
-
-    const visible = rootState?.visible ?? false;
-    const depth = rootState?.depth ?? 3;
-    const opacity = rootState?.opacity ?? 0.85;
-
-    if (!visible || !rootAnalysis) {
-      if (rootMeshRef.current) {
-        group.remove(rootMeshRef.current);
-        rootMeshRef.current.geometry.dispose();
-        (rootMeshRef.current.material as THREE.Material).dispose();
-        rootMeshRef.current = null;
-      }
-      prevRootAnalysisRef.current = null;
-      prevRootDepthRef.current = null;
-      return;
-    }
-
-    const needsRebuild =
-      !rootMeshRef.current ||
-      (ecologicalGraph ? prevEcologicalGraphRef.current !== ecologicalGraph : prevRootAnalysisRef.current !== rootAnalysis) ||
-      prevRootDepthRef.current !== depth;
-
-    if (needsRebuild) {
-      if (rootMeshRef.current) {
-        group.remove(rootMeshRef.current);
-        rootMeshRef.current.geometry.dispose();
-        (rootMeshRef.current.material as THREE.Material).dispose();
-        rootMeshRef.current = null;
-      }
-
-      prevRootAnalysisRef.current = rootAnalysis;
-      prevEcologicalGraphRef.current = ecologicalGraph;
-      prevRootDepthRef.current = depth;
-
-      let segments;
-      if (ecologicalGraph) {
-        // Epic 12/14: Use graph roots
-        const numLayers = Object.keys(VARIABLE_METADATA).length;
-        const anchorY = (0 - (numLayers - 1) / 2) * spacing;
-        segments = generateGraphRoots(ecologicalGraph, anchorY);
-      } else {
-        // Local tile roots fallback
-        segments = generateAllRoots(
-          rootAnalysis.projections,
-          rootAnalysis.eigenvalues,
-          dataCube.gridSize,
-          spacing,
-          depth
-        );
-      }
-
-      if (segments.length === 0) return;
-
-      // Since graph roots might not have valid cluster labels per node in the same format,
-      // we pass a dummy array or modify buildRootMesh to not depend solely on it if missing.
-      // Actually, rootGeometry.ts buildRootMesh handles cellIndex.
-      const clusterLabels = rootAnalysis ? rootAnalysis.clusterLabels : new Uint8Array(segments.length).fill(0);
-      const mesh = buildRootMesh(segments, clusterLabels);
-      group.add(mesh);
-      rootMeshRef.current = mesh;
-    }
-
-    if (rootMeshRef.current?.material instanceof THREE.MeshPhysicalMaterial || rootMeshRef.current?.material instanceof THREE.MeshStandardMaterial) {
-      rootMeshRef.current.material.opacity = opacity;
-    }
-  }, [rootAnalysis, ecologicalGraph, rootState?.visible, rootState?.depth, rootState?.opacity, spacing, dataCube.gridSize]);
+  }, [dataCube, layerState, spacing, displacementGain, showTerrain, showWireframe, showLabels, customColors, customColorsFrom, remountKey]);
 
   // Spatial overlay plane lifecycle (Gate A Stage 2)
   useEffect(() => {
@@ -851,7 +794,7 @@ function ThreeViewportInner(
     // Reposition in case spacing changed
     const _numLayersS2 = Object.keys(VARIABLE_METADATA).length;
     mesh.position.y = ((_numLayersS2 - 1) / 2 + 1.5) * spacing;
-  }, [spatialOverlay?.visible, spatialOverlay?.opacity, spatialOverlayGrid, spacing, dataCube.gridSize]);
+  }, [spatialOverlay?.visible, spatialOverlay?.opacity, spatialOverlayGrid, spacing, dataCube.gridSize, remountKey]);
 
   // Confidence overlay plane lifecycle (Gate 0.5 Stage 6) — mirrors the spatial
   // overlay plane pattern above. Red (low confidence) -> Green (high confidence).
@@ -940,7 +883,7 @@ function ThreeViewportInner(
     // Reposition in case spacing changed
     const _numLayersC2 = Object.keys(VARIABLE_METADATA).length;
     mesh.position.y = ((_numLayersC2 - 1) / 2 + 2.5) * spacing;
-  }, [confidenceOverlay?.visible, confidenceOverlay?.opacity, confidenceOverlayGrid, spacing, dataCube.gridSize]);
+  }, [confidenceOverlay?.visible, confidenceOverlay?.opacity, confidenceOverlayGrid, spacing, dataCube.gridSize, remountKey]);
 
   // Relationship graph mesh lifecycle (Gate A Stage 2) — mirrors the root-mesh
   // create/dispose/rebuild pattern above.
@@ -1012,7 +955,8 @@ function ThreeViewportInner(
     relationshipGraph?.threshold,
     relationshipGraph?.opacity,
     spacing,
-    dataCube.gridSize
+    dataCube.gridSize,
+    remountKey
   ]);
 
   // M3 — Latent-space geometric overlay: vertex-colored PCA distance field + cluster convex hulls
@@ -1188,136 +1132,44 @@ function ThreeViewportInner(
 
     group.add(overlayGroup);
     latentOverlayGroupRef.current = overlayGroup;
-  }, [rootAnalysis, latentOverlayVisible, spacing, dataCube]);
-
-  // Squad F — Bloom-risk overlay: categorical green/amber/red risk plane + red hotspot markers,
-  // draped clear above CHL_disagreement's own terrain so it reads as a clean safety map rather
-  // than colliding with that layer's displaced peaks. Rebuilt on every change (20x20 grid, cheap).
-  useEffect(() => {
-    const group = meshesGroupRef.current;
-    if (!group) return;
-
-    const disposeGroup = (g: THREE.Group) => {
-      g.traverse((child) => {
-        if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
-        const mat = (child as THREE.Mesh).material;
-        if (mat) {
-          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-          else (mat as THREE.Material).dispose();
-        }
-      });
-    };
-
-    if (bloomOverlayGroupRef.current) {
-      group.remove(bloomOverlayGroupRef.current);
-      disposeGroup(bloomOverlayGroupRef.current);
-      bloomOverlayGroupRef.current = null;
-    }
-
-    const overlay = bloomOverlay;
-    if (!overlay?.visible || !bloomZones || bloomZones.length === 0) {
-      return;
-    }
-
-    const gridSize = dataCube.gridSize;
-    const n = gridSize * gridSize;
-    const keys = Object.keys(VARIABLE_METADATA) as VariableName[];
-    const numLayers = keys.length;
-    const chlDisIndex = keys.indexOf("CHL_disagreement");
-    const chlDisY = (chlDisIndex - (numLayers - 1) / 2) * spacing;
-    // Clear above CHL_disagreement's own displaced terrain peak (height is
-    // bounded by displacementGain — see the per-layer height formula above)
-    // so this flat risk plane never clips through that layer's mountains.
-    const overlayY = chlDisY + displacementGain + spacing * 0.3;
-
-    const overlayGroup = new THREE.Group();
-
-    // Categorical risk plane: green/amber/red per cell (safe → caution → stay away).
-    const geo = new THREE.PlaneGeometry(16, 16, gridSize - 1, gridSize - 1);
-    const colorsArr = new Float32Array(n * 3);
-    const ZONE_COLOR: Record<number, [number, number, number]> = {
-      [ZoneClass.Green]: [0.20, 0.75, 0.40],
-      [ZoneClass.Amber]: [0.95, 0.70, 0.15],
-      [ZoneClass.Red]: [0.90, 0.20, 0.20],
-    };
-    for (let i = 0; i < n; i++) {
-      const [r, g, b] = ZONE_COLOR[bloomZones[i]] ?? ZONE_COLOR[ZoneClass.Green];
-      colorsArr[i * 3] = r;
-      colorsArr[i * 3 + 1] = g;
-      colorsArr[i * 3 + 2] = b;
-    }
-    geo.setAttribute("color", new THREE.BufferAttribute(colorsArr, 3));
-    const planeMat = new THREE.MeshStandardMaterial({
-      vertexColors: true, transparent: true, opacity: overlay.opacity,
-      roughness: 0.9, metalness: 0, side: THREE.DoubleSide, depthWrite: false,
-    });
-    const planeMesh = new THREE.Mesh(geo, planeMat);
-    planeMesh.rotation.x = -Math.PI / 2;
-    planeMesh.position.y = overlayY;
-    overlayGroup.add(planeMesh);
-
-    // Red dot + coordinate/risk label at each contiguous high-risk blob centroid.
-    (bloomHotspots ?? []).forEach((hotspot) => {
-      const x = (hotspot.col / (gridSize - 1)) * 16 - 8;
-      const z = (hotspot.row / (gridSize - 1)) * 16 - 8;
-
-      const dotGeo = new THREE.SphereGeometry(0.18, 16, 16);
-      const dotMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(0xC8553D),
-        emissive: new THREE.Color(0xC8553D),
-        emissiveIntensity: 0.45,
-      });
-      const dot = new THREE.Mesh(dotGeo, dotMat);
-      dot.position.set(x, overlayY + 0.25, z);
-      overlayGroup.add(dot);
-
-      const labelCanvas = document.createElement("canvas");
-      labelCanvas.width = 220;
-      labelCanvas.height = 56;
-      const lctx = labelCanvas.getContext("2d");
-      if (lctx) {
-        // Light frosted chip with a burnt-red hairline; risk value in the muted
-        // alert red, coordinates in deep slate — readable dark-on-light.
-        lctx.fillStyle = "rgba(255, 255, 255, 0.92)";
-        lctx.roundRect(0, 0, 220, 56, 8);
-        lctx.fill();
-        lctx.lineWidth = 1.5;
-        lctx.strokeStyle = "rgba(200, 85, 61, 0.55)";
-        lctx.stroke();
-
-        lctx.fillStyle = "#C8553D";
-        lctx.font = "bold 14px sans-serif";
-        lctx.textAlign = "left";
-        lctx.textBaseline = "middle";
-        lctx.fillText(`RISK ${Math.round(hotspot.meanRisk * 100)}%`, 12, 18);
-
-        lctx.fillStyle = "rgba(27, 39, 64, 0.85)";
-        lctx.font = "11px monospace";
-        const coordText =
-          hotspot.lat !== null && hotspot.lon !== null
-            ? `${hotspot.lat.toFixed(4)}, ${hotspot.lon.toFixed(4)}`
-            : `grid (${Math.round(hotspot.row)}, ${Math.round(hotspot.col)})`;
-        lctx.fillText(coordText, 12, 40);
-      }
-
-      const labelTex = new THREE.CanvasTexture(labelCanvas);
-      const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true, opacity: 0.92, depthTest: false });
-      const labelSprite = new THREE.Sprite(labelMat);
-      labelSprite.scale.set(2.6, 0.66, 1);
-      labelSprite.position.set(x, overlayY + 0.75, z);
-      overlayGroup.add(labelSprite);
-    });
-
-    group.add(overlayGroup);
-    bloomOverlayGroupRef.current = overlayGroup;
-  }, [bloomZones, bloomHotspots, bloomOverlay?.visible, bloomOverlay?.opacity, spacing, displacementGain, dataCube]);
+  }, [rootAnalysis, latentOverlayVisible, spacing, dataCube, remountKey]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full min-h-[400px]">
-      <canvas ref={canvasRef} className="w-full h-full block touch-none" />
+      {/* key={remountKey} forces a brand-new canvas DOM node on recovery, so the
+          rebuilt renderer always attaches to a guaranteed-fresh WebGL context. */}
+      <canvas key={remountKey} ref={canvasRef} className="w-full h-full block touch-none" />
       <div className="absolute top-4 right-4 text-[10px] font-mono select-none px-2 py-1 rounded backdrop-blur-md border border-[var(--eef-border)] bg-[var(--eef-surface-2)] text-[var(--eef-text-3)]">
         GL_VERSION: WebGL 2.0 · Orbit: Mouse/Touch
       </div>
+
+      {/* Recovery overlay — shown instead of a silent white void when the GL
+          context drops. While auto-recovery is in flight we show a spinner;
+          if it exhausts its retries we offer a manual rebuild. */}
+      {glStatus !== "ok" && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[var(--eef-surface-2)]/80 backdrop-blur-sm select-none">
+          {glStatus === "lost" ? (
+            <>
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--eef-border)] border-t-[var(--eef-accent)]" />
+              <p className="text-[12px] font-semibold text-[var(--eef-text)]">Recovering 3D viewport…</p>
+              <p className="text-[10px] text-[var(--eef-text-3)]">The graphics context dropped. Rebuilding automatically.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-[12px] font-semibold text-[var(--eef-text)]">3D viewport needs a reload</p>
+              <p className="text-[10px] text-[var(--eef-text-3)] max-w-[260px] text-center">
+                The graphics context was lost and didn't recover on its own. Click below to rebuild it.
+              </p>
+              <button
+                onClick={() => { autoRemountsRef.current = 0; setGlStatus("lost"); setRemountKey((k) => k + 1); }}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white bg-[var(--eef-accent)] hover:opacity-90 transition-opacity"
+              >
+                Reload viewport
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

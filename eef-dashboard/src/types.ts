@@ -141,29 +141,6 @@ export interface TelemetryStreamConfig {
   currentAnomaly: number; // intensity of simulated anomalies: 0 to 1
   driftFactor: number; // simulates sensor drift calibration loss: 0 to 0.1
   flowSpeed: number; // speed of spatial plume flows: 0 to 2
-  mosaicScale: number; // Number of tiles in the ecological graph mosaic (20 to 100)
-}
-
-export enum ZoomLevel {
-  Regional = "regional", // All tiles (Trunks)
-  Cluster = "cluster",   // Tile groups (Branches)
-  Local = "local",       // Individual tiles (Roots)
-  Micro = "micro"        // Pixel level (Twigs)
-}
-
-export interface TileNode {
-  id: number;
-  worldX: number;
-  worldZ: number;
-  embedding: Float64Array; // Structural embedding proxy (eigenvalue spectrum) — NOT a learned/contrastive embedding; see affinityGraph.ts
-  regimeId: number;
-  cube: DataCube | null; // For local/micro view, holds actual grid data
-}
-
-export interface EcologicalGraph {
-  nodes: TileNode[];
-  edges: { source: number; target: number; weight: number; isSpatial: boolean }[];
-  maxWeight: number;
 }
 
 export interface SpatialDescriptor {
@@ -213,14 +190,6 @@ export interface DataCube {
   // data (e.g. a geo-tagged CSV) actually carried lat/lon columns — never
   // fabricated for synthetic/ungeoreferenced data.
   coords?: CellCoord[][];
-}
-
-export interface RootVisualizationState {
-  visible: boolean;
-  opacity: number;
-  depth: number;
-  colorMode: 'cluster' | 'eigenvalue' | 'variable';
-  selectedCluster: number | null;
 }
 
 // The 9 spatial structure descriptors computed per variable by
