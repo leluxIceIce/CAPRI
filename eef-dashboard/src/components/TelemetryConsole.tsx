@@ -5,6 +5,8 @@ import type { FishermanSummary } from "../utils/bloomDetector";
 import { parseCSVToCubes, parseCSVRaw, type RawCSVData } from "../telemetryGenerator";
 import { getCSSGradient } from "../utils/colormaps";
 import { ColorPickerPopover } from "./ColorPickerPopover";
+import { rasterToDataCube } from "../adapters/geotiffAdapter";
+import { geoTiffFileToInput } from "../adapters/geotiffDecode";
 
 interface TelemetryConsoleProps {
   config: TelemetryStreamConfig;
@@ -13,6 +15,9 @@ interface TelemetryConsoleProps {
   onToggleStreaming: () => void;
   onResetStream: () => void;
   onUploadCSVData: (cubes: DataCube[], fileName?: string, raw?: RawCSVData) => void;
+  onUploadGeoTIFF: (cube: DataCube, fileName: string, bandInfo: string) => void;
+  dataSourceKind: "synthetic" | "csv" | "geotiff";
+  geotiffBandInfo: string | null;
   customColors: Partial<Record<VariableName, string>>;
   onChangeCustomColor: (name: VariableName, hex: string) => void;
   customColorsFrom?: Partial<Record<VariableName, string>>;
@@ -49,6 +54,9 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
   onToggleStreaming,
   onResetStream,
   onUploadCSVData,
+  onUploadGeoTIFF,
+  dataSourceKind,
+  geotiffBandInfo,
   customColors,
   onChangeCustomColor,
   customColorsFrom,
@@ -78,6 +86,7 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
   onToggleBloomOverlay,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const geotiffInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -149,6 +158,30 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       processUploadedCSV(e.target.files[0]);
+    }
+  };
+
+  // Real GeoTIFF tile → decode → grid → DataCube, fed into the same pipeline.
+  const processUploadedGeoTIFF = async (file: File) => {
+    setErrorMsg(null);
+    try {
+      const input = await geoTiffFileToInput(file);
+      const cube = rasterToDataCube(input);
+      const mapping = Object.entries(input.bandMap)
+        .map(([b, v]) => `band ${b} → ${v}`)
+        .join(", ");
+      const bandInfo = `${input.raster.bands.length} band(s) · ${input.raster.width}×${input.raster.height}px · ${mapping}`;
+      onUploadGeoTIFF(cube, file.name, bandInfo);
+      onChangeConfig({ mode: "uploaded" });
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err?.message || "Failed to decode GeoTIFF. Is it a valid multi-band raster?");
+    }
+  };
+
+  const handleGeoTIFFFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      void processUploadedGeoTIFF(e.target.files[0]);
     }
   };
 
@@ -290,12 +323,31 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
           </button>
         </div>
 
-        {/* Data provenance caption — clarifies what each source actually represents */}
-        <p className="text-[10px] text-[var(--eef-text-3)] leading-relaxed mt-1">
-          {config.mode === "uploaded"
-            ? "User-supplied CSV grid data, played back frame-by-frame as uploaded."
-            : "Illustrative synthetic parameter set generated locally — not derived from satellite observations or real sensor data."}
-        </p>
+        {/* Data provenance caption — states honestly what the ACTIVE data is */}
+        <div className="mt-1 flex flex-col gap-1">
+          <span
+            className={`inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+              dataSourceKind === "geotiff"
+                ? "bg-[var(--eef-ok-soft)] text-[var(--eef-ok)] border border-[var(--eef-ok)]"
+                : dataSourceKind === "csv"
+                  ? "bg-[var(--eef-accent-soft)] text-[var(--eef-accent)] border border-[var(--eef-accent-ring)]"
+                  : "bg-[var(--eef-inset)] text-[var(--eef-text-3)] border border-[var(--eef-border)]"
+            }`}
+          >
+            {dataSourceKind === "geotiff"
+              ? "Real data · GeoTIFF"
+              : dataSourceKind === "csv"
+                ? "User data · CSV"
+                : "Synthetic demo"}
+          </span>
+          <p className="text-[10px] text-[var(--eef-text-3)] leading-relaxed">
+            {dataSourceKind === "geotiff"
+              ? `Analysis is running over a real ocean-colour raster${geotiffBandInfo ? ` (${geotiffBandInfo})` : ""}. All metrics below are computed from these observed pixels.`
+              : dataSourceKind === "csv"
+                ? "User-supplied CSV grid data, played back frame-by-frame as uploaded."
+                : "Illustrative synthetic parameter set generated locally — not derived from satellite observations or real sensor data. Classifications, entropy and the briefing are heuristic demonstrations."}
+          </p>
+        </div>
       </div>
 
       {/* 2. Upload / Drag Zone if CSV selected */}
@@ -328,6 +380,26 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
               className="hidden"
             />
           </div>
+
+          {/* Real GeoTIFF ingestion — decodes a multi-band ocean-colour tile and
+              runs the full analysis over the observed pixels. */}
+          <button
+            type="button"
+            onClick={() => geotiffInputRef.current?.click()}
+            className="mt-2 flex items-center justify-center gap-1.5 rounded-lg border border-[var(--eef-ok)] bg-[var(--eef-ok-soft)] px-3 py-2 text-[11px] font-semibold text-[var(--eef-ok)] transition-colors hover:brightness-95"
+          >
+            <Database size={12} /> Load real GeoTIFF tile (.tif)
+          </button>
+          <span className="mt-1 block text-center text-[9px] text-[var(--eef-text-3)]">
+            Multi-band raster (Sentinel-3 / Copernicus). Bands map in order; resampled to the 20×20 grid.
+          </span>
+          <input
+            type="file"
+            ref={geotiffInputRef}
+            onChange={handleGeoTIFFFileChange}
+            accept=".tif,.tiff,image/tiff"
+            className="hidden"
+          />
 
           {errorMsg && (
             <div className="mt-2 text-[11px] text-[var(--eef-alert)] text-center border border-[var(--eef-alert)] bg-[var(--eef-alert-soft)] rounded-lg p-1.5">

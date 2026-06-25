@@ -188,13 +188,14 @@ function ThreeViewportInner(
 
     // Effect Composer for Bloom (Glassmorphic Perception Layer)
     const renderScene = new RenderPass(scene, camera);
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.18, 0.4, 0.95);
-    // On a LIGHT background additive bloom blows everything toward white, so it is
-    // kept very restrained: a high luminance threshold means only the genuinely
-    // bright accent elements (hotspot dots, high-dominance root cores) glow faintly.
-    // The terrain planes and labels must stay crisp and readable, never hazed out.
-    bloomPass.threshold = 0.95;
-    bloomPass.strength = 0.18; // Barely-there glow reserved for the brightest accents only
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.08, 0.3, 0.99);
+    // On a LIGHT background additive bloom blows everything toward white. The
+    // near-white label chips (rgba(255,255,255,0.96)) were tripping the bloom and
+    // hazing the dark text on top so it became unreadable. The threshold is now
+    // pushed to 0.99 (only truly blown-out accent highlights bloom at all) and the
+    // strength dropped to a whisper, so labels and terrain stay crisp and legible.
+    bloomPass.threshold = 0.99;
+    bloomPass.strength = 0.08; // Whisper-faint; reserved for the very brightest accents only
     bloomPass.radius = 0.3;
 
     const composer = new EffectComposer(renderer);
@@ -255,24 +256,55 @@ function ThreeViewportInner(
     };
     controlsRef.current = controls;
 
-    // Animation Loop
+    // WebGL context-loss recovery. The bloom EffectComposer allocates several
+    // full-res render targets and re-renders every frame; on a Tauri WebView the
+    // sustained load from orbit damping can make the GPU drop the WebGL context.
+    // Without handling that, the next render() throws, the loop dies, and the
+    // canvas freezes on the light clear colour (0xEEF2F8) — i.e. "blank white".
+    // We pause rendering while the context is gone and resume once it's restored.
+    let contextLost = false;
+    const onContextLost = (event: Event) => {
+      // preventDefault() is REQUIRED for the context to become eligible for restore.
+      event.preventDefault();
+      contextLost = true;
+    };
+    const onContextRestored = () => {
+      contextLost = false;
+    };
+    canvasRef.current?.addEventListener("webglcontextlost", onContextLost, false);
+    canvasRef.current?.addEventListener("webglcontextrestored", onContextRestored, false);
+
+    // Animation Loop. The whole body is crash-isolated in try/finally so that a
+    // single bad frame (a lost GL context, a transient NaN, a driver hiccup) can
+    // never stop the loop permanently — the next frame is ALWAYS scheduled. This
+    // is what turns a recoverable glitch into a survivable one instead of a
+    // permanent freeze-to-white.
     let animationFrameId: number;
     const tick = () => {
-      controls.update();
-      
-      // Face labels towards scientific camera viewport
-      layersMeshesMap.current.forEach(({ label }) => {
-        if (label.visible) {
-          label.quaternion.copy(camera.quaternion);
-        }
-      });
+      try {
+        controls.update();
 
-      if (composerRef.current) {
-        composerRef.current.render();
-      } else {
-        renderer.render(scene, camera);
+        // Face labels towards scientific camera viewport
+        layersMeshesMap.current.forEach(({ label }) => {
+          if (label.visible) {
+            label.quaternion.copy(camera.quaternion);
+          }
+        });
+
+        if (!contextLost) {
+          if (composerRef.current) {
+            composerRef.current.render();
+          } else {
+            renderer.render(scene, camera);
+          }
+        }
+      } catch (err) {
+        // Log once per failure but keep the loop alive; do not let a thrown
+        // frame escape and tear down rendering for good.
+        console.error("[ThreeViewport] render tick failed; continuing", err);
+      } finally {
+        animationFrameId = requestAnimationFrame(tick);
       }
-      animationFrameId = requestAnimationFrame(tick);
     };
     tick();
 
@@ -337,6 +369,8 @@ function ThreeViewportInner(
     // Cleanup
     return () => {
       canvasRef.current?.removeEventListener("click", handleCanvasClick);
+      canvasRef.current?.removeEventListener("webglcontextlost", onContextLost);
+      canvasRef.current?.removeEventListener("webglcontextrestored", onContextRestored);
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
       renderer.dispose();

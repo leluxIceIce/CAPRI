@@ -45,59 +45,10 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
   return (
     <div className="@container flex flex-col gap-4 text-[var(--eef-text)] select-none h-full overflow-y-auto pr-1">
 
-      {/* 1. Classification & GMM Posterior probabilities */}
-      <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2.5">
-        <div className="flex justify-between items-center">
-          <span className="text-[12px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
-            <Radio size={13} className="text-[var(--eef-accent)] eef-live-dot rounded-full p-0.5" /> Regime classification
-          </span>
-          <span className="text-[9px] text-[var(--eef-text-3)]">heuristic demo</span>
-        </div>
-        <p className="text-[9px] text-[var(--eef-text-3)] leading-snug -mt-1">
-          Regime score, entropy, and probability mixtures below are computed from
-          hand-tuned heuristics for demonstrating the encoding pipeline — not
-          outputs of a trained or peer-reviewed model.
-        </p>
-
-        {/* Dynamic Big classification badge */}
-        <div className={`border rounded-lg p-2.5 flex items-center gap-2.5 h-14 ${getRegimeColor(analysis.regimeId)}`}>
-          <Waves size={24} className="stroke-[1.5] text-[var(--eef-accent)]" />
-          <div>
-            <div className="text-[10px] text-[var(--eef-text-3)]">Primary ocean regime</div>
-            <div className="text-sm font-semibold tracking-tight text-[var(--eef-text)]">{analysis.regime}</div>
-          </div>
-        </div>
-
-        {/* GMM Progress Bars */}
-        <div className="flex flex-col gap-1.5 mt-1 border-t border-[var(--eef-divider)] pt-2">
-          <span className="text-[10px] font-medium text-[var(--eef-text-3)] block">GMM posterior probability mixtures</span>
-
-          {Object.entries(analysis.probabilities).map(([key, prob]) => {
-            const numProb = prob as number;
-            const widthPct = `${(numProb * 100).toFixed(1)}%`;
-
-            return (
-              <div key={key} className="flex flex-col gap-1">
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-[var(--eef-text-2)]">{key} upwelling profile</span>
-                  <span className="tnum font-semibold text-[var(--eef-text)]">{widthPct}</span>
-                </div>
-                {/* Horizontal progress bar */}
-                <div className="h-1 bg-[var(--eef-inset)] rounded-full overflow-hidden w-full">
-                  <div
-                    className="h-full rounded-full transition-all duration-300 bg-[var(--eef-accent)]"
-                    style={{ width: widthPct }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 2. Critical Transitions and Boundary Zone Analytics */}
+      {/* 1. Critical Transitions and Boundary Zone Analytics — surfaced first so
+            the latent / tipping-point entropy reads at the top of the stack. */}
       <div className="grid grid-cols-1 @sm:grid-cols-2 gap-3">
-        
+
         {/* Entropy / Tipping point Risk Gauge */}
         <div className="glass-panel rounded-lg p-3.5 flex flex-col justify-between">
           <div>
@@ -158,6 +109,56 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
 
       </div>
 
+      {/* 2. Classification & GMM Posterior probabilities */}
+      <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2.5">
+        <div className="flex justify-between items-center">
+          <span className="text-[12px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
+            <Radio size={13} className="text-[var(--eef-accent)] eef-live-dot rounded-full p-0.5" /> Regime classification
+          </span>
+          <span className="text-[9px] text-[var(--eef-text-3)]">heuristic demo</span>
+        </div>
+        <p className="text-[9px] text-[var(--eef-text-3)] leading-snug -mt-1">
+          Regime score, entropy, and probability mixtures below are computed from
+          hand-tuned heuristics for demonstrating the encoding pipeline — not
+          outputs of a trained or peer-reviewed model.
+        </p>
+
+        {/* Dynamic Big classification badge */}
+        <div className={`border rounded-lg p-2.5 flex items-center gap-2.5 h-14 ${getRegimeColor(analysis.regimeId)}`}>
+          <Waves size={24} className="stroke-[1.5] text-[var(--eef-accent)]" />
+          <div>
+            <div className="text-[10px] text-[var(--eef-text-3)]">Primary ocean regime</div>
+            <div className="text-sm font-semibold tracking-tight text-[var(--eef-text)]">{analysis.regime}</div>
+          </div>
+        </div>
+
+        {/* GMM Progress Bars */}
+        <div className="flex flex-col gap-1.5 mt-1 border-t border-[var(--eef-divider)] pt-2">
+          <span className="text-[10px] font-medium text-[var(--eef-text-3)] block">GMM posterior probability mixtures</span>
+
+          {Object.entries(analysis.probabilities).map(([key, prob]) => {
+            const numProb = prob as number;
+            const widthPct = `${(numProb * 100).toFixed(1)}%`;
+
+            return (
+              <div key={key} className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-[var(--eef-text-2)]">{key} upwelling profile</span>
+                  <span className="tnum font-semibold text-[var(--eef-text)]">{widthPct}</span>
+                </div>
+                {/* Horizontal progress bar */}
+                <div className="h-1 bg-[var(--eef-inset)] rounded-full overflow-hidden w-full">
+                  <div
+                    className="h-full rounded-full transition-all duration-300 bg-[var(--eef-accent)]"
+                    style={{ width: widthPct }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 3. Novelty Detection and Signatures */}
       <div className={`glass-panel rounded-lg p-3.5 transition-all flex flex-col gap-2 ${
         analysis.isNovel ? "border-[var(--eef-alert)] bg-[var(--eef-alert-soft)]" : ""
@@ -187,11 +188,11 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
 
         {analysis.isNovel ? (
           <div className="text-[10.5px] border border-[var(--eef-alert)] bg-[var(--eef-alert-soft)] text-[var(--eef-text)] rounded p-2.5 leading-relaxed mt-1">
-            <strong className="text-[var(--eef-alert)]">High system novelty:</strong> Current geospatial signature exceeds 95% threshold of historical baseline archives. Anomaly status is active.
+            <strong className="text-[var(--eef-alert)]">High system novelty:</strong> Current frame's misfit distance is high relative to the synthetic demo baseline (there is no historical observational archive behind this). Heuristic anomaly flag is active.
           </div>
         ) : (
           <div className="text-[10px] bg-[var(--eef-ok-soft)] border border-[var(--eef-border)] text-[var(--eef-text-2)] rounded p-2 leading-normal text-center">
-            State resides safely within historical margins (confidence {((1.0 - analysis.stateNoveltyPValue) * 100).toFixed(0)}%)
+            State resides within the synthetic demo baseline margins (heuristic confidence {((1.0 - analysis.stateNoveltyPValue) * 100).toFixed(0)}%)
           </div>
         )}
       </div>

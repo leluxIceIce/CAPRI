@@ -609,7 +609,11 @@ export function evaluateScientificDiagnostics(cube: DataCube): AnalysisResult {
   }
 
   const isNovel = stateNoveltyScore > 0.75;
-  const stateNoveltyPValue = isNovel ? 0.004 : (1.0 - Math.min(0.95, stateNoveltyScore));
+  // Derive the pseudo p-value monotonically from the misfit score rather than
+  // snapping to a fabricated literal (it used to hard-code 0.004 when "novel",
+  // which implied a precision the heuristic does not have). It remains an
+  // illustrative heuristic, not a validated statistical test.
+  const stateNoveltyPValue = Math.max(0.001, 1.0 - Math.min(0.99, stateNoveltyScore));
   const confidence = `${((1.0 - stateNoveltyPValue) * 100).toFixed(1)}% Confidence`;
 
   // 4. Boundary Zone detection (spatial fluid gradients)

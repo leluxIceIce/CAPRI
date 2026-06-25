@@ -12,7 +12,8 @@ import {
   Info,
   Layers,
   Save,
-  Upload
+  Upload,
+  X
 } from "lucide-react";
 import {
   TelemetryStreamConfig,
@@ -36,6 +37,7 @@ import { computeRelationshipTensor } from "./utils/relationshipTensor";
 import { summarize as summarizeBloom, findHotspots, type FishermanSummary } from "./utils/bloomDetector";
 import { generateEcologicalGraph } from "./utils/affinityGraph";
 import { ThreeViewport, type ThreeViewportHandle, type PixelClickEvent } from "./components/ThreeViewport";
+import { ViewportErrorBoundary } from "./components/ViewportErrorBoundary";
 import { TelemetryConsole } from "./components/TelemetryConsole";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { SpatialEncodingPanel } from "./components/SpatialEncodingPanel";
@@ -91,6 +93,11 @@ export default function App() {
   // 2. Custom Uploaded CSV Data Player States
   const [uploadedCubes, setUploadedCubes] = useState<DataCube[]>([]);
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
+  // Tracks what the ACTIVE data actually is, so the UI can state provenance
+  // honestly: 'synthetic' = procedurally generated demo, 'csv'/'geotiff' = real
+  // user-supplied data. 'geotiff' is the only genuinely-observational source.
+  const [dataSourceKind, setDataSourceKind] = useState<"synthetic" | "csv" | "geotiff">("synthetic");
+  const [geotiffBandInfo, setGeotiffBandInfo] = useState<string | null>(null);
   const [currentCSVFrameIdx, setCurrentCSVFrameIdx] = useState(0);
   // Raw, un-binned CSV rows (original columns) kept alongside the spatially-binned
   // DataCube grid — powers the CSV Inspector's raw-row table + column chart, which
@@ -340,6 +347,12 @@ export default function App() {
 
   // Master handles
   const handleConfigChange = (newConfig: Partial<TelemetryStreamConfig>) => {
+    // Switching back to the synthetic generator means the active data is no
+    // longer real — keep the provenance label truthful.
+    if (newConfig.mode === "synthetic") {
+      setDataSourceKind("synthetic");
+      setGeotiffBandInfo(null);
+    }
     setConfig(prev => ({ ...prev, ...newConfig }));
   };
 
@@ -352,11 +365,27 @@ export default function App() {
     setActiveDataCube(cubes[0]);
     setConfig(prev => ({ ...prev, mode: "uploaded" }));
     setCsvRawData(raw ?? null);
+    setDataSourceKind("csv");
+    setGeotiffBandInfo(null);
     try {
       localStorage.setItem("eef.uploadedCubes", JSON.stringify({ cubes, fileName: name }));
     } catch {
       // localStorage unavailable or quota exceeded — uploaded data won't persist
     }
+  };
+
+  // Real ocean-colour GeoTIFF tile → the same analysis pipeline the synthetic
+  // generator feeds. A single tile is one frame, so playback streaming is paused.
+  const handleUploadGeoTIFF = (cube: DataCube, fileName: string, bandInfo: string) => {
+    setUploadedCubes([cube]);
+    setActiveFileName(fileName);
+    setCurrentCSVFrameIdx(0);
+    setActiveDataCube(cube);
+    setConfig(prev => ({ ...prev, mode: "uploaded" }));
+    setCsvRawData(null);
+    setDataSourceKind("geotiff");
+    setGeotiffBandInfo(bandInfo);
+    setIsStreaming(false);
   };
 
   // Restore previously uploaded CSV playback data on mount
@@ -370,6 +399,7 @@ export default function App() {
         setActiveFileName(fileName);
         setActiveDataCube(cubes[0]);
         setConfig(prev => ({ ...prev, mode: "uploaded" }));
+        setDataSourceKind("csv");
       }
     } catch {
       // ignore malformed/missing persisted data
@@ -600,6 +630,9 @@ export default function App() {
                     onToggleStreaming={() => setIsStreaming(!isStreaming)}
                     onResetStream={handleResetStream}
                     onUploadCSVData={handleUploadCSVData}
+                    onUploadGeoTIFF={handleUploadGeoTIFF}
+                    dataSourceKind={dataSourceKind}
+                    geotiffBandInfo={geotiffBandInfo}
                     customColors={customColors}
                     customColorsFrom={customColorsFrom}
                     onChangeCustomColor={handleChangeCustomColor}
@@ -662,6 +695,7 @@ export default function App() {
 
                 {/* Three.js Viewport element */}
                 <div className="flex-1 w-full h-full">
+                  <ViewportErrorBoundary>
                   <ThreeViewport
                     ref={mainViewportRef}
                     dataCube={activeDataCube}
@@ -689,6 +723,7 @@ export default function App() {
                     bloomHotspots={bloomHotspots}
                     onPixelClick={handlePixelClick}
                   />
+                  </ViewportErrorBoundary>
                 </div>
               </div>
             </section>
@@ -743,18 +778,11 @@ export default function App() {
                 )}
 
                 <button
-                  onClick={() => setGate2Visible(!gate2Visible)}
+                  onClick={() => setGate2Visible(true)}
                   style={toggleButtonStyle(gate2Visible)}
                 >
-                  {gate2Visible ? "Hide latent ecology" : "Show latent ecology"}
+                  Open latent ecology
                 </button>
-
-                {gate2Visible && (
-                  <LatentEcologyPanel
-                    activeDataCube={activeDataCube}
-                    visible={true}
-                  />
-                )}
 
                 {csvRawData && (
                   <>
@@ -800,6 +828,9 @@ export default function App() {
               onToggleStreaming={() => setIsStreaming(!isStreaming)}
               onResetStream={handleResetStream}
               onUploadCSVData={handleUploadCSVData}
+              onUploadGeoTIFF={handleUploadGeoTIFF}
+              dataSourceKind={dataSourceKind}
+              geotiffBandInfo={geotiffBandInfo}
               customColors={customColors}
               onChangeCustomColor={handleChangeCustomColor}
               customColorsFrom={customColorsFrom}
@@ -842,6 +873,7 @@ export default function App() {
               </p>
             </div>
             <div className="flex-1 w-full h-full">
+              <ViewportErrorBoundary>
               <ThreeViewport
                 dataCube={activeDataCube}
                 layerState={layerState}
@@ -858,6 +890,7 @@ export default function App() {
                 confidenceOverlay={confidenceOverlayState}
                 confidenceOverlayGrid={confidenceGrid}
               />
+              </ViewportErrorBoundary>
             </div>
           </div>
 
@@ -909,17 +942,11 @@ export default function App() {
               <span className="text-[11px] text-[var(--eef-text-3)]">Analysis</span>
             </div>
             <button
-              onClick={() => setGate2Visible(!gate2Visible)}
+              onClick={() => setGate2Visible(true)}
               style={toggleButtonStyle(gate2Visible)}
             >
-              {gate2Visible ? "Hide analysis" : "Show analysis"}
+              Open latent ecology
             </button>
-            {gate2Visible && (
-              <LatentEcologyPanel
-                activeDataCube={activeDataCube}
-                visible={true}
-              />
-            )}
           </div>
 
           {csvRawData && (
@@ -968,6 +995,40 @@ export default function App() {
           <span>{isStreaming ? "Live" : "Paused"}</span>
         </div>
       </footer>
+
+      {/* Latent ecology — a large modal overlay so the correlation matrix and
+          regime analysis get real room instead of being crammed into the narrow
+          sidebar. `fixed inset-0` escapes the sidebar's overflow clipping. */}
+      {gate2Visible && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Latent ecology analysis"
+        >
+          <div
+            className="absolute inset-0 bg-[rgba(20,28,44,0.45)] backdrop-blur-sm"
+            onClick={() => setGate2Visible(false)}
+          />
+          <div className="glass-panel relative z-10 flex h-[90vh] w-full max-w-[1100px] flex-col overflow-hidden rounded-2xl shadow-[var(--eef-shadow)]">
+            <div className="flex items-center justify-between border-b border-[var(--eef-divider)] px-5 py-3.5">
+              <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-[var(--eef-text)]">
+                <Sparkles size={16} className="text-[var(--eef-accent)]" /> Latent ecology
+              </h2>
+              <button
+                onClick={() => setGate2Visible(false)}
+                aria-label="Close latent ecology"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--eef-border)] bg-[var(--eef-surface-2)] text-[var(--eef-text-2)] transition-colors hover:bg-[var(--eef-surface)] hover:text-[var(--eef-text)]"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <LatentEcologyPanel activeDataCube={activeDataCube} visible={true} />
+            </div>
+          </div>
+        </div>
+      )}
 
       <UpdateNotifier />
     </div>

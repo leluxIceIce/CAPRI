@@ -41,47 +41,6 @@ export function LatentEcologyPanel({ activeDataCube, visible }: LatentEcologyPan
         Understanding roots
       </h3>
 
-      {/* Computation Metadata */}
-      <div style={{ fontSize: "11px", color: "var(--eef-text-3)", marginBottom: "12px" }}>
-        <div>
-          Computed in {latentEcology.metadata.computeTimeMs.toFixed(1)}ms
-        </div>
-        <div>
-          Analyzed {latentEcology.attractorAnalysis.metadata.cellCount} cells
-        </div>
-      </div>
-
-      {/* Summary */}
-      <div
-        style={{
-          background: "var(--eef-inset)",
-          border: "1px solid var(--eef-divider)",
-          padding: "8px",
-          borderRadius: "8px",
-          marginBottom: "12px",
-          fontSize: "12px",
-          lineHeight: "1.5",
-          color: "var(--eef-text)",
-        }}
-      >
-        <div style={{ marginBottom: "6px" }}>
-          <strong>Key findings</strong>
-        </div>
-        <div style={{ marginBottom: "4px", color: "var(--eef-text-2)" }}>
-          {summary.ecologicalInterpretation}
-        </div>
-        {summary.topInteractions.length > 0 && (
-          <div style={{ marginTop: "6px", fontSize: "11px", color: "var(--eef-text-2)" }}>
-            <div style={{ marginBottom: "3px" }}>
-              <strong>Top interactions</strong>
-            </div>
-            {summary.topInteractions.map((interaction, i) => (
-              <div key={i}>• {interaction}</div>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Interaction Heatmap */}
       <div style={{ marginBottom: "12px" }}>
         <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px", color: "var(--eef-text)" }}>
@@ -90,7 +49,7 @@ export function LatentEcologyPanel({ activeDataCube, visible }: LatentEcologyPan
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: `28px repeat(${D}, 24px)`,
+            gridTemplateColumns: `48px repeat(${D}, 34px)`,
             gap: "0",
             background: "var(--eef-surface-solid)",
             border: "1px solid var(--eef-border)",
@@ -157,7 +116,7 @@ export function LatentEcologyPanel({ activeDataCube, visible }: LatentEcologyPan
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: "9px",
+                      fontSize: "11px",
                       fontWeight: 600,
                       color:
                         absValue >= 0.7
@@ -181,6 +140,47 @@ export function LatentEcologyPanel({ activeDataCube, visible }: LatentEcologyPan
         <div style={{ fontSize: "10px", marginTop: "6px", color: "var(--eef-text-3)" }}>
           Blue = positive correlation, red = negative correlation
         </div>
+      </div>
+
+      {/* Computation Metadata */}
+      <div style={{ fontSize: "11px", color: "var(--eef-text-3)", marginBottom: "12px" }}>
+        <div>
+          Computed in {latentEcology.metadata.computeTimeMs.toFixed(1)}ms
+        </div>
+        <div>
+          Analyzed {latentEcology.attractorAnalysis.metadata.cellCount} cells
+        </div>
+      </div>
+
+      {/* Summary */}
+      <div
+        style={{
+          background: "var(--eef-inset)",
+          border: "1px solid var(--eef-divider)",
+          padding: "8px",
+          borderRadius: "8px",
+          marginBottom: "12px",
+          fontSize: "12px",
+          lineHeight: "1.5",
+          color: "var(--eef-text)",
+        }}
+      >
+        <div style={{ marginBottom: "6px" }}>
+          <strong>Key findings</strong>
+        </div>
+        <div style={{ marginBottom: "4px", color: "var(--eef-text-2)" }}>
+          {summary.ecologicalInterpretation}
+        </div>
+        {summary.topInteractions.length > 0 && (
+          <div style={{ marginTop: "6px", fontSize: "11px", color: "var(--eef-text-2)" }}>
+            <div style={{ marginBottom: "3px" }}>
+              <strong>Top interactions</strong>
+            </div>
+            {summary.topInteractions.map((interaction, i) => (
+              <div key={i}>• {interaction}</div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Attractor Summary */}

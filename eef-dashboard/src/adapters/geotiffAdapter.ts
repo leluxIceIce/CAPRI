@@ -12,6 +12,7 @@
 // or by the Squad D Node preprocessing script. Both produce a DecodedRaster.
 
 import type { DataCube, VariableName } from "../types";
+import { VARIABLE_METADATA } from "../types";
 import { gridStats, makeGrid, normalizeGrid, type SourceAdapter } from "./adapter";
 
 /** A decoded raster: each band is a row-major flat array of width*height. */
@@ -92,6 +93,17 @@ export function rasterToDataCube(input: GeoTiffInput): DataCube {
     channels[varName] = bandToGrid(bands[b], width, height, gridSize, noData);
     stats[varName] = gridStats(channels[varName]);
     mapped.add(varName);
+  }
+
+  // Fill every remaining VariableName with a zero grid so the cube is
+  // structurally complete — downstream analysis indexes ALL channels/stats,
+  // and a real tile rarely carries all 14 bands. (Honors this module's docstring,
+  // which the original code did not actually do.)
+  for (const v of Object.keys(VARIABLE_METADATA) as VariableName[]) {
+    if (!mapped.has(v)) {
+      channels[v] = makeGrid(gridSize);
+      stats[v] = gridStats(channels[v]);
+    }
   }
 
   return {
