@@ -1,0 +1,165 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@theme {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/*
+  ── Lucid Glass design system ──────────────────────────────────────────────
+  A light, calm, frosted-glass language. No near-black surfaces, no neon
+  glows, no sci-fi uppercase. One restrained accent (calm cobalt). Soft
+  downward shadows give depth instead of glows. JetBrains Mono is reserved
+  for tabular numbers only; everything else is Inter, sentence case.
+*/
+:root {
+  /* Canvas & surfaces */
+  --eef-canvas:        #EEF2F8;  /* cool light app background */
+  --eef-canvas-2:      #F6F8FC;  /* lighter wash for gradients */
+  --eef-surface:       rgba(255, 255, 255, 0.66);  /* frosted panel */
+  --eef-surface-solid: #FFFFFF;
+  --eef-surface-2:     rgba(255, 255, 255, 0.82);  /* raised / hover panel */
+  --eef-inset:         rgba(255, 255, 255, 0.45);  /* nested wells */
+
+  /* Hairlines & dividers (dark, very low alpha) */
+  --eef-border:        rgba(23, 39, 64, 0.10);
+  --eef-border-strong: rgba(23, 39, 64, 0.16);
+  --eef-divider:       rgba(23, 39, 64, 0.07);
+
+  /* Text */
+  --eef-text:          #1B2740;  /* deep slate, never pure black */
+  --eef-text-2:        #51607A;  /* secondary */
+  --eef-text-3:        #8492AD;  /* muted / captions */
+
+  /* Accent — single calm cobalt */
+  --eef-accent:        #2E6BE6;
+  --eef-accent-hover:  #2459C7;
+  --eef-accent-soft:   rgba(46, 107, 230, 0.12);
+  --eef-accent-ring:   rgba(46, 107, 230, 0.35);
+
+  /* Muted status colours (no neon) */
+  --eef-ok:            #1FA38A;  /* teal */
+  --eef-ok-soft:       rgba(31, 163, 138, 0.14);
+  --eef-warn:          #C2843A;  /* burnt amber */
+  --eef-warn-soft:     rgba(194, 132, 58, 0.14);
+  --eef-alert:         #C8553D;  /* burnt orange-red */
+  --eef-alert-soft:    rgba(200, 85, 61, 0.14);
+  --eef-neutral:       #64748B;  /* slate grey */
+
+  /* Soft downward shadows */
+  --eef-shadow-sm: 0 1px 2px rgba(23, 39, 64, 0.06);
+  --eef-shadow:    0 4px 16px rgba(23, 39, 64, 0.07), 0 1px 3px rgba(23, 39, 64, 0.05);
+  --eef-shadow-lg: 0 12px 32px rgba(23, 39, 64, 0.10), 0 2px 8px rgba(23, 39, 64, 0.06);
+}
+
+body {
+  background-color: var(--eef-canvas);
+  color: var(--eef-text);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  background-image:
+    radial-gradient(at 0% 0%, rgba(46, 107, 230, 0.06) 0px, transparent 55%),
+    radial-gradient(at 100% 0%, rgba(31, 163, 138, 0.05) 0px, transparent 50%),
+    linear-gradient(180deg, var(--eef-canvas-2) 0%, var(--eef-canvas) 60%);
+  background-attachment: fixed;
+}
+
+/* Tabular numbers: the only place JetBrains Mono is used */
+.tnum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Custom scrollbars — light, unobtrusive */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(23, 39, 64, 0.14);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(23, 39, 64, 0.26);
+  background-clip: padding-box;
+}
+
+/* ── Frosted glass panel ── */
+.glass-panel {
+  background: var(--eef-surface);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--eef-border);
+  box-shadow: var(--eef-shadow);
+}
+
+.glass-panel-hover {
+  transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.glass-panel-hover:hover {
+  border-color: var(--eef-border-strong);
+  background: var(--eef-surface-2);
+  box-shadow: var(--eef-shadow-lg);
+}
+
+/* A lighter nested well for controls inside a panel */
+.glass-well {
+  background: var(--eef-inset);
+  border: 1px solid var(--eef-divider);
+  border-radius: 12px;
+}
+
+/* ── Calm "live" indicator — a gentle breathing dot, no glow ── */
+@keyframes eef-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(0.92); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+.eef-live-dot {
+  animation: eef-breathe 2.4s ease-in-out infinite;
+}
+
+/* Legacy alias kept so existing markup keeps working during the redesign */
+.pulse-teal-glow {
+  animation: eef-breathe 2.4s ease-in-out infinite;
+}
+
+/* ── Resize handles — subtle, light ── */
+.resize-handle {
+  flex: 0 0 8px;
+  margin: 0 2px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  transition: background-color 0.15s ease;
+  border-radius: 4px;
+}
+.resize-handle::after {
+  content: "";
+  width: 2px;
+  height: 32px;
+  border-radius: 2px;
+  background: rgba(23, 39, 64, 0.12);
+  transition: background-color 0.15s ease;
+}
+.resize-handle:hover {
+  background: rgba(46, 107, 230, 0.06);
+}
+.resize-handle:hover::after,
+.resize-handle[data-resize-handle-active]::after {
+  background: var(--eef-accent);
+}
+
+/* Selection */
+::selection {
+  background: var(--eef-accent-soft);
+  color: var(--eef-text);
+}

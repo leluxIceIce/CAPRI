@@ -326,17 +326,22 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
       // S3: vertex displacement — normalized × displacementGain
       const planeGeo = mesh.geometry as THREE.PlaneGeometry;
       const posAttr = planeGeo.attributes.position;
-      const wireGeo = wireframe.geometry as THREE.WireframeGeometry;
-      const wirePosAttr = wireGeo.attributes.position;
 
       for (let i = 0; i < normalizedGrid.length; i++) {
         const height = showTerrain ? normalizedGrid[i] * displacementGain : 0;
         posAttr.setZ(i, height);
-        wirePosAttr.setZ(i, height);
       }
       posAttr.needsUpdate = true;
       planeGeo.computeVertexNormals();
-      wirePosAttr.needsUpdate = true;
+
+      // Rebuild the wireframe from the now-displaced plane. WireframeGeometry
+      // produces its own deduplicated edge-vertex buffer with no index
+      // correspondence to the source plane's vertices, so it must be
+      // regenerated from scratch rather than patched in place — patching it
+      // by grid index previously raised arbitrary, mismatched vertices and
+      // produced stray branch-like spikes ("root vectors") under the terrain.
+      wireframe.geometry.dispose();
+      wireframe.geometry = new THREE.WireframeGeometry(planeGeo);
 
       // S2: hue-saturation texture — white/transparent at 0, full variable hue at 1.
       // Written directly into a per-cell pixel buffer (one putImageData call) instead
