@@ -48,7 +48,14 @@ export function buildRootMesh(
       seg.end[0] - seg.start[0],
       seg.end[1] - seg.start[1],
       seg.end[2] - seg.start[2]
-    ).normalize();
+    );
+    // A zero-length segment (start === end) makes normalize() produce NaN, which
+    // would poison the whole position buffer and can hang/lose the GL context.
+    // Skip degenerate segments rather than feeding NaN vertices to the GPU.
+    if (dir.lengthSq() < 1e-12) {
+      continue;
+    }
+    dir.normalize();
 
     if (Math.abs(dir.dot(up)) > 0.99) {
       perp.set(1, 0, 0);

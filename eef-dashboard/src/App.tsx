@@ -36,6 +36,7 @@ import { computeRelationshipTensor } from "./utils/relationshipTensor";
 import { summarize as summarizeBloom, findHotspots, type FishermanSummary } from "./utils/bloomDetector";
 import { generateEcologicalGraph } from "./utils/affinityGraph";
 import { ThreeViewport, type ThreeViewportHandle, type PixelClickEvent } from "./components/ThreeViewport";
+import { ViewportErrorBoundary } from "./components/ViewportErrorBoundary";
 import { TelemetryConsole } from "./components/TelemetryConsole";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { SpatialEncodingPanel } from "./components/SpatialEncodingPanel";
@@ -662,6 +663,7 @@ export default function App() {
 
                 {/* Three.js Viewport element */}
                 <div className="flex-1 w-full h-full">
+                  <ViewportErrorBoundary>
                   <ThreeViewport
                     ref={mainViewportRef}
                     dataCube={activeDataCube}
@@ -689,6 +691,7 @@ export default function App() {
                     bloomHotspots={bloomHotspots}
                     onPixelClick={handlePixelClick}
                   />
+                  </ViewportErrorBoundary>
                 </div>
               </div>
             </section>
@@ -842,6 +845,7 @@ export default function App() {
               </p>
             </div>
             <div className="flex-1 w-full h-full">
+              <ViewportErrorBoundary>
               <ThreeViewport
                 dataCube={activeDataCube}
                 layerState={layerState}
@@ -858,6 +862,7 @@ export default function App() {
                 confidenceOverlay={confidenceOverlayState}
                 confidenceOverlayGrid={confidenceGrid}
               />
+              </ViewportErrorBoundary>
             </div>
           </div>
 

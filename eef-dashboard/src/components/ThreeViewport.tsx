@@ -255,24 +255,55 @@ function ThreeViewportInner(
     };
     controlsRef.current = controls;
 
-    // Animation Loop
+    // WebGL context-loss recovery. The bloom EffectComposer allocates several
+    // full-res render targets and re-renders every frame; on a Tauri WebView the
+    // sustained load from orbit damping can make the GPU drop the WebGL context.
+    // Without handling that, the next render() throws, the loop dies, and the
+    // canvas freezes on the light clear colour (0xEEF2F8) — i.e. "blank white".
+    // We pause rendering while the context is gone and resume once it's restored.
+    let contextLost = false;
+    const onContextLost = (event: Event) => {
+      // preventDefault() is REQUIRED for the context to become eligible for restore.
+      event.preventDefault();
+      contextLost = true;
+    };
+    const onContextRestored = () => {
+      contextLost = false;
+    };
+    canvasRef.current?.addEventListener("webglcontextlost", onContextLost, false);
+    canvasRef.current?.addEventListener("webglcontextrestored", onContextRestored, false);
+
+    // Animation Loop. The whole body is crash-isolated in try/finally so that a
+    // single bad frame (a lost GL context, a transient NaN, a driver hiccup) can
+    // never stop the loop permanently — the next frame is ALWAYS scheduled. This
+    // is what turns a recoverable glitch into a survivable one instead of a
+    // permanent freeze-to-white.
     let animationFrameId: number;
     const tick = () => {
-      controls.update();
-      
-      // Face labels towards scientific camera viewport
-      layersMeshesMap.current.forEach(({ label }) => {
-        if (label.visible) {
-          label.quaternion.copy(camera.quaternion);
-        }
-      });
+      try {
+        controls.update();
 
-      if (composerRef.current) {
-        composerRef.current.render();
-      } else {
-        renderer.render(scene, camera);
+        // Face labels towards scientific camera viewport
+        layersMeshesMap.current.forEach(({ label }) => {
+          if (label.visible) {
+            label.quaternion.copy(camera.quaternion);
+          }
+        });
+
+        if (!contextLost) {
+          if (composerRef.current) {
+            composerRef.current.render();
+          } else {
+            renderer.render(scene, camera);
+          }
+        }
+      } catch (err) {
+        // Log once per failure but keep the loop alive; do not let a thrown
+        // frame escape and tear down rendering for good.
+        console.error("[ThreeViewport] render tick failed; continuing", err);
+      } finally {
+        animationFrameId = requestAnimationFrame(tick);
       }
-      animationFrameId = requestAnimationFrame(tick);
     };
     tick();
 
@@ -337,6 +368,8 @@ function ThreeViewportInner(
     // Cleanup
     return () => {
       canvasRef.current?.removeEventListener("click", handleCanvasClick);
+      canvasRef.current?.removeEventListener("webglcontextlost", onContextLost);
+      canvasRef.current?.removeEventListener("webglcontextrestored", onContextRestored);
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
       renderer.dispose();

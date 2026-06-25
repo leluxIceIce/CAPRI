@@ -105,7 +105,13 @@ export function buildRelationshipMesh(edges: RelationshipEdge[]): THREE.Mesh {
       edge.end[0] - edge.start[0],
       edge.end[1] - edge.start[1],
       edge.end[2] - edge.start[2]
-    ).normalize();
+    );
+    // A zero-length edge (start === end) makes normalize() produce NaN, which
+    // poisons the position buffer and can hang/lose the GL context. Skip it.
+    if (dir.lengthSq() < 1e-12) {
+      continue;
+    }
+    dir.normalize();
 
     if (Math.abs(dir.dot(up)) > 0.99) {
       perp.set(1, 0, 0);
