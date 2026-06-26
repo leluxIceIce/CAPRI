@@ -145,6 +145,14 @@ function ThreeViewportInner(
   useEffect(() => {
     if (!containerRef.current || !canvasRef.current) return;
 
+    // Capture the canvas element NOW. `<canvas key={remountKey}>` swaps in a new
+    // DOM node on recovery, and React points canvasRef.current at the NEW canvas
+    // before this effect's cleanup runs — so removing listeners via
+    // canvasRef.current would detach them from the wrong node and leak the old
+    // canvas + its GL context. Using this captured reference keeps add/remove
+    // symmetric on the SAME node.
+    const canvasEl = canvasRef.current;
+
     const width = containerRef.current.clientWidth || 600;
     const height = containerRef.current.clientHeight || 450;
 
@@ -238,13 +246,18 @@ function ThreeViewportInner(
     };
     controlsRef.current = controls;
 
-    // WebGL context-loss recovery. The bloom EffectComposer allocates several
-    // full-res render targets and re-renders every frame; on a Tauri WebView the
-    // sustained load from orbit damping can make the GPU drop the WebGL context.
-    // Without handling that, the next render() throws, the loop dies, and the
-    // canvas freezes on the light clear colour (0xEEF2F8) — i.e. "blank white".
-    // We pause rendering while the context is gone and resume once it's restored.
+    // WebGL context-loss recovery. A lost GL context (GPU process hiccup in the
+    // Tauri WebView, or too many live contexts) clears the canvas to the white
+    // scene background and stops rendering; the WebView does not reliably fire
+    // `webglcontextrestored`. We pause rendering while the context is gone and, if
+    // it doesn't come back, rebuild from a fresh context (see the watchdog below).
+    // CRITICAL: the teardown for each rebuild MUST call renderer.forceContextLoss()
+    // and dispose every scene object (see cleanup) — otherwise dead contexts and
+    // orphaned GPU buffers accumulate across remounts, the browser hits its
+    // live-context cap and force-loses the active context, and the watchdog spins
+    // in a self-amplifying loop that keeps the viewport frozen on white.
     let contextLost = false;
+    let disposed = false;
     let restoreWatchdog: ReturnType<typeof setTimeout> | null = null;
     const onContextLost = (event: Event) => {
       // preventDefault() is REQUIRED for the context to become eligible for restore.
@@ -257,7 +270,7 @@ function ThreeViewportInner(
       // we never thrash in an unrecoverable loop.
       if (restoreWatchdog) clearTimeout(restoreWatchdog);
       restoreWatchdog = setTimeout(() => {
-        if (!contextLost) return; // already restored
+        if (disposed || !contextLost) return; // torn down, or already restored
         if (autoRemountsRef.current < MAX_AUTO_REMOUNTS) {
           autoRemountsRef.current += 1;
           setRemountKey((k) => k + 1);
@@ -271,8 +284,8 @@ function ThreeViewportInner(
       if (restoreWatchdog) { clearTimeout(restoreWatchdog); restoreWatchdog = null; }
       setGlStatus("ok");
     };
-    canvasRef.current?.addEventListener("webglcontextlost", onContextLost, false);
-    canvasRef.current?.addEventListener("webglcontextrestored", onContextRestored, false);
+    canvasEl.addEventListener("webglcontextlost", onContextLost, false);
+    canvasEl.addEventListener("webglcontextrestored", onContextRestored, false);
 
     // If the rebuilt context survives a while, refill the auto-remount budget so
     // unrelated losses spread out over a long session don't permanently exhaust it.
@@ -375,19 +388,35 @@ function ThreeViewportInner(
       }
     };
 
-    canvasRef.current?.addEventListener("click", handleCanvasClick);
+    canvasEl.addEventListener("click", handleCanvasClick);
 
     // Cleanup
     return () => {
-      canvasRef.current?.removeEventListener("click", handleCanvasClick);
-      canvasRef.current?.removeEventListener("webglcontextlost", onContextLost);
-      canvasRef.current?.removeEventListener("webglcontextrestored", onContextRestored);
+      disposed = true;
+      canvasEl.removeEventListener("click", handleCanvasClick);
+      canvasEl.removeEventListener("webglcontextlost", onContextLost);
+      canvasEl.removeEventListener("webglcontextrestored", onContextRestored);
       if (restoreWatchdog) clearTimeout(restoreWatchdog);
       clearTimeout(healthyTimer);
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
-      renderer.dispose();
       controls.dispose();
+
+      // Deterministically release the WebGL context. renderer.dispose() alone
+      // frees Three-managed objects but leaves the underlying GL context alive in
+      // the WebView; under the auto-remount watchdog those dead contexts pile up,
+      // exceed the browser's live-context cap, and the browser then force-loses
+      // the *active* context — the feedback loop that kept the viewport freezing
+      // to white on sustained rotation. The listeners are detached just above, so
+      // the synthetic `webglcontextlost` that forceContextLoss() fires cannot
+      // re-arm the watchdog.
+      renderer.forceContextLoss();
+      renderer.dispose();
+
+      // Dispose the grid floor — it is recreated on every remount.
+      gridHelper.geometry.dispose();
+      if (Array.isArray(gridHelper.material)) gridHelper.material.forEach((m) => m.dispose());
+      else (gridHelper.material as THREE.Material).dispose();
       
       // Dispose layer geometries & textures
       layersMeshesMap.current.forEach(({ mesh, wireframe, border, label }) => {
@@ -442,6 +471,28 @@ function ThreeViewportInner(
         (relationshipMeshRef.current.material as THREE.Material).dispose();
         relationshipMeshRef.current = null;
       }
+
+      // Dispose the M3 latent-space overlay group. It is parented to meshesGroup
+      // but tracked only by latentOverlayGroupRef, so the per-layer disposal above
+      // misses it — without this it orphans its vertex-colored PCA distance field
+      // plus every cluster convex-hull line geometry/material on every remount,
+      // the largest single GPU leak feeding the freeze. Resetting
+      // prevLatentAnalysisRef lets the M3 effect rebuild into the fresh meshesGroup
+      // on remount instead of early-returning on an unchanged rootAnalysis identity
+      // (which would otherwise leave the overlay invisible after a recovery).
+      if (latentOverlayGroupRef.current) {
+        latentOverlayGroupRef.current.traverse((child) => {
+          const m = child as THREE.Mesh;
+          if (m.geometry) m.geometry.dispose();
+          const mat = m.material;
+          if (mat) {
+            if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+            else (mat as THREE.Material).dispose();
+          }
+        });
+        latentOverlayGroupRef.current = null;
+      }
+      prevLatentAnalysisRef.current = null;
     };
     // `remountKey` is in the dep list so the recovery watchdog can force a full
     // renderer/scene rebuild (fresh GL context) after an unrecoverable context loss.
