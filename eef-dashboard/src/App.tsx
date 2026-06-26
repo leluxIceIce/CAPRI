@@ -29,6 +29,7 @@ import {
 import {
   generateDataCube,
   evaluateScientificDiagnostics,
+  ensureCubeComplete,
   type RawCSVData
 } from "./telemetryGenerator";
 import { computeRootAnalysis, type RootAnalysis } from "./utils/eigenmath";
@@ -360,7 +361,9 @@ export default function App() {
     const avgs = {} as Record<VariableName, number>;
     const keys = Object.keys(VARIABLE_METADATA) as VariableName[];
     keys.forEach((key) => {
-      avgs[key] = activeDataCube.stats[key].mean;
+      // Tolerate a cube that predates a channel (?. guard) — never throw here,
+      // a crash in this memo white-screens the whole app.
+      avgs[key] = activeDataCube.stats[key]?.mean ?? 0;
     });
     return avgs;
   }, [activeDataCube]);
@@ -376,8 +379,9 @@ export default function App() {
     setConfig(prev => ({ ...prev, ...newConfig }));
   };
 
-  const handleUploadCSVData = (cubes: DataCube[], fileName?: string, raw?: RawCSVData) => {
-    if (cubes.length === 0) return;
+  const handleUploadCSVData = (rawCubes: DataCube[], fileName?: string, raw?: RawCSVData) => {
+    if (rawCubes.length === 0) return;
+    const cubes = rawCubes.map(ensureCubeComplete);
     const name = fileName || "satellite_grid_mesh.csv";
     setUploadedCubes(cubes);
     setActiveFileName(name);
@@ -396,7 +400,8 @@ export default function App() {
 
   // Real ocean-colour GeoTIFF tile → the same analysis pipeline the synthetic
   // generator feeds. A single tile is one frame, so playback streaming is paused.
-  const handleUploadGeoTIFF = (cube: DataCube, fileName: string, bandInfo: string) => {
+  const handleUploadGeoTIFF = (rawCube: DataCube, fileName: string, bandInfo: string) => {
+    const cube = ensureCubeComplete(rawCube);
     setUploadedCubes([cube]);
     setActiveFileName(fileName);
     setCurrentCSVFrameIdx(0);
@@ -413,8 +418,12 @@ export default function App() {
     try {
       const saved = localStorage.getItem("eef.uploadedCubes");
       if (!saved) return;
-      const { cubes, fileName } = JSON.parse(saved) as { cubes: DataCube[]; fileName: string };
-      if (Array.isArray(cubes) && cubes.length > 0) {
+      const parsed = JSON.parse(saved) as { cubes: DataCube[]; fileName: string };
+      // Backfill any channels added since this data was persisted, so a cube
+      // saved by an older build can't white-screen the app on restore.
+      const cubes = Array.isArray(parsed.cubes) ? parsed.cubes.map(ensureCubeComplete) : [];
+      const fileName = parsed.fileName;
+      if (cubes.length > 0) {
         setUploadedCubes(cubes);
         setActiveFileName(fileName);
         setActiveDataCube(cubes[0]);

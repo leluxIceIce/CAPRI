@@ -17,6 +17,29 @@ export function makeBlankGrid(size: number, fill = 0): number[][] {
     .map(() => Array(size).fill(fill));
 }
 
+// Canonical full channel set, derived from the live metadata so it tracks any
+// bands we add.
+const ALL_VARIABLE_KEYS = Object.keys(VARIABLE_METADATA) as VariableName[];
+
+// Guarantees a cube carries every current VariableName channel + stat. A cube
+// produced by an older app build (e.g. CSV/GeoTIFF data restored from
+// localStorage that predates the OLCI Oa01–Oa07 bands) is missing the newer
+// channels; any code indexing those keys then reads `undefined` and throws,
+// white-screening the whole app. Backfilling absent channels with a zero grid
+// keeps every downstream consumer safe to index by VariableName.
+export function ensureCubeComplete(cube: DataCube): DataCube {
+  if (!cube || !cube.channels || !cube.stats) return cube;
+  const gridSize = cube.gridSize || 20;
+  let changed = false;
+  const channels = { ...cube.channels } as Record<VariableName, number[][]>;
+  const stats = { ...cube.stats } as Record<VariableName, VariableStats>;
+  for (const key of ALL_VARIABLE_KEYS) {
+    if (!channels[key]) { channels[key] = makeBlankGrid(gridSize, 0); changed = true; }
+    if (!stats[key]) { stats[key] = { min: 0, max: 1, mean: 0, std: 0 }; changed = true; }
+  }
+  return changed ? { ...cube, channels, stats } : cube;
+}
+
 // ── PRESETS FOR THE STREAM GENERATOR ──────────────────────────────────────────
 
 interface RegimeParams {
