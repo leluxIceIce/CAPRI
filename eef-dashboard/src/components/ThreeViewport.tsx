@@ -95,7 +95,7 @@ function ThreeViewportInner(
   // Survives remounts (a plain ref, NOT recreated by the remountKey-keyed effect):
   // the user's orbited camera transform, captured on teardown and restored on
   // rebuild so a freeze-recovery remount doesn't snap their view back to default.
-  const savedCameraRef = useRef<{ pos: [number, number, number]; target: [number, number, number] } | null>(null);
+  const savedCameraRef = useRef<{ pos: [number, number, number]; target: [number, number, number]; zoom: number } | null>(null);
 
   // Freeze-to-white recovery. A lost WebGL context (GPU process death in the
   // Tauri WebView, driver hiccup, too many live contexts) clears the canvas to
@@ -273,6 +273,11 @@ function ThreeViewportInner(
     controls.dampingFactor = 0.08;
     controls.minDistance = 8;
     controls.maxDistance = 100;
+    // minDistance/maxDistance clamp the PERSPECTIVE dolly (camera→target distance).
+    // The orthographic Plan view zooms via camera.zoom instead, which those don't
+    // bound — so set explicit zoom limits too, or plan-view zoom runs unbounded.
+    controls.minZoom = 0.5;
+    controls.maxZoom = 6;
     controls.target.set(0, 0, 0);
     controls.maxPolarAngle = Math.PI * 0.85;
     controls.screenSpacePanning = true;
@@ -288,9 +293,16 @@ function ThreeViewportInner(
     // Without this, the freeze-recovery rebuild reconstructs a fresh camera at the
     // hardcoded iso default — the "reload resets my work without saving" report.
     if (savedCameraRef.current) {
-      const { pos, target } = savedCameraRef.current;
+      const { pos, target, zoom } = savedCameraRef.current;
       camera.position.set(pos[0], pos[1], pos[2]);
       controls.target.set(target[0], target[1], target[2]);
+      // Restore zoom too. For perspective this is always 1 (zoom lives in the
+      // camera→target distance, already restored via position), but the
+      // orthographic Plan-view camera keeps zoom as a separate magnification that
+      // a fresh remount would otherwise reset to 1 — silently dropping the user's
+      // plan-view zoom on a freeze recovery.
+      camera.zoom = zoom;
+      camera.updateProjectionMatrix();
       controls.update();
     }
 
@@ -451,13 +463,15 @@ function ThreeViewportInner(
     return () => {
       disposed = true;
       // Preserve the live orbit/pan/zoom across a remount so a freeze-recovery
-      // rebuild restores the user's view rather than resetting it. (For a
-      // perspective camera, zoom IS the camera→target distance, so saving
-      // position + target captures it.)
+      // rebuild restores the user's view rather than resetting it. For the
+      // perspective camera, zoom lives in the camera→target distance (captured by
+      // position); the orthographic Plan-view camera keeps it as a separate
+      // `zoom` magnification, so we save that explicitly too.
       const activeCam = cameraRef.current ?? camera;
       savedCameraRef.current = {
         pos: [activeCam.position.x, activeCam.position.y, activeCam.position.z],
         target: [controls.target.x, controls.target.y, controls.target.z],
+        zoom: activeCam.zoom,
       };
       canvasEl.removeEventListener("click", handleCanvasClick);
       canvasEl.removeEventListener("webglcontextlost", onContextLost);
