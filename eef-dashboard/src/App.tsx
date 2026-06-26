@@ -37,6 +37,7 @@ import { computeRelationshipTensor } from "./utils/relationshipTensor";
 import { summarize as summarizeBloom, type FishermanSummary } from "./utils/bloomDetector";
 import { ThreeViewport, type ThreeViewportHandle, type PixelClickEvent } from "./components/ThreeViewport";
 import { ViewportErrorBoundary } from "./components/ViewportErrorBoundary";
+import { PanelErrorBoundary } from "./components/PanelErrorBoundary";
 import { TelemetryConsole } from "./components/TelemetryConsole";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { SpatialEncodingPanel } from "./components/SpatialEncodingPanel";
@@ -1016,12 +1017,22 @@ export default function App() {
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <Suspense fallback={<div className="flex items-center justify-center gap-2 p-8 text-[12px] text-[var(--eef-text-3)]"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--eef-border)] border-t-[var(--eef-accent)]" /> Loading ML tools…</div>}>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <UmapPanel dataCube={activeDataCube} />
-                  <RFRegressionPanel dataCube={activeDataCube} />
-                </div>
-              </Suspense>
+              {/* Each panel gets its own error boundary + Suspense so a runtime
+                  failure or a failed lazy-chunk load in one (e.g. an ML library
+                  throwing in the WebView) shows an inline, diagnosable error
+                  instead of silently blanking both tools or the whole app. */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <PanelErrorBoundary label="UMAP">
+                  <Suspense fallback={<div className="flex items-center justify-center gap-2 p-8 text-[12px] text-[var(--eef-text-3)]"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--eef-border)] border-t-[var(--eef-accent)]" /> Loading UMAP…</div>}>
+                    <UmapPanel dataCube={activeDataCube} />
+                  </Suspense>
+                </PanelErrorBoundary>
+                <PanelErrorBoundary label="Random forest">
+                  <Suspense fallback={<div className="flex items-center justify-center gap-2 p-8 text-[12px] text-[var(--eef-text-3)]"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--eef-border)] border-t-[var(--eef-accent)]" /> Loading random forest…</div>}>
+                    <RFRegressionPanel dataCube={activeDataCube} />
+                  </Suspense>
+                </PanelErrorBoundary>
+              </div>
             </div>
           </div>
         </div>

@@ -81,6 +81,11 @@ function ThreeViewportInner(
   const controlsRef = useRef<OrbitControls | null>(null);
   const meshesGroupRef = useRef<THREE.Group | null>(null);
 
+  // Survives remounts (a plain ref, NOT recreated by the remountKey-keyed effect):
+  // the user's orbited camera transform, captured on teardown and restored on
+  // rebuild so a freeze-recovery remount doesn't snap their view back to default.
+  const savedCameraRef = useRef<{ pos: [number, number, number]; target: [number, number, number] } | null>(null);
+
   // Freeze-to-white recovery. A lost WebGL context (GPU process death in the
   // Tauri WebView, driver hiccup, too many live contexts) clears the canvas to
   // the white scene background and stops rendering. The browser does NOT always
@@ -246,6 +251,16 @@ function ThreeViewportInner(
     };
     controlsRef.current = controls;
 
+    // Restore the user's orbited view if one was captured before a remount.
+    // Without this, the freeze-recovery rebuild reconstructs a fresh camera at the
+    // hardcoded iso default — the "reload resets my work without saving" report.
+    if (savedCameraRef.current) {
+      const { pos, target } = savedCameraRef.current;
+      camera.position.set(pos[0], pos[1], pos[2]);
+      controls.target.set(target[0], target[1], target[2]);
+      controls.update();
+    }
+
     // WebGL context-loss recovery. A lost GL context (GPU process hiccup in the
     // Tauri WebView, or too many live contexts) clears the canvas to the white
     // scene background and stops rendering; the WebView does not reliably fire
@@ -393,6 +408,14 @@ function ThreeViewportInner(
     // Cleanup
     return () => {
       disposed = true;
+      // Preserve the live orbit/pan/zoom across a remount so a freeze-recovery
+      // rebuild restores the user's view rather than resetting it. (For a
+      // perspective camera, zoom IS the camera→target distance, so saving
+      // position + target captures it.)
+      savedCameraRef.current = {
+        pos: [camera.position.x, camera.position.y, camera.position.z],
+        target: [controls.target.x, controls.target.y, controls.target.z],
+      };
       canvasEl.removeEventListener("click", handleCanvasClick);
       canvasEl.removeEventListener("webglcontextlost", onContextLost);
       canvasEl.removeEventListener("webglcontextrestored", onContextRestored);
@@ -516,7 +539,12 @@ function ThreeViewportInner(
       controls.target.set(0, 0, 0);
     }
     controls.update();
-  }, [cameraPreset, remountKey]);
+    // NOTE: deliberately NOT keyed on remountKey. A preset snaps the camera to a
+    // fixed position; re-running it on every freeze-recovery remount would clobber
+    // the restored user view (see savedCameraRef). The init effect already
+    // reconstructs the camera on remount, so this only needs to fire when the user
+    // actually picks a different preset.
+  }, [cameraPreset]);
 
   // 3. Populate or Update Stack Layers
   useEffect(() => {

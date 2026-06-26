@@ -10,6 +10,8 @@ import {
   subsampleIndices,
   mulberry32,
 } from "../utils/mlData";
+import { CellTooltip, type HoverCell } from "../utils/cellTooltip";
+import { loadCached, saveCached } from "../utils/mlCache";
 
 interface UmapPanelProps {
   dataCube: DataCube;
@@ -17,9 +19,10 @@ interface UmapPanelProps {
 
 const MAX_POINTS = 1500;
 const SEED = 42;
+const CACHE_KEY = "eef.umap.result.v1";
 
 interface EmbedResult {
-  points: { x: number; y: number; value: number }[];
+  points: { x: number; y: number; value: number; row: number; col: number }[];
   colorBy: VariableName;
   nPoints: number;
   valueMin: number;
@@ -53,8 +56,11 @@ export const UmapPanel: React.FC<UmapPanelProps> = ({ dataCube }) => {
   const [colorBy, setColorBy] = useState<VariableName>("CHL");
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState<EmbedResult | null>(null);
+  // Rehydrate the last embedding for this grid so it survives a modal reopen or
+  // an app reload (the result is otherwise lost when the panel unmounts).
+  const [result, setResult] = useState<EmbedResult | null>(() => loadCached<EmbedResult>(CACHE_KEY, dataCube.gridSize));
   const [error, setError] = useState<string | null>(null);
+  const [hover, setHover] = useState<HoverCell | null>(null);
   const runIdRef = useRef(0);
 
   const totalCells = dataCube.gridSize * dataCube.gridSize;
@@ -67,7 +73,7 @@ export const UmapPanel: React.FC<UmapPanelProps> = ({ dataCube }) => {
     setRunning(true);
     const myRun = ++runIdRef.current;
     try {
-      const { rows } = buildSamples(dataCube, ALL_VARIABLES);
+      const { rows, cellRefs } = buildSamples(dataCube, ALL_VARIABLES);
       const { z } = standardizeColumns(rows);
       const colorVals = extractColumn(dataCube, colorBy);
 
@@ -97,8 +103,16 @@ export const UmapPanel: React.FC<UmapPanelProps> = ({ dataCube }) => {
       if (myRun !== runIdRef.current) return;
 
       const vMin = Math.min(...vals), vMax = Math.max(...vals);
-      const points = embedding.map((e, i) => ({ x: e[0], y: e[1], value: vals[i] }));
-      setResult({ points, colorBy, nPoints: points.length, valueMin: vMin, valueMax: vMax });
+      // cellRefs[idx[i]] is the source grid cell for embedded point i: buildSamples,
+      // extractColumn and the subsample all preserve the same flat cell order, so
+      // this threads (row,col) through for the hover tooltip's lat/lon + CHL lookup.
+      const points = embedding.map((e, i) => {
+        const ref = cellRefs[idx[i]];
+        return { x: e[0], y: e[1], value: vals[i], row: ref.row, col: ref.col };
+      });
+      const embed: EmbedResult = { points, colorBy, nPoints: points.length, valueMin: vMin, valueMax: vMax };
+      setResult(embed);
+      saveCached(CACHE_KEY, dataCube.gridSize, embed);
     } catch (err: any) {
       if (myRun === runIdRef.current) setError(err?.message || "UMAP failed.");
     } finally {
@@ -164,14 +178,28 @@ export const UmapPanel: React.FC<UmapPanelProps> = ({ dataCube }) => {
 
       {result && bounds && (
         <div>
-          <svg viewBox="0 0 200 200" className="w-full glass-well" style={{ aspectRatio: "1 / 1" }}>
-            {result.points.map((p, i) => {
-              const px = ((p.x - bounds.xlo) / (bounds.xhi - bounds.xlo)) * 200;
-              const py = 200 - ((p.y - bounds.ylo) / (bounds.yhi - bounds.ylo)) * 200;
-              const t = result.valueMax > result.valueMin ? (p.value - result.valueMin) / (result.valueMax - result.valueMin) : 0.5;
-              return <circle key={i} cx={px} cy={py} r="1.8" fill={rampColor(t)} fillOpacity="0.75" />;
-            })}
-          </svg>
+          <div className="relative">
+            <svg viewBox="0 0 200 200" className="w-full glass-well" style={{ aspectRatio: "1 / 1" }}>
+              {result.points.map((p, i) => {
+                const px = ((p.x - bounds.xlo) / (bounds.xhi - bounds.xlo)) * 200;
+                const py = 200 - ((p.y - bounds.ylo) / (bounds.yhi - bounds.ylo)) * 200;
+                const t = result.valueMax > result.valueMin ? (p.value - result.valueMin) / (result.valueMax - result.valueMin) : 0.5;
+                return (
+                  <circle
+                    key={i}
+                    cx={px}
+                    cy={py}
+                    r="2.4"
+                    fill={rampColor(t)}
+                    fillOpacity="0.75"
+                    onMouseEnter={() => setHover({ row: p.row, col: p.col, px, py })}
+                    onMouseLeave={() => setHover(null)}
+                  />
+                );
+              })}
+            </svg>
+            <CellTooltip cube={dataCube} hover={hover} />
+          </div>
           {/* Colour legend */}
           <div className="flex items-center gap-2 mt-2 text-[9px] text-[var(--eef-text-3)]">
             <span className="tnum">{result.valueMin.toFixed(2)}</span>

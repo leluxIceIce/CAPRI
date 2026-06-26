@@ -10,6 +10,8 @@ import {
   rSquared,
   rmse,
 } from "../utils/mlData";
+import { CellTooltip, type HoverCell } from "../utils/cellTooltip";
+import { loadCached, saveCached } from "../utils/mlCache";
 
 // ml-random-forest ships its feature-importance method at runtime but omits it
 // from its .d.ts. Declare just the surface we use.
@@ -24,6 +26,7 @@ interface RFRegressionPanelProps {
 
 const MAX_TRAIN_SAMPLES = 2000;
 const SEED = 42;
+const CACHE_KEY = "eef.rf.result.v1";
 
 interface TrainResult {
   target: VariableName;
@@ -33,7 +36,7 @@ interface TrainResult {
   oobR2: number;
   oobRmse: number;
   importances: { name: VariableName; value: number }[];
-  scatter: { actual: number; predicted: number }[];
+  scatter: { actual: number; predicted: number; row: number; col: number }[];
 }
 
 /**
@@ -48,8 +51,11 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
   const [target, setTarget] = useState<VariableName>("CHL");
   const [nTrees, setNTrees] = useState(80);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<TrainResult | null>(null);
+  // Rehydrate the last trained model summary for this grid so it survives a modal
+  // reopen or an app reload (otherwise lost when the panel unmounts).
+  const [result, setResult] = useState<TrainResult | null>(() => loadCached<TrainResult>(CACHE_KEY, dataCube.gridSize));
   const [error, setError] = useState<string | null>(null);
+  const [hover, setHover] = useState<HoverCell | null>(null);
 
   const totalCells = dataCube.gridSize * dataCube.gridSize;
   const willSubsample = totalCells > MAX_TRAIN_SAMPLES;
@@ -67,7 +73,7 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
     setTimeout(() => {
       try {
         const features = ALL_VARIABLES.filter((v) => v !== target);
-        const { rows } = buildSamples(dataCube, features);
+        const { rows, cellRefs } = buildSamples(dataCube, features);
         const yAll = extractColumn(dataCube, target);
 
         const idx = subsampleIndices(rows.length, MAX_TRAIN_SAMPLES, SEED);
@@ -106,12 +112,17 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
           .map((name, j) => ({ name, value: Number.isFinite(rawImp[j]) ? rawImp[j] : 0 }))
           .sort((a, b) => b.value - a.value);
 
-        // Thin the scatter so the SVG stays light.
+        // Thin the scatter so the SVG stays light. cellRefs[idx[i]] is the source
+        // grid cell for subsample row i (same flat order throughout), threaded onto
+        // each point for the hover tooltip's lat/lon + CHL lookup.
         const step = Math.max(1, Math.floor(y.length / 400));
-        const scatter: { actual: number; predicted: number }[] = [];
-        for (let i = 0; i < y.length; i += step) scatter.push({ actual: y[i], predicted: oobPred[i] });
+        const scatter: { actual: number; predicted: number; row: number; col: number }[] = [];
+        for (let i = 0; i < y.length; i += step) {
+          const ref = cellRefs[idx[i]];
+          scatter.push({ actual: y[i], predicted: oobPred[i], row: ref.row, col: ref.col });
+        }
 
-        setResult({
+        const trained: TrainResult = {
           target,
           features,
           nSamples: X.length,
@@ -120,7 +131,9 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
           oobRmse,
           importances,
           scatter,
-        });
+        };
+        setResult(trained);
+        saveCached(CACHE_KEY, dataCube.gridSize, trained);
       } catch (err: any) {
         setError(err?.message || "Training failed.");
       } finally {
@@ -236,16 +249,30 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
               <div className="text-[11px] font-semibold text-[var(--eef-text-2)] mb-2">
                 Out-of-bag predicted vs. actual
               </div>
-              <svg viewBox="0 0 200 200" className="w-full glass-well" style={{ aspectRatio: "1 / 1" }}>
-                {/* 1:1 reference line */}
-                <line x1="0" y1="200" x2="200" y2="0" stroke="var(--eef-border-strong)" strokeWidth="1" strokeDasharray="3 3" />
-                {result.scatter.map((p, i) => {
-                  const span = scatterBounds.hi - scatterBounds.lo || 1;
-                  const px = ((p.actual - scatterBounds.lo) / span) * 200;
-                  const py = 200 - ((p.predicted - scatterBounds.lo) / span) * 200;
-                  return <circle key={i} cx={px} cy={py} r="1.6" fill="var(--eef-accent)" fillOpacity="0.5" />;
-                })}
-              </svg>
+              <div className="relative">
+                <svg viewBox="0 0 200 200" className="w-full glass-well" style={{ aspectRatio: "1 / 1" }}>
+                  {/* 1:1 reference line */}
+                  <line x1="0" y1="200" x2="200" y2="0" stroke="var(--eef-border-strong)" strokeWidth="1" strokeDasharray="3 3" />
+                  {result.scatter.map((p, i) => {
+                    const span = scatterBounds.hi - scatterBounds.lo || 1;
+                    const px = ((p.actual - scatterBounds.lo) / span) * 200;
+                    const py = 200 - ((p.predicted - scatterBounds.lo) / span) * 200;
+                    return (
+                      <circle
+                        key={i}
+                        cx={px}
+                        cy={py}
+                        r="2.2"
+                        fill="var(--eef-accent)"
+                        fillOpacity="0.5"
+                        onMouseEnter={() => setHover({ row: p.row, col: p.col, px, py })}
+                        onMouseLeave={() => setHover(null)}
+                      />
+                    );
+                  })}
+                </svg>
+                <CellTooltip cube={dataCube} hover={hover} />
+              </div>
               <div className="flex justify-between text-[9px] text-[var(--eef-text-3)] mt-1">
                 <span>actual →</span><span>↑ predicted · dashed = perfect</span>
               </div>
