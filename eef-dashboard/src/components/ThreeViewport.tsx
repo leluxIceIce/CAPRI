@@ -29,6 +29,9 @@ export interface PixelClickEvent {
 interface ThreeViewportProps {
   dataCube: DataCube;
   layerState: Record<VariableName, LayerState>;
+  // Bottom→top stacking order. Optional: falls back to the canonical
+  // VARIABLE_METADATA key order when not provided.
+  layerOrder?: VariableName[];
   spacing: number;
   displacementGain: number;
   showTerrain: boolean;
@@ -53,6 +56,7 @@ function ThreeViewportInner(
   {
     dataCube,
     layerState,
+  layerOrder,
   spacing,
   displacementGain,
   showTerrain,
@@ -624,7 +628,15 @@ function ThreeViewportInner(
     const group = meshesGroupRef.current;
     if (!group) return;
 
-    const keys = Object.keys(VARIABLE_METADATA) as VariableName[];
+    // Stacking order comes from layerOrder (drag-reorderable); fall back to the
+    // canonical key order. Reconcile so any key missing from a stale layerOrder
+    // still renders and unknown keys are ignored — keys.length must stay in sync
+    // with the real layer set or the recreate/update branch logic below breaks.
+    const allKeys = Object.keys(VARIABLE_METADATA) as VariableName[];
+    const ordered = (layerOrder ?? allKeys).filter((k) => allKeys.includes(k));
+    const keys = ordered.length === allKeys.length
+      ? ordered
+      : [...ordered, ...allKeys.filter((k) => !ordered.includes(k))];
     const gridSize = dataCube.gridSize;
 
     // Check if we need to reconstruct or simply updates geometry arrays & textures
@@ -865,7 +877,7 @@ function ThreeViewportInner(
       (wireframe.material as THREE.LineBasicMaterial).color.copy(accentColor);
     });
 
-  }, [dataCube, layerState, spacing, displacementGain, showTerrain, showWireframe, showLabels, customColors, customColorsFrom, remountKey]);
+  }, [dataCube, layerState, layerOrder, spacing, displacementGain, showTerrain, showWireframe, showLabels, customColors, customColorsFrom, remountKey]);
 
   // Spatial overlay plane lifecycle (Gate A Stage 2)
   useEffect(() => {

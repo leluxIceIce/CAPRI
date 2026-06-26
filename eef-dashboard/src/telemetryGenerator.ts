@@ -29,6 +29,13 @@ interface RegimeParams {
   KD490: { base: number; freq: number; plumeAmp: number };
   FLH: { base: number; freq: number; plumeAmp: number };
   CHL_disagreement: { base: number; freq: number; plumeAmp: number };
+  OA01: { base: number; freq: number; plumeAmp: number };
+  OA02: { base: number; freq: number; plumeAmp: number };
+  OA03: { base: number; freq: number; plumeAmp: number };
+  OA04: { base: number; freq: number; plumeAmp: number };
+  OA05: { base: number; freq: number; plumeAmp: number };
+  OA06: { base: number; freq: number; plumeAmp: number };
+  OA07: { base: number; freq: number; plumeAmp: number };
   OA08: { base: number; freq: number; plumeAmp: number };
   OA09: { base: number; freq: number; plumeAmp: number };
   OA10: { base: number; freq: number; plumeAmp: number };
@@ -47,6 +54,13 @@ const REGIME_PRESETS: Record<string, RegimeParams> = {
     KD490: { base: 0.68, freq: 2.3, plumeAmp: 0.24 },
     FLH: { base: 0.50, freq: 2.0, plumeAmp: 0.18 },
     CHL_disagreement: { base: 0.12, freq: 1.0, plumeAmp: 0.0 },
+    OA01: { base: 0.55, freq: 1.6, plumeAmp: 0.12 },
+    OA02: { base: 0.52, freq: 1.6, plumeAmp: 0.13 },
+    OA03: { base: 0.50, freq: 1.7, plumeAmp: 0.14 },
+    OA04: { base: 0.48, freq: 1.8, plumeAmp: 0.15 },
+    OA05: { base: 0.45, freq: 1.9, plumeAmp: 0.16 },
+    OA06: { base: 0.42, freq: 2.0, plumeAmp: 0.16 },
+    OA07: { base: 0.38, freq: 2.1, plumeAmp: 0.18 },
     OA08: { base: 0.35, freq: 1.5, plumeAmp: 0.10 },
     OA09: { base: 0.30, freq: 1.6, plumeAmp: 0.12 },
     OA10: { base: 0.25, freq: 1.7, plumeAmp: 0.15 },
@@ -63,6 +77,13 @@ const REGIME_PRESETS: Record<string, RegimeParams> = {
     KD490: { base: 0.15, freq: 0.8, plumeAmp: 0.03 },
     FLH: { base: 0.08, freq: 0.7, plumeAmp: 0.02 },
     CHL_disagreement: { base: 0.12, freq: 1.0, plumeAmp: 0.0 },
+    OA01: { base: 0.70, freq: 0.4, plumeAmp: 0.03 },
+    OA02: { base: 0.66, freq: 0.4, plumeAmp: 0.03 },
+    OA03: { base: 0.60, freq: 0.5, plumeAmp: 0.03 },
+    OA04: { base: 0.45, freq: 0.5, plumeAmp: 0.02 },
+    OA05: { base: 0.30, freq: 0.6, plumeAmp: 0.02 },
+    OA06: { base: 0.20, freq: 0.6, plumeAmp: 0.02 },
+    OA07: { base: 0.14, freq: 0.6, plumeAmp: 0.01 },
     OA08: { base: 0.10, freq: 0.6, plumeAmp: 0.02 },
     OA09: { base: 0.08, freq: 0.5, plumeAmp: 0.01 },
     OA10: { base: 0.07, freq: 0.5, plumeAmp: 0.01 },
@@ -79,6 +100,13 @@ const REGIME_PRESETS: Record<string, RegimeParams> = {
     KD490: { base: 0.78, freq: 2.8, plumeAmp: 0.25 },
     FLH: { base: 0.35, freq: 1.4, plumeAmp: 0.10 },
     CHL_disagreement: { base: 0.12, freq: 1.0, plumeAmp: 0.0 },
+    OA01: { base: 0.20, freq: 2.0, plumeAmp: 0.10 },
+    OA02: { base: 0.25, freq: 2.2, plumeAmp: 0.12 },
+    OA03: { base: 0.32, freq: 2.4, plumeAmp: 0.15 },
+    OA04: { base: 0.45, freq: 2.6, plumeAmp: 0.18 },
+    OA05: { base: 0.60, freq: 2.9, plumeAmp: 0.24 },
+    OA06: { base: 0.70, freq: 3.1, plumeAmp: 0.28 },
+    OA07: { base: 0.68, freq: 3.3, plumeAmp: 0.30 },
     OA08: { base: 0.60, freq: 2.5, plumeAmp: 0.20 },
     OA09: { base: 0.55, freq: 2.4, plumeAmp: 0.18 },
     OA10: { base: 0.50, freq: 2.3, plumeAmp: 0.16 },
@@ -225,8 +253,8 @@ export function generateDataCube(
   const channels = {} as Record<VariableName, number[][]>;
   const stats = {} as Record<VariableName, VariableStats>;
 
-  const keys: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA08", "OA09", "OA10", "OA11", "OA13"];
-  
+  const keys: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA01", "OA02", "OA03", "OA04", "OA05", "OA06", "OA07", "OA08", "OA09", "OA10", "OA11", "OA13"];
+
   keys.forEach((key) => {
     channels[key] = generateFlowingGrid(key, stepSeconds, config, gridSize);
     stats[key] = computeGridStats(channels[key]);
@@ -257,6 +285,13 @@ export function mapColumnToCanonical(csvCol: string): VariableName | null {
   if (norm === "tsm" || norm === "tsm_nn" || norm === "suspended" || norm.includes("tsm") || norm.includes("solids") || norm === "spm") return "TSM";
   if (norm === "par" || norm === "solar" || norm === "radiation" || norm.includes("par")) return "PAR";
   if (norm === "kd490" || norm === "kd_490" || norm === "kd" || norm.includes("att") || norm.includes("kd490")) return "KD490";
+  if (norm.includes("oa01") || norm.includes("oa1_") || norm === "oa1") return "OA01";
+  if (norm.includes("oa02") || norm === "oa2") return "OA02";
+  if (norm.includes("oa03") || norm === "oa3") return "OA03";
+  if (norm.includes("oa04") || norm === "oa4") return "OA04";
+  if (norm.includes("oa05") || norm === "oa5") return "OA05";
+  if (norm.includes("oa06") || norm === "oa6") return "OA06";
+  if (norm.includes("oa07") || norm === "oa7") return "OA07";
   if (norm.includes("oa08") || norm.includes("oa8")) return "OA08";
   if (norm.includes("oa09") || norm.includes("oa9")) return "OA09";
   if (norm.includes("oa10")) return "OA10";
@@ -399,7 +434,7 @@ export function parseCSVToCubes(csvText: string, gridSize = 20): DataCube[] {
     const channels = {} as Record<VariableName, number[][]>;
     const stats = {} as Record<VariableName, VariableStats>;
     
-    const allKeys: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA08", "OA09", "OA10", "OA11", "OA13"];
+    const allKeys: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA01", "OA02", "OA03", "OA04", "OA05", "OA06", "OA07", "OA08", "OA09", "OA10", "OA11", "OA13"];
 
     // Pre-compute derived raw-value arrays (per cell, length = frameSize) for the
     // FLH and CHL_disagreement channels from the raw OLCI band / algorithm columns.

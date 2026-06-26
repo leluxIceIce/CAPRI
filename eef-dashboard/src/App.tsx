@@ -72,10 +72,21 @@ interface SessionSnapshot {
   showGrid: boolean;
   cameraPreset: "iso" | "top" | "profile";
   layerState: Record<VariableName, LayerState>;
+  layerOrder: VariableName[];
   spatialOverlayState: SpatialOverlayState;
   relationshipGraphState: RelationshipGraphState;
   confidenceOverlayState: ConfidenceOverlayState;
   gate2Visible: boolean;
+}
+
+// Returns a complete, valid stacking order: keeps the saved order for keys that
+// still exist, drops any retired keys, and appends keys that the save predates
+// (e.g. OLCI bands added in a later build) so every layer is represented exactly once.
+function reconcileLayerOrder(saved: VariableName[]): VariableName[] {
+  const all = Object.keys(VARIABLE_METADATA) as VariableName[];
+  const valid = saved.filter((k) => all.includes(k));
+  const seen = new Set(valid);
+  return [...valid, ...all.filter((k) => !seen.has(k))];
 }
 
 export default function App() {
@@ -175,12 +186,28 @@ export default function App() {
     KD490: { visible: true, opacity: 0.72 },
     FLH: { visible: true, opacity: 0.72 },
     CHL_disagreement: { visible: true, opacity: 0.72 },
+    OA01: { visible: true, opacity: 0.72 },
+    OA02: { visible: true, opacity: 0.72 },
+    OA03: { visible: true, opacity: 0.72 },
+    OA04: { visible: true, opacity: 0.72 },
+    OA05: { visible: true, opacity: 0.72 },
+    OA06: { visible: true, opacity: 0.72 },
+    OA07: { visible: true, opacity: 0.72 },
     OA08: { visible: true, opacity: 0.72 },
     OA09: { visible: true, opacity: 0.72 },
     OA10: { visible: true, opacity: 0.72 },
     OA11: { visible: true, opacity: 0.72 },
     OA13: { visible: true, opacity: 0.72 },
   });
+
+  // Bottom→top stacking order of the 3D layers. Drives both the layer-list panel
+  // and the vertical position of each plane in ThreeViewport, so the user can
+  // drag-reorder the stack. Initialized to the canonical VARIABLE_METADATA order;
+  // always reconciled against the live key set (see reconcileLayerOrder) so newly
+  // added bands appear and stale keys drop out.
+  const [layerOrder, setLayerOrder] = useState<VariableName[]>(
+    () => Object.keys(VARIABLE_METADATA) as VariableName[]
+  );
 
   // 4. Real-time UTC Ticking Clock (For professional scientific console look)
   const [currentTime, setCurrentTime] = useState<string>("");
@@ -331,7 +358,7 @@ export default function App() {
   // Calculate live average levels of each parameters to display on sparkline indicators
   const variableAverages = useMemo(() => {
     const avgs = {} as Record<VariableName, number>;
-    const keys: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA08", "OA09", "OA10", "OA11", "OA13"];
+    const keys = Object.keys(VARIABLE_METADATA) as VariableName[];
     keys.forEach((key) => {
       avgs[key] = activeDataCube.stats[key].mean;
     });
@@ -419,6 +446,20 @@ export default function App() {
     }));
   };
 
+  // Move a layer to a new index in the stack (drag-reorder from the layer panel).
+  const handleReorderLayer = (name: VariableName, toIndex: number) => {
+    setLayerOrder(prev => {
+      const from = prev.indexOf(name);
+      if (from === -1 || from === toIndex) return prev;
+      const next = [...prev];
+      next.splice(from, 1);
+      // Clamp the destination after the source has been removed.
+      const dest = Math.max(0, Math.min(next.length, toIndex));
+      next.splice(dest, 0, name);
+      return next;
+    });
+  };
+
   const handleResetStream = () => {
     setStepSeconds(0);
     setCurrentCSVFrameIdx(0);
@@ -467,6 +508,7 @@ export default function App() {
       showGrid,
       cameraPreset,
       layerState,
+      layerOrder,
       spatialOverlayState,
       relationshipGraphState,
       confidenceOverlayState,
@@ -497,6 +539,10 @@ export default function App() {
         if (typeof snapshot.showGrid === "boolean") setShowGrid(snapshot.showGrid);
         if (snapshot.cameraPreset) setCameraPreset(snapshot.cameraPreset);
         if (snapshot.layerState) setLayerState(snapshot.layerState);
+        // Reconcile the saved order against the current key set so a snapshot from
+        // an older build (missing the new OLCI bands, or carrying retired keys)
+        // still yields a complete, valid stacking order.
+        if (snapshot.layerOrder) setLayerOrder(reconcileLayerOrder(snapshot.layerOrder));
         if (snapshot.spatialOverlayState) setSpatialOverlayState(snapshot.spatialOverlayState);
         if (snapshot.relationshipGraphState) setRelationshipGraphState(snapshot.relationshipGraphState);
         if (snapshot.confidenceOverlayState) setConfidenceOverlayState(snapshot.confidenceOverlayState);
@@ -693,6 +739,7 @@ export default function App() {
                     ref={mainViewportRef}
                     dataCube={activeDataCube}
                     layerState={layerState}
+                    layerOrder={layerOrder}
                     spacing={spacing}
                     displacementGain={displacementGain}
                     showTerrain={showTerrain}
@@ -738,6 +785,8 @@ export default function App() {
                     layerState={layerState}
                     onToggleLayer={handleToggleLayer}
                     onChangeLayerOpacity={handleLayerOpacityChange}
+                    layerOrder={layerOrder}
+                    onReorderLayer={handleReorderLayer}
                     customColors={customColors}
                     customColorsFrom={customColorsFrom}
                     onChangeCustomColor={handleChangeCustomColor}
@@ -863,6 +912,7 @@ export default function App() {
               <ThreeViewport
                 dataCube={activeDataCube}
                 layerState={layerState}
+                layerOrder={layerOrder}
                 spacing={spacing}
                 displacementGain={displacementGain}
                 showTerrain={showTerrain}
@@ -892,6 +942,8 @@ export default function App() {
               layerState={layerState}
               onToggleLayer={handleToggleLayer}
               onChangeLayerOpacity={handleLayerOpacityChange}
+              layerOrder={layerOrder}
+              onReorderLayer={handleReorderLayer}
               customColors={customColors}
               onChangeCustomColor={handleChangeCustomColor}
               onResetCustomColor={handleResetCustomColor}

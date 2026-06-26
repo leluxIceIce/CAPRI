@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle, ShieldCheck, Waves, Info, Radio, Compass, BarChart2 } from "lucide-react";
+import { AlertTriangle, ShieldCheck, Waves, Info, Radio, Compass, BarChart2, GripVertical } from "lucide-react";
 import { AnalysisResult, VariableName, VARIABLE_METADATA, DataCube } from "../types";
 import { getCSSGradient } from "../utils/colormaps";
 import { ColorPickerPopover } from "./ColorPickerPopover";
@@ -10,6 +10,8 @@ interface DiagnosticsPanelProps {
   layerState: Record<VariableName, { visible: boolean; opacity: number }>;
   onToggleLayer: (name: VariableName) => void;
   onChangeLayerOpacity: (name: VariableName, opacity: number) => void;
+  layerOrder: VariableName[];
+  onReorderLayer: (name: VariableName, toIndex: number) => void;
   customColors: Partial<Record<VariableName, string>>;
   onChangeCustomColor: (name: VariableName, hex: string) => void;
   onResetCustomColor: (name: VariableName) => void;
@@ -21,10 +23,15 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
   layerState,
   onToggleLayer,
   onChangeLayerOpacity,
+  layerOrder,
+  onReorderLayer,
   customColors,
   onChangeCustomColor,
   onResetCustomColor,
 }) => {
+  // Index of the row currently hovered during a drag — drives the drop-indicator line.
+  const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null);
+  const dragKeyRef = React.useRef<VariableName | null>(null);
   // Translate entropy to risk levels
   const entropyPercent = (analysis.transitionEntropy * 100).toFixed(1);
 
@@ -202,16 +209,45 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
       {/* 5. Layer HUD Quick Toggles & Opacity */}
       <div className="glass-panel rounded-lg p-3.5 flex flex-col gap-2">
         <span className="text-[12px] font-semibold text-[var(--eef-text)] flex items-center gap-1.5">
-          <BarChart2 size={13} className="text-[var(--eef-text-3)]" /> Layer visibility
+          <BarChart2 size={13} className="text-[var(--eef-text-3)]" /> Layer order &amp; visibility
         </span>
+        <span className="text-[9.5px] text-[var(--eef-text-3)] -mt-1">Drag the handle to restack layers (top of list = top of the 3D stack).</span>
 
         <div className="flex flex-col gap-2 mt-1">
-          {(Object.keys(VARIABLE_METADATA) as VariableName[]).map((key) => {
+          {layerOrder.map((key, idx) => {
             const meta = VARIABLE_METADATA[key];
             const ls = layerState[key] || { visible: true, opacity: 0.70 };
+            const isDragTarget = dragOverIndex === idx;
 
             return (
-              <div key={key} className="flex items-center gap-2 text-xs select-none">
+              <div
+                key={key}
+                onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const dragged = dragKeyRef.current;
+                  if (dragged) onReorderLayer(dragged, idx);
+                  dragKeyRef.current = null;
+                  setDragOverIndex(null);
+                }}
+                className={`flex items-center gap-2 text-xs select-none rounded transition-colors ${
+                  isDragTarget ? "ring-1 ring-[var(--eef-accent-ring)] bg-[var(--eef-accent-soft)]" : ""
+                }`}
+              >
+                {/* Drag handle — only this grip starts a reorder drag */}
+                <span
+                  draggable
+                  onDragStart={(e) => {
+                    dragKeyRef.current = key;
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragEnd={() => { dragKeyRef.current = null; setDragOverIndex(null); }}
+                  title="Drag to reorder"
+                  className="cursor-grab active:cursor-grabbing text-[var(--eef-text-3)] hover:text-[var(--eef-text)] flex-shrink-0"
+                >
+                  <GripVertical size={13} />
+                </span>
+
                 {/* Checkbox */}
                 <input
                   type="checkbox"
@@ -219,7 +255,7 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
                   onChange={() => onToggleLayer(key)}
                   className="w-3.5 h-3.5 bg-[var(--eef-inset)] border-[var(--eef-border)] rounded focus:ring-[var(--eef-accent)] focus:ring-1 accent-[var(--eef-accent)]"
                 />
-                
+
                 {/* Miniature gradient colormap representation — click to customize */}
                 <div className="w-8 flex-shrink-0">
                   <ColorPickerPopover
@@ -231,7 +267,7 @@ export const DiagnosticsPanel: React.FC<DiagnosticsPanelProps> = ({
                     onReset={() => onResetCustomColor(key)}
                   />
                 </div>
-                
+
                 {/* Name */}
                 <span className="w-12 font-semibold ml-1" style={{ color: meta.color }}>{key}</span>
 
