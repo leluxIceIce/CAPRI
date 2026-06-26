@@ -47,7 +47,7 @@ function rampColor(t: number): string {
 }
 
 /**
- * UMAP dimensionality reduction. Every grid cell's 14-channel vector is
+ * UMAP dimensionality reduction. Every grid cell's full channel vector is
  * z-scored and projected to 2-D with umap-js (a genuine UMAP implementation),
  * seeded for reproducibility. Points are coloured by a chosen channel so
  * clusters in the embedding can be read against a real variable.
@@ -138,7 +138,7 @@ export const UmapPanel: React.FC<UmapPanelProps> = ({ dataCube }) => {
       </div>
 
       <p className="text-[11px] text-[var(--eef-text-2)] leading-relaxed">
-        Projects every cell's 14-channel signature into 2-D. Nearby points have
+        Projects every cell's {ALL_VARIABLES.length}-channel signature into 2-D. Nearby points have
         similar spectra; clusters suggest distinct regimes. UMAP axes are arbitrary
         and distances are qualitative — read structure, not coordinates.
       </p>

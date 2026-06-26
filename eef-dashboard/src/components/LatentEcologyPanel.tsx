@@ -15,7 +15,7 @@ interface LatentEcologyPanelProps {
  * Gate 2 Understanding Roots: Latent Ecology Panel
  *
  * Visualizes:
- * 1. 9x9 correlation heatmap of variable interactions
+ * 1. DxD correlation heatmap of variable interactions (all channels)
  * 2. PCA attractor landscape with cluster centroids
  * 3. Regime stability and transition zones
  * 4. Key drivers and causal hypotheses
@@ -34,6 +34,11 @@ export function LatentEcologyPanel({ activeDataCube, visible }: LatentEcologyPan
   const varNames = latentEcology.interactionMatrix.variableNames;
   const D = varNames.length;
   const corr = latentEcology.interactionMatrix.correlations;
+  // Responsive heatmap: shrink cells and drop the inline numbers once there are
+  // many channels (21+), so the matrix stays readable instead of overflowing.
+  const cell = D > 12 ? 20 : 34;
+  const headerH = D > 12 ? 54 : 80;
+  const showNums = D <= 12;
 
   return (
     <div className="gate2-latent-ecology-panel" style={{ padding: "12px", overflowY: "auto" }}>
@@ -49,12 +54,14 @@ export function LatentEcologyPanel({ activeDataCube, visible }: LatentEcologyPan
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: `48px repeat(${D}, 34px)`,
+            gridTemplateColumns: `48px repeat(${D}, ${cell}px)`,
             gap: "0",
             background: "var(--eef-surface-solid)",
             border: "1px solid var(--eef-border)",
             borderRadius: "8px",
             padding: "4px",
+            overflowX: "auto",
+            maxWidth: "100%",
           }}
         >
           {/* Column headers */}
@@ -69,7 +76,7 @@ export function LatentEcologyPanel({ activeDataCube, visible }: LatentEcologyPan
                 textAlign: "center",
                 writing: "vertical-rl",
                 textOrientation: "mixed",
-                height: "80px",
+                height: `${headerH}px`,
                 overflow: "hidden",
               }}
             >
@@ -128,7 +135,7 @@ export function LatentEcologyPanel({ activeDataCube, visible }: LatentEcologyPan
                     }}
                     title={`${rowName} vs ${colName}: r=${value.toFixed(3)}`}
                   >
-                    {Math.round(value * 100)}
+                    {showNums ? Math.round(value * 100) : ""}
                   </div>
                 );
               })}

@@ -1,7 +1,10 @@
 import { DataCube, VariableName } from "../types";
 
-const VARS: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA01", "OA02", "OA03", "OA04", "OA05", "OA06", "OA07", "OA08", "OA09", "OA10", "OA11", "OA13"];
-const D = VARS.length; // 14
+export const VARS: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA01", "OA02", "OA03", "OA04", "OA05", "OA06", "OA07", "OA08", "OA09", "OA10", "OA11", "OA13"];
+// Feature dimensionality of the matrix extractDataMatrix produces. Exported so
+// consumers (e.g. attractor PCA) use the real width instead of a stale literal.
+export const FEATURE_DIM = VARS.length;
+const D = FEATURE_DIM;
 
 export function extractDataMatrix(cube: DataCube): Float64Array {
   const n = cube.gridSize * cube.gridSize;

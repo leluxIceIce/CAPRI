@@ -5,6 +5,7 @@ import {
   jacobiEigen,
   projectCells,
   kMeansClusters,
+  FEATURE_DIM,
 } from "../utils/eigenmath";
 
 /**
@@ -145,7 +146,9 @@ export function detectAttractors(
   const startTime = performance.now();
 
   const n = cube.gridSize * cube.gridSize;
-  const D = 9; // Number of ecological variables
+  // Must match the width of extractDataMatrix — was a hardcoded 9, which silently
+  // PCA'd only the first 9 of the 21 channels (ignoring every OLCI band).
+  const D = FEATURE_DIM;
 
   // Extract and normalize data
   const X = extractDataMatrix(cube);

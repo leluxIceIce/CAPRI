@@ -1,12 +1,12 @@
 // Shared data prep + metrics for the in-browser ML tools (UMAP embedding and
-// Random-Forest regression). Everything here operates on REAL DataCube values —
-// each grid cell becomes one sample whose features are its 14 spectral/derived
-// channels. No synthetic stand-ins, no fabricated scores: the panels that use
-// this compute genuinely from the observed (or uploaded) cube.
+// PLS regression). Everything here operates on REAL DataCube values — each grid
+// cell becomes one sample whose features are its spectral/derived channels. No
+// synthetic stand-ins, no fabricated scores: the panels that use this compute
+// genuinely from the observed (or uploaded) cube.
 
 import { DataCube, VariableName, VARIABLE_METADATA } from "../types";
 
-/** All 14 channels, in canonical metadata order. */
+/** Every channel, in canonical metadata order (tracks any bands we add). */
 export const ALL_VARIABLES = Object.keys(VARIABLE_METADATA) as VariableName[];
 
 export interface SampleMatrix {

@@ -1,4 +1,5 @@
 import { DataCube, VariableName } from "../types";
+import { ALL_VARIABLES } from "../utils/mlData";
 
 /**
  * Gate 2 Understanding Roots: Interaction Matrix Engine
@@ -9,10 +10,13 @@ import { DataCube, VariableName } from "../types";
  * This is the foundation for understanding WHY ecological clusters emerge.
  */
 
-const VARIABLES: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement"];
+// All channels (including the OLCI bands) so the correlation heatmap reflects the
+// full layer stack — e.g. aphy↔CHL reads ~1, and OLCI band cross-correlations are
+// visible — rather than silently omitting the spectral bands.
+const VARIABLES: VariableName[] = ALL_VARIABLES;
 
 export interface InteractionMatrix {
-  correlations: Float64Array; // 9x9 row-major matrix of Pearson correlations
+  correlations: Float64Array; // DxD row-major matrix of Pearson correlations
   variableNames: VariableName[];
   metadata: {
     cellCount: number;
@@ -89,7 +93,7 @@ export function computeInteractionMatrix(cube: DataCube): InteractionMatrix {
   const startTime = performance.now();
 
   const arrays = extractVariableArrays(cube);
-  const D = VARIABLES.length; // 9
+  const D = VARIABLES.length;
   const correlations = new Float64Array(D * D);
 
   // Fill diagonal with 1.0 and compute off-diagonal correlations
