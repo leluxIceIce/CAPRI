@@ -8,6 +8,9 @@
 // updater:* IPC handlers from electron/main.cjs.
 fn main() {
     tauri::Builder::default()
+        // Persisted key-value store plugin — backs the Embedders tab so
+        // user-created embedders + their training data survive app restarts.
+        .plugin(tauri_plugin_store::Builder::new().build())
         .run(tauri::generate_context!())
         .expect("error while running EEF Dashboard");
 }
