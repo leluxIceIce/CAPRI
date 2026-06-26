@@ -11,6 +11,7 @@ import {
   mulberry32,
 } from "../utils/mlData";
 import { CellTooltip, type HoverCell } from "../utils/cellTooltip";
+import { loadCached, saveCached } from "../utils/mlCache";
 
 interface UmapPanelProps {
   dataCube: DataCube;
@@ -18,6 +19,7 @@ interface UmapPanelProps {
 
 const MAX_POINTS = 1500;
 const SEED = 42;
+const CACHE_KEY = "eef.umap.result.v1";
 
 interface EmbedResult {
   points: { x: number; y: number; value: number; row: number; col: number }[];
@@ -54,7 +56,9 @@ export const UmapPanel: React.FC<UmapPanelProps> = ({ dataCube }) => {
   const [colorBy, setColorBy] = useState<VariableName>("CHL");
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState<EmbedResult | null>(null);
+  // Rehydrate the last embedding for this grid so it survives a modal reopen or
+  // an app reload (the result is otherwise lost when the panel unmounts).
+  const [result, setResult] = useState<EmbedResult | null>(() => loadCached<EmbedResult>(CACHE_KEY, dataCube.gridSize));
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<HoverCell | null>(null);
   const runIdRef = useRef(0);
@@ -106,7 +110,9 @@ export const UmapPanel: React.FC<UmapPanelProps> = ({ dataCube }) => {
         const ref = cellRefs[idx[i]];
         return { x: e[0], y: e[1], value: vals[i], row: ref.row, col: ref.col };
       });
-      setResult({ points, colorBy, nPoints: points.length, valueMin: vMin, valueMax: vMax });
+      const embed: EmbedResult = { points, colorBy, nPoints: points.length, valueMin: vMin, valueMax: vMax };
+      setResult(embed);
+      saveCached(CACHE_KEY, dataCube.gridSize, embed);
     } catch (err: any) {
       if (myRun === runIdRef.current) setError(err?.message || "UMAP failed.");
     } finally {

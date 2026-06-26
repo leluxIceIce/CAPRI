@@ -11,6 +11,7 @@ import {
   rmse,
 } from "../utils/mlData";
 import { CellTooltip, type HoverCell } from "../utils/cellTooltip";
+import { loadCached, saveCached } from "../utils/mlCache";
 
 // ml-random-forest ships its feature-importance method at runtime but omits it
 // from its .d.ts. Declare just the surface we use.
@@ -25,6 +26,7 @@ interface RFRegressionPanelProps {
 
 const MAX_TRAIN_SAMPLES = 2000;
 const SEED = 42;
+const CACHE_KEY = "eef.rf.result.v1";
 
 interface TrainResult {
   target: VariableName;
@@ -49,7 +51,9 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
   const [target, setTarget] = useState<VariableName>("CHL");
   const [nTrees, setNTrees] = useState(80);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<TrainResult | null>(null);
+  // Rehydrate the last trained model summary for this grid so it survives a modal
+  // reopen or an app reload (otherwise lost when the panel unmounts).
+  const [result, setResult] = useState<TrainResult | null>(() => loadCached<TrainResult>(CACHE_KEY, dataCube.gridSize));
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<HoverCell | null>(null);
 
@@ -118,7 +122,7 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
           scatter.push({ actual: y[i], predicted: oobPred[i], row: ref.row, col: ref.col });
         }
 
-        setResult({
+        const trained: TrainResult = {
           target,
           features,
           nSamples: X.length,
@@ -127,7 +131,9 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
           oobRmse,
           importances,
           scatter,
-        });
+        };
+        setResult(trained);
+        saveCached(CACHE_KEY, dataCube.gridSize, trained);
       } catch (err: any) {
         setError(err?.message || "Training failed.");
       } finally {
