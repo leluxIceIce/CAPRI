@@ -26,6 +26,17 @@ export interface PixelClickEvent {
   col: number;
 }
 
+// Auto-scale the per-layer gap so the total stack height stays roughly constant
+// no matter how many layers are present. At the reference count the user's spacing
+// slider value is used as-is; with more layers the gap shrinks proportionally (and
+// with fewer it grows), so adding bands never overflows the stack out of view. The
+// slider stays a manual multiplier on top of this. Used for BOTH the terrain layers
+// and every overlay positioned relative to the stack, so they never drift apart.
+const SPACING_REFERENCE_LAYER_COUNT = 14;
+function autoLayerSpacing(spacing: number, layerCount: number): number {
+  return (spacing * (SPACING_REFERENCE_LAYER_COUNT - 1)) / Math.max(1, layerCount - 1);
+}
+
 interface ThreeViewportProps {
   dataCube: DataCube;
   layerState: Record<VariableName, LayerState>;
@@ -850,7 +861,8 @@ function ThreeViewportInner(
 
       // 3. Positioning and visibility of layers
       // Vertical stacked positions symmetrically centered
-      const yPos = (layerIdx - (keys.length - 1) / 2) * spacing;
+      const effSpacing = autoLayerSpacing(spacing, keys.length);
+      const yPos = (layerIdx - (keys.length - 1) / 2) * effSpacing;
       
       mesh.position.y = yPos;
       border.position.y = yPos;
@@ -926,7 +938,7 @@ function ThreeViewportInner(
       const mesh = new THREE.Mesh(planeGeo, planeMat);
       mesh.rotation.x = -Math.PI / 2;
       const _numLayersS = Object.keys(VARIABLE_METADATA).length;
-      mesh.position.y = ((_numLayersS - 1) / 2 + 1.5) * spacing;
+      mesh.position.y = ((_numLayersS - 1) / 2 + 1.5) * autoLayerSpacing(spacing, _numLayersS);
 
       group.add(mesh);
       spatialOverlayMeshRef.current = mesh;
@@ -957,7 +969,7 @@ function ThreeViewportInner(
 
     // Reposition in case spacing changed
     const _numLayersS2 = Object.keys(VARIABLE_METADATA).length;
-    mesh.position.y = ((_numLayersS2 - 1) / 2 + 1.5) * spacing;
+    mesh.position.y = ((_numLayersS2 - 1) / 2 + 1.5) * autoLayerSpacing(spacing, _numLayersS2);
   }, [spatialOverlay?.visible, spatialOverlay?.opacity, spatialOverlayGrid, spacing, dataCube.gridSize, remountKey]);
 
   // Confidence overlay plane lifecycle (Gate 0.5 Stage 6) — mirrors the spatial
@@ -1008,7 +1020,7 @@ function ThreeViewportInner(
       const mesh = new THREE.Mesh(planeGeo, planeMat);
       mesh.rotation.x = -Math.PI / 2;
       const _numLayersC = Object.keys(VARIABLE_METADATA).length;
-      mesh.position.y = ((_numLayersC - 1) / 2 + 2.5) * spacing;
+      mesh.position.y = ((_numLayersC - 1) / 2 + 2.5) * autoLayerSpacing(spacing, _numLayersC);
 
       group.add(mesh);
       confidenceOverlayMeshRef.current = mesh;
@@ -1046,7 +1058,7 @@ function ThreeViewportInner(
 
     // Reposition in case spacing changed
     const _numLayersC2 = Object.keys(VARIABLE_METADATA).length;
-    mesh.position.y = ((_numLayersC2 - 1) / 2 + 2.5) * spacing;
+    mesh.position.y = ((_numLayersC2 - 1) / 2 + 2.5) * autoLayerSpacing(spacing, _numLayersC2);
   }, [confidenceOverlay?.visible, confidenceOverlay?.opacity, confidenceOverlayGrid, spacing, dataCube.gridSize, remountKey]);
 
   // Relationship graph mesh lifecycle (Gate A Stage 2) — mirrors the root-mesh
@@ -1163,8 +1175,9 @@ function ThreeViewportInner(
 
     // Position: just above CHL_disagreement (last layer, index = numLayers-1)
     const numLayers = Object.keys(VARIABLE_METADATA).length;
-    const chlDisY = ((numLayers - 1) - (numLayers - 1) / 2) * spacing;
-    const overlayY = chlDisY + spacing * 0.35;
+    const effSpacing = autoLayerSpacing(spacing, numLayers);
+    const chlDisY = ((numLayers - 1) - (numLayers - 1) / 2) * effSpacing;
+    const overlayY = chlDisY + effSpacing * 0.35;
 
     // Step 1: find CHL-dominant cluster
     const chlFlat: number[] = [];
