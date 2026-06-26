@@ -776,6 +776,9 @@ function ThreeViewportInner(
       const { mesh, wireframe, border, label, textureCanvas, pixelBuffer } = data;
       const grid = dataCube.channels[varName];
       const stats = dataCube.stats[varName];
+      // A cube that predates this channel has no grid/stats for it — skip rather
+      // than dereference undefined (which would throw and blank the viewport).
+      if (!grid || !stats) return;
 
       const ls = layerState[varName] || { visible: true, opacity: 0.7 };
 
