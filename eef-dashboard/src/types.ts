@@ -5,7 +5,7 @@ export interface VariableStats {
   std: number;
 }
 
-export type VariableName = "CHL" | "aphy" | "ADG" | "bbp" | "TSM" | "PAR" | "KD490" | "FLH" | "CHL_disagreement" | "OA08" | "OA09" | "OA10" | "OA11" | "OA13";
+export type VariableName = "CHL" | "aphy" | "ADG" | "bbp" | "TSM" | "PAR" | "KD490" | "FLH" | "CHL_disagreement" | "OA01" | "OA02" | "OA03" | "OA04" | "OA05" | "OA06" | "OA07" | "OA08" | "OA09" | "OA10" | "OA11" | "OA13";
 
 export interface VariableMetadata {
   name: VariableName;
@@ -85,12 +85,61 @@ export const VARIABLE_METADATA: Record<VariableName, VariableMetadata> = {
     color: "#fb923c",
     description: "Absolute disagreement between the Neural Network and OC4ME chlorophyll algorithms. Data-quality and Case-2 (optically complex) water flag.",
   },
+  OA01: {
+    name: "OA01",
+    label: "OLCI Band 01 (400nm)",
+    unit: "sr⁻¹",
+    color: "#7c3aed",
+    description: "Raw spectral reflectance, 400nm / 15nm. Aerosol correction and improved water-constituent retrieval.",
+  },
+  OA02: {
+    name: "OA02",
+    label: "OLCI Band 02 (412.5nm)",
+    unit: "sr⁻¹",
+    color: "#6366f1",
+    description: "Raw spectral reflectance, 412.5nm / 10nm. Yellow substance (CDOM / gelbstoff) and detrital pigment absorption; a key turbidity marker.",
+  },
+  OA03: {
+    name: "OA03",
+    label: "OLCI Band 03 (442.5nm)",
+    unit: "sr⁻¹",
+    color: "#3b82f6",
+    description: "Raw spectral reflectance, 442.5nm / 10nm. Chlorophyll-a absorption maximum; core biogeochemistry band.",
+  },
+  OA04: {
+    name: "OA04",
+    label: "OLCI Band 04 (490nm)",
+    unit: "sr⁻¹",
+    color: "#06b6d4",
+    description: "Raw spectral reflectance, 490nm / 10nm. High-chlorophyll signal; basis for the KD490 diffuse-attenuation product.",
+  },
+  OA05: {
+    name: "OA05",
+    label: "OLCI Band 05 (510nm)",
+    unit: "sr⁻¹",
+    color: "#14b8a6",
+    description: "Raw spectral reflectance, 510nm / 10nm. Chlorophyll, suspended sediment, turbidity and red-tide discrimination.",
+  },
+  OA06: {
+    name: "OA06",
+    label: "OLCI Band 06 (560nm)",
+    unit: "sr⁻¹",
+    color: "#84cc16",
+    description: "Raw spectral reflectance, 560nm / 10nm. Green reference band (chlorophyll reflectance minimum); baseline for colour-ratio algorithms.",
+  },
+  OA07: {
+    name: "OA07",
+    label: "OLCI Band 07 (620nm)",
+    unit: "sr⁻¹",
+    color: "#f97316",
+    description: "Raw spectral reflectance, 620nm / 10nm. Suspended sediment loading.",
+  },
   OA08: {
     name: "OA08",
     label: "OLCI Band 08 (665nm)",
     unit: "sr⁻¹",
     color: "#e11d48",
-    description: "Raw spectral reflectance. Absorption maximum of chlorophyll-a.",
+    description: "Raw spectral reflectance, 665nm / 10nm. Second chlorophyll-a absorption maximum; sediment.",
   },
   OA09: {
     name: "OA09",

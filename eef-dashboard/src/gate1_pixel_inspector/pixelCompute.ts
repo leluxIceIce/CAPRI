@@ -14,7 +14,7 @@ import {
   PixelComputationCache
 } from "./types";
 
-const VARS: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA08", "OA09", "OA10", "OA11", "OA13"];
+const VARS: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA01", "OA02", "OA03", "OA04", "OA05", "OA06", "OA07", "OA08", "OA09", "OA10", "OA11", "OA13"];
 const D = 9;
 
 /**
@@ -154,7 +154,7 @@ export function extractVariableDependency(
   variable: VariableName
 ): VariableDependency {
   const correlations: Record<VariableName, number> = {
-    CHL: 0, aphy: 0, ADG: 0, bbp: 0, TSM: 0, PAR: 0, KD490: 0, FLH: 0, CHL_disagreement: 0, OA08: 0, OA09: 0, OA10: 0, OA11: 0, OA13: 0
+    CHL: 0, aphy: 0, ADG: 0, bbp: 0, TSM: 0, PAR: 0, KD490: 0, FLH: 0, CHL_disagreement: 0, OA01: 0, OA02: 0, OA03: 0, OA04: 0, OA05: 0, OA06: 0, OA07: 0, OA08: 0, OA09: 0, OA10: 0, OA11: 0, OA13: 0
   };
 
   VARS.forEach((varName) => {

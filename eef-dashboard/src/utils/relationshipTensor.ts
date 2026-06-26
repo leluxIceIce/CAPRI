@@ -14,7 +14,7 @@
 import { DataCube, VariableName } from "../types";
 import { flattenGrid, buildPaddedGrid, boxBlur3x3 } from "./gridOps";
 
-const VARS: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA08", "OA09", "OA10", "OA11", "OA13"];
+const VARS: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA01", "OA02", "OA03", "OA04", "OA05", "OA06", "OA07", "OA08", "OA09", "OA10", "OA11", "OA13"];
 const EPSILON = 1e-5;
 
 export interface RelationshipTensor {

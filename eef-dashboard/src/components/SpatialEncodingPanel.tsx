@@ -3,7 +3,7 @@ import { Layers, Network, ShieldCheck } from "lucide-react";
 import { SpatialOverlayState, RelationshipGraphState, VariableName, SpatialDescriptorName, ConfidenceOverlayState } from "../types";
 import { SPATIAL_DESCRIPTORS } from "../utils/spatialTensor";
 
-const VARS: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA08", "OA09", "OA10", "OA11", "OA13"];
+const VARS: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA01", "OA02", "OA03", "OA04", "OA05", "OA06", "OA07", "OA08", "OA09", "OA10", "OA11", "OA13"];
 
 const DESCRIPTOR_LABELS: Record<SpatialDescriptorName, string> = {
   gradient_dx: "Gradient (∂x)",
