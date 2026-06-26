@@ -1,24 +1,19 @@
 import React, { useMemo, useState } from "react";
-import { Trees, Play, AlertTriangle } from "lucide-react";
-import { RandomForestRegression } from "ml-random-forest";
+import { Sigma, Play, AlertTriangle } from "lucide-react";
 import { DataCube, VariableName, VARIABLE_METADATA } from "../types";
 import {
   ALL_VARIABLES,
   buildSamples,
   extractColumn,
   subsampleIndices,
-  rSquared,
-  rmse,
 } from "../utils/mlData";
+import { trainPLSWithCV } from "../utils/plsRegression";
 import { CellTooltip, type HoverCell } from "../utils/cellTooltip";
 import { loadCached, saveCached } from "../utils/mlCache";
 
-// ml-random-forest ships its feature-importance method at runtime but omits it
-// from its .d.ts. Declare just the surface we use.
-type RFModel = RandomForestRegression & {
-  featureImportance(): number[];
-  predictOOB(): number[];
-};
+// NOTE: the export name is kept as RFRegressionPanel for import stability, but the
+// model is now PLS regression (see below) — random forest was replaced because its
+// impurity importance is unreliable on collinear spectral bands.
 
 interface RFRegressionPanelProps {
   dataCube: DataCube;
@@ -26,30 +21,35 @@ interface RFRegressionPanelProps {
 
 const MAX_TRAIN_SAMPLES = 2000;
 const SEED = 42;
-const CACHE_KEY = "eef.rf.result.v1";
+// v2 key: the cached result shape changed when we moved RF → PLS, so don't load
+// a stale RF summary into the new fields.
+const CACHE_KEY = "eef.pls.result.v2";
 
 interface TrainResult {
   target: VariableName;
   features: VariableName[];
   nSamples: number;
-  nTrees: number;
-  oobR2: number;
-  oobRmse: number;
-  importances: { name: VariableName; value: number }[];
+  maxComponents: number;
+  nComponents: number; // CV-selected
+  cvR2: number;
+  cvRmse: number;
+  vip: { name: VariableName; value: number }[];
   scatter: { actual: number; predicted: number; row: number; col: number }[];
 }
 
 /**
- * Random-Forest regression trainer. Each grid cell is a sample; the chosen
- * target channel is predicted from the other 13 channels. Validation uses the
- * forest's OUT-OF-BAG predictions (each tree scores the rows it didn't train
- * on) — a genuine held-out estimate, not a re-substitution score. Feature
- * importances are the library's impurity-reduction importances from the actual
- * trained trees.
+ * PLS (Partial Least Squares) regression trainer. Each grid cell is a sample; the
+ * chosen target channel is predicted from the other channels. PLS is the
+ * chemometrics standard for many COLLINEAR spectral bands — it projects the
+ * predictors onto latent components maximising covariance with the target, so its
+ * VIP importance stays honest under collinearity (correlated informative bands
+ * BOTH score high) where random-forest impurity importance arbitrarily zeroes one
+ * of them out. Validation is k-fold cross-validation: a genuine held-out estimate,
+ * not a re-substitution score.
  */
 export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }) => {
   const [target, setTarget] = useState<VariableName>("CHL");
-  const [nTrees, setNTrees] = useState(80);
+  const [maxComponents, setMaxComponents] = useState(10);
   const [running, setRunning] = useState(false);
   // Rehydrate the last trained model summary for this grid so it survives a modal
   // reopen or an app reload (otherwise lost when the panel unmounts).
@@ -59,9 +59,10 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
 
   const totalCells = dataCube.gridSize * dataCube.gridSize;
   const willSubsample = totalCells > MAX_TRAIN_SAMPLES;
+  const predictorCount = ALL_VARIABLES.length - 1;
 
-  const maxImportance = useMemo(
-    () => (result ? Math.max(...result.importances.map((i) => i.value), 1e-9) : 1),
+  const maxVip = useMemo(
+    () => (result ? Math.max(...result.vip.map((i) => i.value), 1e-9) : 1),
     [result]
   );
 
@@ -86,50 +87,34 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
           throw new Error(`${target} is constant across cells — nothing to regress.`);
         }
 
-        const forest = new RandomForestRegression({
-          // NOTE: ml-random-forest applies maxFeatures PER TREE (a fixed feature
-          // subset for the whole tree), not per split like sklearn. A small value
-          // (e.g. sqrt(d)) starves most trees of the real drivers and tanks the
-          // score; a 0.7 fraction lets each tree see most channels while still
-          // de-correlating the ensemble. (Verified with an OOB-R² smoke test.)
-          maxFeatures: 0.7,
-          nEstimators: nTrees,
-          replacement: true,
+        const pls = trainPLSWithCV(X, y, features, {
+          maxComponents,
+          folds: 5,
           seed: SEED,
-          useSampleBagging: true,
-          selectionMethod: "mean",
-        }) as unknown as RFModel;
+        });
 
-        forest.train(X, y);
-
-        // Out-of-bag predictions: genuine held-out validation.
-        const oobPred = forest.predictOOB();
-        const oobR2 = rSquared(y, oobPred);
-        const oobRmse = rmse(y, oobPred);
-
-        const rawImp = forest.featureImportance();
-        const importances = features
-          .map((name, j) => ({ name, value: Number.isFinite(rawImp[j]) ? rawImp[j] : 0 }))
+        const vip = features
+          .map((name, j) => ({ name, value: Number.isFinite(pls.vip[j]) ? pls.vip[j] : 0 }))
           .sort((a, b) => b.value - a.value);
 
         // Thin the scatter so the SVG stays light. cellRefs[idx[i]] is the source
-        // grid cell for subsample row i (same flat order throughout), threaded onto
-        // each point for the hover tooltip's lat/lon + CHL lookup.
+        // grid cell for subsample row i; pls.cvPredicted is aligned to X/y order.
         const step = Math.max(1, Math.floor(y.length / 400));
         const scatter: { actual: number; predicted: number; row: number; col: number }[] = [];
         for (let i = 0; i < y.length; i += step) {
           const ref = cellRefs[idx[i]];
-          scatter.push({ actual: y[i], predicted: oobPred[i], row: ref.row, col: ref.col });
+          scatter.push({ actual: y[i], predicted: pls.cvPredicted[i], row: ref.row, col: ref.col });
         }
 
         const trained: TrainResult = {
           target,
           features,
           nSamples: X.length,
-          nTrees,
-          oobR2,
-          oobRmse,
-          importances,
+          maxComponents,
+          nComponents: pls.nComponents,
+          cvR2: pls.cvR2,
+          cvRmse: pls.cvRmse,
+          vip,
           scatter,
         };
         setResult(trained);
@@ -151,17 +136,22 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
     return { lo: lo - pad, hi: hi + pad };
   }, [result]);
 
+  // Position (0–100%) of the VIP = 1 reference line within the bar track.
+  const vipOnePct = Math.min(100, (1 / maxVip) * 100);
+
   return (
     <div className="glass-panel rounded-xl p-4 flex flex-col gap-4 text-[var(--eef-text)]">
       <div className="flex items-center gap-1.5 border-b border-[var(--eef-divider)] pb-3">
-        <Trees size={14} className="text-[var(--eef-accent)]" />
-        <h3 className="text-[13px] font-semibold">Random-forest regression trainer</h3>
+        <Sigma size={14} className="text-[var(--eef-accent)]" />
+        <h3 className="text-[13px] font-semibold">PLS regression trainer</h3>
       </div>
 
       <p className="text-[11px] text-[var(--eef-text-2)] leading-relaxed">
-        Predicts one channel from the other 13, treating every grid cell as a training
-        sample. Validation is the forest's <span className="font-semibold">out-of-bag</span> score
-        (each tree is scored only on rows it never saw) — a real held-out estimate.
+        Predicts one channel from the other {predictorCount}, treating every grid cell as a
+        training sample. PLS handles collinear bands, so its{" "}
+        <span className="font-semibold">VIP</span> importance stays honest where correlated
+        bands would confuse a random forest. Validation is{" "}
+        <span className="font-semibold">5-fold cross-validation</span> — a real held-out estimate.
       </p>
 
       {/* Controls */}
@@ -179,11 +169,11 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
           </select>
         </label>
         <label className="flex flex-col gap-1 text-[10px] text-[var(--eef-text-3)]">
-          Trees: <span className="text-[var(--eef-text)] font-semibold tnum">{nTrees}</span>
+          Max components: <span className="text-[var(--eef-text)] font-semibold tnum">{maxComponents}</span>
           <input
-            type="range" min="20" max="200" step="20"
-            value={nTrees}
-            onChange={(e) => setNTrees(parseInt(e.target.value))}
+            type="range" min="2" max="15" step="1"
+            value={maxComponents}
+            onChange={(e) => setMaxComponents(parseInt(e.target.value))}
             className="h-1 mt-2 bg-[var(--eef-border)] rounded-lg appearance-none cursor-pointer accent-[var(--eef-accent)]"
           />
         </label>
@@ -212,42 +202,56 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
           {/* Score cards */}
           <div className="grid grid-cols-2 gap-2">
             <div className="glass-well p-3">
-              <div className="text-[10px] text-[var(--eef-text-3)]">OOB R²</div>
-              <div className="tnum text-lg font-semibold" style={{ color: result.oobR2 > 0.5 ? "var(--eef-ok)" : "var(--eef-warn)" }}>
-                {Number.isNaN(result.oobR2) ? "—" : result.oobR2.toFixed(3)}
+              <div className="text-[10px] text-[var(--eef-text-3)]">CV R²</div>
+              <div className="tnum text-lg font-semibold" style={{ color: result.cvR2 > 0.5 ? "var(--eef-ok)" : "var(--eef-warn)" }}>
+                {Number.isNaN(result.cvR2) ? "—" : result.cvR2.toFixed(3)}
               </div>
               <div className="text-[9px] text-[var(--eef-text-3)]">variance explained (held-out)</div>
             </div>
             <div className="glass-well p-3">
-              <div className="text-[10px] text-[var(--eef-text-3)]">OOB RMSE</div>
-              <div className="tnum text-lg font-semibold text-[var(--eef-text)]">{result.oobRmse.toFixed(4)}</div>
-              <div className="text-[9px] text-[var(--eef-text-3)]">{VARIABLE_METADATA[result.target].unit}</div>
+              <div className="text-[10px] text-[var(--eef-text-3)]">CV RMSE</div>
+              <div className="tnum text-lg font-semibold text-[var(--eef-text)]">{result.cvRmse.toFixed(4)}</div>
+              <div className="text-[9px] text-[var(--eef-text-3)]">{VARIABLE_METADATA[result.target].unit} · {result.nComponents} comp.</div>
             </div>
           </div>
 
-          {/* Feature importances */}
+          {/* VIP importances */}
           <div>
-            <div className="text-[11px] font-semibold text-[var(--eef-text-2)] mb-2">
-              Feature importance — what drives {result.target}
+            <div className="text-[11px] font-semibold text-[var(--eef-text-2)] mb-1">
+              Variable importance (VIP) — what drives {result.target}
+            </div>
+            <div className="text-[9px] text-[var(--eef-text-3)] mb-2">
+              VIP &gt; 1 (dashed line) = above-average influence. Collinear bands can both score high.
             </div>
             <div className="flex flex-col gap-1">
-              {result.importances.map((imp) => (
+              {result.vip.map((imp) => (
                 <div key={imp.name} className="flex items-center gap-2 text-[10px]">
                   <span className="w-28 shrink-0 text-[var(--eef-text-2)]">{imp.name}</span>
-                  <div className="flex-1 h-3 rounded bg-[var(--eef-inset)] overflow-hidden">
-                    <div className="h-full rounded" style={{ width: `${(imp.value / maxImportance) * 100}%`, background: "var(--eef-accent)" }} />
+                  <div className="relative flex-1 h-3 rounded bg-[var(--eef-inset)] overflow-hidden">
+                    <div
+                      className="h-full rounded"
+                      style={{
+                        width: `${(imp.value / maxVip) * 100}%`,
+                        background: imp.value >= 1 ? "var(--eef-accent)" : "var(--eef-border-strong)",
+                      }}
+                    />
+                    {/* VIP = 1 reference marker */}
+                    <div
+                      className="absolute top-0 bottom-0 border-l border-dashed"
+                      style={{ left: `${vipOnePct}%`, borderColor: "var(--eef-text-3)" }}
+                    />
                   </div>
-                  <span className="tnum w-12 text-right text-[var(--eef-text-3)]">{(imp.value * 100).toFixed(1)}%</span>
+                  <span className="tnum w-10 text-right text-[var(--eef-text-3)]">{imp.value.toFixed(2)}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Actual vs predicted (OOB) */}
+          {/* Actual vs predicted (cross-validated) */}
           {scatterBounds && (
             <div>
               <div className="text-[11px] font-semibold text-[var(--eef-text-2)] mb-2">
-                Out-of-bag predicted vs. actual
+                Cross-validated predicted vs. actual
               </div>
               <div className="relative">
                 <svg viewBox="0 0 200 200" className="w-full glass-well" style={{ aspectRatio: "1 / 1" }}>
@@ -282,9 +286,9 @@ export const RFRegressionPanel: React.FC<RFRegressionPanelProps> = ({ dataCube }
           {/* Honest caveat */}
           <div className="rounded-lg p-2.5 text-[9px] text-[var(--eef-text-2)] leading-relaxed" style={{ background: "var(--eef-accent-soft)", border: "1px solid var(--eef-border)" }}>
             Trained on a single frame's cells. Neighbouring cells are spatially
-            autocorrelated, so the OOB R² is an optimistic upper bound on how well
-            this generalises to unseen scenes — read it as relative skill across
-            targets, not an absolute accuracy claim.
+            autocorrelated, so even cross-validated R² is an optimistic upper bound
+            on how well this generalises to unseen scenes — read it as relative
+            skill across targets, not an absolute accuracy claim.
           </div>
         </>
       )}
