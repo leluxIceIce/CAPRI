@@ -34,6 +34,7 @@ interface ThreeViewportProps {
   showTerrain: boolean;
   showWireframe: boolean;
   showLabels: boolean;
+  showGrid?: boolean;
   cameraPreset: "iso" | "top" | "profile";
   customColors?: Partial<Record<VariableName, string>>;
   customColorsFrom?: Partial<Record<VariableName, string>>;
@@ -57,6 +58,7 @@ function ThreeViewportInner(
   showTerrain,
   showWireframe,
   showLabels,
+  showGrid = false,
   cameraPreset,
   customColors,
   customColorsFrom,
@@ -77,8 +79,17 @@ function ThreeViewportInner(
 
   // Keep references to Three.js elements for direct animation updates (saves re-mounting overhead!)
   const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  // Active render camera. Perspective for the iso/elevation views; an
+  // OrthographicCamera is swapped in for the top-down "Plan view" so every stacked
+  // layer projects at the SAME size regardless of its height in the stack (parallel
+  // projection — no perspective shrink/grow). Both camera objects live for the
+  // scene's lifetime; cameraRef points at whichever is currently active (rendered,
+  // bound to OrbitControls, and used for raycasting).
+  const cameraRef = useRef<THREE.PerspectiveCamera | THREE.OrthographicCamera | null>(null);
+  const perspCameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const orthoCameraRef = useRef<THREE.OrthographicCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const gridHelperRef = useRef<THREE.GridHelper | null>(null);
   const meshesGroupRef = useRef<THREE.Group | null>(null);
 
   // Survives remounts (a plain ref, NOT recreated by the remountKey-keyed effect):
@@ -169,9 +180,29 @@ function ThreeViewportInner(
     scene.fog = new THREE.Fog(0xEEF2F8, 90, 220);
     sceneRef.current = scene;
 
-    // Create Camera
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 500);
-    camera.position.set(22, 24, 30);
+    // Cameras. A perspective camera for the iso/elevation views, plus a dedicated
+    // orthographic camera for the top-down "Plan view". Orthographic (parallel)
+    // projection is what makes every stacked layer render at the SAME size no matter
+    // its height in the stack — a true plan/map view with no perspective foreshortening.
+    // Both persist for the scene's lifetime; we swap which one is active (see the
+    // camera-preset effect). `camera` below is whichever is active at mount.
+    const aspect = width / height;
+    const ORTHO_HALF_H = 12; // half-height of the ortho frustum, in world units
+    const perspCamera = new THREE.PerspectiveCamera(40, aspect, 0.1, 500);
+    perspCamera.position.set(22, 24, 30);
+    perspCameraRef.current = perspCamera;
+
+    const orthoCamera = new THREE.OrthographicCamera(
+      -ORTHO_HALF_H * aspect, ORTHO_HALF_H * aspect,
+      ORTHO_HALF_H, -ORTHO_HALF_H,
+      0.1, 500
+    );
+    orthoCamera.position.set(0, 36, 0.1);
+    orthoCamera.lookAt(0, 0, 0);
+    orthoCameraRef.current = orthoCamera;
+
+    const camera: THREE.PerspectiveCamera | THREE.OrthographicCamera =
+      cameraPreset === "top" ? orthoCamera : perspCamera;
     cameraRef.current = camera;
 
     // WebGL Renderer
@@ -227,6 +258,8 @@ function ThreeViewportInner(
       gridMat.opacity = 0.22;
     }
     gridHelper.position.y = -6;
+    gridHelper.visible = showGrid;
+    gridHelperRef.current = gridHelper;
     scene.add(gridHelper);
 
     // Group for Stacked Layers
@@ -315,16 +348,17 @@ function ThreeViewportInner(
     const tick = () => {
       try {
         controls.update();
+        const activeCam = cameraRef.current ?? camera;
 
         // Face labels towards scientific camera viewport
         layersMeshesMap.current.forEach(({ label }) => {
           if (label.visible) {
-            label.quaternion.copy(camera.quaternion);
+            label.quaternion.copy(activeCam.quaternion);
           }
         });
 
         if (!contextLost) {
-          renderer.render(scene, camera);
+          renderer.render(scene, activeCam);
         }
       } catch (err) {
         // Log once per failure but keep the loop alive; do not let a thrown
@@ -348,8 +382,16 @@ function ThreeViewportInner(
         const w = containerRef.current.clientWidth;
         const h = containerRef.current.clientHeight;
         if (w === 0 || h === 0) return;
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
+        const a = w / h;
+        // Keep BOTH cameras matched to the viewport so switching presets never
+        // stretches the scene. Perspective tracks aspect; ortho tracks its frustum.
+        perspCamera.aspect = a;
+        perspCamera.updateProjectionMatrix();
+        orthoCamera.left = -ORTHO_HALF_H * a;
+        orthoCamera.right = ORTHO_HALF_H * a;
+        orthoCamera.top = ORTHO_HALF_H;
+        orthoCamera.bottom = -ORTHO_HALF_H;
+        orthoCamera.updateProjectionMatrix();
         renderer.setSize(w, h);
       } catch (err) {
         console.error("[ThreeViewport] resize handler failed; viewport may be stale until next resize", err);
@@ -371,7 +413,7 @@ function ThreeViewportInner(
 
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2(normalizedX, normalizedY);
-        raycaster.setFromCamera(mouse, camera);
+        raycaster.setFromCamera(mouse, cameraRef.current ?? camera);
 
         // Check intersection with layer meshes
         const meshes = Array.from(layersMeshesMap.current.values()).map(({ mesh }) => mesh);
@@ -412,8 +454,9 @@ function ThreeViewportInner(
       // rebuild restores the user's view rather than resetting it. (For a
       // perspective camera, zoom IS the camera→target distance, so saving
       // position + target captures it.)
+      const activeCam = cameraRef.current ?? camera;
       savedCameraRef.current = {
-        pos: [camera.position.x, camera.position.y, camera.position.z],
+        pos: [activeCam.position.x, activeCam.position.y, activeCam.position.z],
         target: [controls.target.x, controls.target.y, controls.target.z],
       };
       canvasEl.removeEventListener("click", handleCanvasClick);
@@ -521,30 +564,46 @@ function ThreeViewportInner(
     // renderer/scene rebuild (fresh GL context) after an unrecoverable context loss.
   }, [remountKey]);
 
-  // 2. Camera Preset Adjustments
+  // 2. Camera Preset Adjustments. Besides snapping the camera to a fixed pose, this
+  // chooses WHICH camera is active: the orthographic one for the top-down plan view
+  // (so layers don't foreshorten), the perspective one otherwise. Switching rebinds
+  // OrbitControls to the new camera so orbit/zoom keep working seamlessly.
   useEffect(() => {
-    const camera = cameraRef.current;
+    const persp = perspCameraRef.current;
+    const ortho = orthoCameraRef.current;
     const controls = controlsRef.current;
-    if (!camera || !controls) return;
+    if (!persp || !ortho || !controls) return;
 
+    let active: THREE.PerspectiveCamera | THREE.OrthographicCamera;
     if (cameraPreset === "top") {
-      camera.position.set(0, 36, 0.1);
-      controls.target.set(0, 0, 0);
+      active = ortho;
+      ortho.position.set(0, 36, 0.1);
     } else if (cameraPreset === "profile") {
-      camera.position.set(38, 0, 0);
-      controls.target.set(0, 0, 0);
+      active = persp;
+      persp.position.set(38, 0, 0);
     } else {
       // Isometric view
-      camera.position.set(22, 24, 30);
-      controls.target.set(0, 0, 0);
+      active = persp;
+      persp.position.set(22, 24, 30);
     }
+    controls.target.set(0, 0, 0);
+    cameraRef.current = active;
+    controls.object = active;
     controls.update();
     // NOTE: deliberately NOT keyed on remountKey. A preset snaps the camera to a
     // fixed position; re-running it on every freeze-recovery remount would clobber
     // the restored user view (see savedCameraRef). The init effect already
-    // reconstructs the camera on remount, so this only needs to fire when the user
-    // actually picks a different preset.
+    // reconstructs the cameras on remount (and picks the right active one from the
+    // current preset), so this only needs to fire when the user picks a new preset.
   }, [cameraPreset]);
+
+  // 2b. Grid floor visibility. The grid is a standalone object (not part of the
+  // layer stack), so this just flips its `visible` flag live when the user toggles
+  // it. Keyed on remountKey too so a freeze-recovery rebuild reapplies the choice
+  // to the freshly-created grid.
+  useEffect(() => {
+    if (gridHelperRef.current) gridHelperRef.current.visible = showGrid;
+  }, [showGrid, remountKey]);
 
   // 3. Populate or Update Stack Layers
   useEffect(() => {

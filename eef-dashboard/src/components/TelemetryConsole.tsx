@@ -36,6 +36,8 @@ interface TelemetryConsoleProps {
   onChangeShowWireframe: (val: boolean) => void;
   showLabels: boolean;
   onChangeShowLabels: (val: boolean) => void;
+  showGrid: boolean;
+  onChangeShowGrid: (val: boolean) => void;
   spacing: number;
   onChangeSpacing: (val: number) => void;
   displacementGain: number;
@@ -75,6 +77,8 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
   onChangeShowWireframe,
   showLabels,
   onChangeShowLabels,
+  showGrid,
+  onChangeShowGrid,
   spacing,
   onChangeSpacing,
   displacementGain,
@@ -675,6 +679,16 @@ export const TelemetryConsole: React.FC<TelemetryConsoleProps> = ({
                   }`}
                 >
                   Labels
+                </button>
+                <button
+                  onClick={() => onChangeShowGrid(!showGrid)}
+                  className={`text-[10px] flex-1 min-w-[80px] py-1 rounded-lg transition-all border ${
+                    showGrid
+                      ? "bg-[var(--eef-accent-soft)] border-[var(--eef-accent-ring)] text-[var(--eef-accent)]"
+                      : "bg-[var(--eef-inset)] border-[var(--eef-border)] text-[var(--eef-text-3)] hover:bg-[var(--eef-surface-2)] hover:text-[var(--eef-text)]"
+                  }`}
+                >
+                  Grid
                 </button>
               </div>
             </div>
