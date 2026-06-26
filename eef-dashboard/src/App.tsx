@@ -69,6 +69,7 @@ interface SessionSnapshot {
   showTerrain: boolean;
   showWireframe: boolean;
   showLabels: boolean;
+  showGrid: boolean;
   cameraPreset: "iso" | "top" | "profile";
   layerState: Record<VariableName, LayerState>;
   spatialOverlayState: SpatialOverlayState;
@@ -144,6 +145,10 @@ export default function App() {
   const [showTerrain, setShowTerrain] = useState(true);
   const [showWireframe, setShowWireframe] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
+  // Floor reference grid. Off by default — it sits inside the layer stack and
+  // reads as clutter cutting through the planes; users who want a ground plane can
+  // toggle it back on.
+  const [showGrid, setShowGrid] = useState(false);
   const [cameraPreset, setCameraPreset] = useState<"iso" | "top" | "profile">("iso");
 
   // Ref to main ThreeViewport for imperative PNG export
@@ -459,6 +464,7 @@ export default function App() {
       showTerrain,
       showWireframe,
       showLabels,
+      showGrid,
       cameraPreset,
       layerState,
       spatialOverlayState,
@@ -488,6 +494,7 @@ export default function App() {
         if (typeof snapshot.showTerrain === "boolean") setShowTerrain(snapshot.showTerrain);
         if (typeof snapshot.showWireframe === "boolean") setShowWireframe(snapshot.showWireframe);
         if (typeof snapshot.showLabels === "boolean") setShowLabels(snapshot.showLabels);
+        if (typeof snapshot.showGrid === "boolean") setShowGrid(snapshot.showGrid);
         if (snapshot.cameraPreset) setCameraPreset(snapshot.cameraPreset);
         if (snapshot.layerState) setLayerState(snapshot.layerState);
         if (snapshot.spatialOverlayState) setSpatialOverlayState(snapshot.spatialOverlayState);
@@ -637,6 +644,8 @@ export default function App() {
                     onChangeShowWireframe={setShowWireframe}
                     showLabels={showLabels}
                     onChangeShowLabels={setShowLabels}
+                    showGrid={showGrid}
+                    onChangeShowGrid={setShowGrid}
                     spacing={spacing}
                     onChangeSpacing={setSpacing}
                     displacementGain={displacementGain}
@@ -689,6 +698,7 @@ export default function App() {
                     showTerrain={showTerrain}
                     showWireframe={showWireframe}
                     showLabels={showLabels}
+                    showGrid={showGrid}
                     cameraPreset={cameraPreset}
                     customColors={customColors}
                     customColorsFrom={customColorsFrom}
@@ -825,6 +835,8 @@ export default function App() {
               onChangeShowWireframe={setShowWireframe}
               showLabels={showLabels}
               onChangeShowLabels={setShowLabels}
+              showGrid={showGrid}
+              onChangeShowGrid={setShowGrid}
               spacing={spacing}
               onChangeSpacing={setSpacing}
               displacementGain={displacementGain}
@@ -856,6 +868,7 @@ export default function App() {
                 showTerrain={showTerrain}
                 showWireframe={showWireframe}
                 showLabels={showLabels}
+                showGrid={showGrid}
                 cameraPreset={cameraPreset}
                 customColors={customColors}
                 rootAnalysis={rootAnalysis}
