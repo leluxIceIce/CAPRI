@@ -2,7 +2,7 @@
 
 # CAPRI
 
-### a state-discovery framework for ocean colour
+### a state-discovery framework for algal activity and assesment
 
 </div>
 
