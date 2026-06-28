@@ -6,6 +6,8 @@
 
 </div>
 
+<img width="1080" height="1350" alt="Image" src="https://github.com/user-attachments/assets/4d60ec9f-1438-4f77-8558-3816b5582473” />
+
 ---
 
 > **The ocean has no walls, yet it holds rooms.**
