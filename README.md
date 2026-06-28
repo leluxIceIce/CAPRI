@@ -6,7 +6,8 @@
 
 </div>
 
-<img width="1080" height="1350" alt="Image" src="https://github.com/user-attachments/assets/4d60ec9f-1438-4f77-8558-3816b5582473” />
+<img width="1080" height="1350" alt="AlgalBLOOM _1  - 1" src="https://github.com/user-attachments/assets/128f0c24-c1c4-4a66-9ef6-36f5c47797c4" />
+
 
 ---
 
