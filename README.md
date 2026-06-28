@@ -38,6 +38,7 @@ colour — and then reads the stack for *state*: the regimes, fronts, and
 anomalies a single flat map keeps to itself.
 
 It runs entirely on your machine. No account, no server, no telemetry.
+
 **Make sure to include the following bands: Oa1-Oa11,Oa13,ADG443_NN, CHL_NN, KD490_M07, PAR, TSM_NN, aphy_443, bbp_443, latitude, longitude**
 
 ## Inside
