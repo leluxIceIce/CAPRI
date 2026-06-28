@@ -29,7 +29,7 @@ Grab the latest build from **[Releases](https://github.com/leluxIceIce/CAPRI/rel
 
 ## What it is
 
-A satellite scene carries twenty-one Sentinel-3 OLCI channels per pixel — raw
+A satellite scene carries 21 (or more) Sentinel-3 OLCI channels per pixel — raw
 spectral bands and the products derived from them: chlorophyll, phytoplankton
 absorption, backscatter, suspended sediment, light attenuation, fluorescence.
 Read flat, in a table, that structure stays hidden. CAPRI renders it as a
@@ -38,6 +38,7 @@ colour — and then reads the stack for *state*: the regimes, fronts, and
 anomalies a single flat map keeps to itself.
 
 It runs entirely on your machine. No account, no server, no telemetry.
+**Make sure to include the following bands: Oa1-Oa11,Oa13,ADG443_NN, CHL_NN, KD490_M07, PAR, TSM_NN, aphy_443, bbp_443, latitude, longitude  **
 
 ## Inside
 
