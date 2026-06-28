@@ -103,6 +103,20 @@ jobs:
           path: ${{ steps.dmg.outputs.dmg_path }}
           if-no-files-found: error
 
+      # Package a clean source .zip (tracked files at HEAD only — no node_modules,
+      # no Rust target/, no build output) so every release carries an open,
+      # one-click source download alongside the .dmg. CAPRI is Apache-2.0, so the
+      # source is the primary artifact, not an afterthought.
+      - name: Package source .zip
+        id: srczip
+        working-directory: ${{ github.workspace }}
+        run: |
+          VER="${{ inputs.version || github.ref_name }}"
+          ZIP="$PWD/capri-source-${VER}.zip"
+          git archive --format=zip -o "$ZIP" HEAD
+          echo "zip_path=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "Built source zip: $ZIP ($(du -h "$ZIP" | cut -f1))"
+
       - name: Enforce < 100MB Sprint 2 size target
         run: |
           SIZE_MB="${{ steps.dmg.outputs.size_mb }}"
@@ -124,16 +138,20 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.version || github.ref_name }}
-          name: EEF Dashboard ${{ inputs.version || github.ref_name }}
+          name: CAPRI ${{ inputs.version || github.ref_name }}
           target_commitish: ${{ github.sha }}
-          files: ${{ steps.dmg.outputs.dmg_path }}
+          files: |
+            ${{ steps.dmg.outputs.dmg_path }}
+            ${{ steps.srczip.outputs.zip_path }}
           fail_on_unmatched_files: true
           prerelease: true
           body: |
-            macOS (Apple Silicon) beta build of the EEF Dashboard — **${{ steps.dmg.outputs.size_mb }} MB**.
+            **CAPRI** — a state-discovery framework for ocean colour. Apache-2.0, open source.
 
-            Download the `.dmg` below, open it, and drag the app to Applications.
+            **Downloads**
+            - `EEF Dashboard …aarch64.dmg` — macOS (Apple Silicon) build, **${{ steps.dmg.outputs.size_mb }} MB**. Open it and drag the app to Applications.
+            - `capri-source-…zip` — full source for this release. Build it yourself: `cd eef-dashboard && npm ci && npm run tauri:build`.
 
-            > This beta is **unsigned** (no Apple Developer cert yet), so on first launch
+            > The macOS build is **unsigned** (no Apple Developer cert yet), so on first launch
             > macOS will block it. Right-click the app → **Open** → **Open** to run it once;
             > after that it launches normally.

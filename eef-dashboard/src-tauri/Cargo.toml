@@ -1,8 +1,9 @@
 [package]
 name = "eef-dashboard"
 version = "0.2.0"
-description = "EEF Dashboard"
-authors = ["EEF"]
+description = "CAPRI — a state-discovery framework for ocean colour"
+authors = ["leluxIceIce and CAPRI contributors"]
+license = "Apache-2.0"
 edition = "2021"
 
 # See https://tauri.app/v1/api/config#build for more information

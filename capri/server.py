@@ -45,7 +45,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger("EEFBackend")
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": ["http://localhost:5174", "http://127.0.0.1:5174", "https://leluxiceice.github.io"]}})
+CORS(app, resources={r"/*": {"origins": ["http://localhost:5174", "http://127.0.0.1:5174"]}})
 
 class TokenBucketRateLimiter:
     def __init__(self, capacity=10, refill_rate=2.0):
