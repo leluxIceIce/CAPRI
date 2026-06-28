@@ -1,27 +1,33 @@
-# EEF Dashboard — full feature source (preserved snapshot)
+# CAPRI — application source
 
-This is the **feature-complete** EEF Dashboard source, preserved into git from a
-previously-ephemeral working copy so it can never be lost to a container recycle.
+This is the shipping application behind [CAPRI](../README.md): a state-discovery
+framework for ocean colour. A TypeScript / React + Three.js front end packaged in
+a Tauri (Rust) shell, building a native macOS app. It runs fully client-side — no
+backend, no account, no telemetry.
 
-It is the richer sibling of `../react-dashboard` (which is leaner / deploy-wired but
-feature-behind). This tree contains the work that did **not** previously exist in git:
+## Develop
 
-- 14-variable data model (`src/types.ts`) incl. FLH, CHL_disagreement, OA08–OA13
-- Gate 1 pixel inspector (`src/gate1_pixel_inspector/`)
-- Gate 2 latent-ecology / attractor engines (`src/gate2_understanding_roots/`)
-- Source adapters: GeoTIFF, edge-sensor, telemetry schema (`src/adapters/`)
-- Feature panels: CSV inspector, latent ecology, pixel inspector, size-class,
-  spatial encoding, update notifier (`src/components/`)
-- Utility engines: eigenmath, spatial/relationship tensors, bloom detector,
-  affinity graph, size-class model, etc. (`src/utils/`)
-- Vitest suite (`src/tests/`)
-- Electron auto-update wiring (`electron/main.cjs`, `electron/preload.cjs`)
+```bash
+npm ci
+npm run dev          # http://localhost:5173 — the dashboard in your browser
+npm run tauri:build  # build the native macOS app (.dmg)
+npm test             # Vitest suite
+```
 
-## Status
+## Layout
 
-This is a **snapshot for durability**, not the final build target. The active
-re-architecture sprint (lite <100MB packaging + light "lucid glass" redesign) will
-reconcile this tree and `../react-dashboard` into one canonical app. See the sprint
-plan in the project tracker.
+| Path | What it is |
+| --- | --- |
+| `src/types.ts` | The data model — 21 OLCI channels (raw bands + derived products: CHL, aphy, ADG, bbp, TSM, PAR, KD490, FLH, …) |
+| `src/components/` | The 3D viewport, telemetry console, UMAP / PLS panels, Embedders tab, diagnostics |
+| `src/utils/` | The real computation: `plsRegression.ts` (PLS + VIP), `mlData.ts`, eigenmath, spatial/relationship tensors, colormaps |
+| `src/gate1_pixel_inspector/` | Per-cell pixel inspection |
+| `src/gate2_understanding_roots/` | Correlation / latent-ecology / attractor engines |
+| `src/adapters/` | Real data in: GeoTIFF, edge-sensor, CSV/telemetry schema |
+| `src/embedders/` | Contrastive-embedder data model (persisted via the Tauri Store plugin) |
+| `src-tauri/` | The Rust shell |
+| `src/tests/` | Vitest suite |
 
-`node_modules/` and `dist/` are intentionally excluded — run `npm install` to restore.
+`node_modules/` and `dist/` are excluded — run `npm ci` to restore.
+
+Licensed under [Apache-2.0](../LICENSE).

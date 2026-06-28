@@ -1,78 +1,85 @@
-# EPS Ecological Cube Discovery Platform — Control Guide
+<div align="center">
 
-This guide details how to start, refresh, and stop the interactive 3D Cube platform servers (Frontend: port `5174`, Backend: port `8000`).
+# CAPRI
 
----
+### a state-discovery framework for ocean colour
 
-## 📦 Repository layout
-
-| Path | What it is |
-| --- | --- |
-| [`capri/`](capri) | Python (Flask) backend — server, datasets, ML manifests |
-| [`frontend/`](frontend) | Vanilla-TypeScript 3D cube frontend (port `5174`) |
-| [`react-dashboard/`](react-dashboard) | **Standalone React + Three.js telemetry dashboard prototype** — glassmorphic UI, live stream simulator, CSV playback, custom colormaps, and a macOS `.dmg` Electron build. Runs on its own with no backend. Live at **[leluxiceice.github.io/CAPRI](https://leluxiceice.github.io/CAPRI/)**. See [`react-dashboard/README.md`](react-dashboard/README.md). |
-| [`reports/`](reports) | QA / performance audit reports |
+</div>
 
 ---
 
-## 🚀 1. How to Start the Project
-
-To start the platform, both the **Python Flask backend** and the **Vite frontend** servers must be running.
-
-### Start the Backend Server (Port 8000)
-Run this command from your terminal:
-```bash
-cd /Users/lelux/.gemini/antigravity/scratch/capri
-.venv/bin/python server.py
-```
-* **Host**: `http://localhost:8000`
-* **Health Check**: `http://localhost:8000/health`
-
-### Start the Frontend Server (Port 5174)
-Open a new terminal window and run:
-```bash
-cd /Users/lelux/.gemini/antigravity/scratch/eps-cube-platform/frontend
-npm run dev -- --port 5174
-```
-* **Local Access**: `http://localhost:5174/`
+> **The ocean has no walls, yet it holds rooms.**
+>
+> CAPRI stacks twenty-one channels of Sentinel-3 ocean colour — raw spectral
+> bands and the biogeochemistry drawn from them — into a navigable terrain you
+> can orbit, lift apart, and enter. Where the colour of water settles into
+> recurrence, a state appears.
+>
+> The framework does not name these states. It shows you where they begin.
 
 ---
 
-## 🔄 2. How to Refresh / Restart
+## Download
 
-If you need to refresh the servers or if a port is hung, you can restart them.
+Grab the latest build from **[Releases](https://github.com/leluxIceIce/CAPRI/releases/latest)**:
 
-### Quick Restart Command
-To cleanly kill whatever is occupying the ports and restart both servers immediately:
+- **`…aarch64.dmg`** — macOS (Apple Silicon) desktop app. Open it, drag to Applications.
+  It's an **unsigned beta**, so on first launch right-click the app → **Open** → **Open**.
+- **`capri-source-….zip`** — the full source for that release, to read or build yourself.
+
+## What it is
+
+A satellite scene carries twenty-one Sentinel-3 OLCI channels per pixel — raw
+spectral bands and the products derived from them: chlorophyll, phytoplankton
+absorption, backscatter, suspended sediment, light attenuation, fluorescence.
+Read flat, in a table, that structure stays hidden. CAPRI renders it as a
+**navigable 3D stack of spatial layers** — each variable given height and
+colour — and then reads the stack for *state*: the regimes, fronts, and
+anomalies a single flat map keeps to itself.
+
+It runs entirely on your machine. No account, no server, no telemetry.
+
+## Inside
+
+- **A layered terrain** — every channel becomes a displaced, colour-mapped
+  surface. Orbit it, drag the layers into any order, toggle each one, drop into a
+  true orthographic *plan* view where every layer reads at the same scale.
+- **UMAP** — projects each cell's full spectral signature into a 2-D map so
+  similar water lands together and regimes separate as clusters.
+- **PLS regression + VIP** — asks *what drives* a chosen variable. Partial Least
+  Squares is built for collinear spectral bands, so its importance scores stay
+  honest where correlated bands would mislead a random forest. Validated by
+  5-fold cross-validation.
+- **Correlation & latent ecology** — the relationships and covariances between
+  all channels, plus a PCA/k-means read of recurring regimes.
+- **Embedders** *(in progress)* — create and persist contrastive embedders,
+  feeding them scenes over time; the learned encoder is the next step.
+- **Real data in** — synthetic streams for exploration, or your own
+  **GeoTIFF** / **CSV** / sparse-sensor data. Derived products (e.g. ESA-standard
+  Fluorescence Line Height) are computed from the raw bands, not invented.
+
+Everything is computed from the observed (or uploaded) values, seeded for
+reproducibility — no fabricated scores.
+
+## Build from source
+
 ```bash
-# Kill active ports
-kill -9 $(lsof -t -i:5174) 2>/dev/null || true
-kill -9 $(lsof -t -i:8000) 2>/dev/null || true
-
-# Start Backend (runs in background)
-cd /Users/lelux/.gemini/antigravity/scratch/capri
-nohup .venv/bin/python server.py > backend.log 2>&1 &
-
-# Start Frontend
-cd /Users/lelux/.gemini/antigravity/scratch/eps-cube-platform/frontend
-npm run dev -- --port 5174
-```
-
----
-
-## 🛑 3. How to Stop the Project
-
-To stop the servers and free the ports, run the following commands:
-
-```bash
-# Stop the frontend on port 5174
-kill -9 $(lsof -t -i:5174)
-
-# Stop the backend on port 8000
-kill -9 $(lsof -t -i:8000)
+cd eef-dashboard
+npm ci
+npm run dev          # http://localhost:5173  — the dashboard in your browser
+npm run tauri:build  # build the native macOS app (.dmg)
 ```
 
----
+The shipping application lives in [`eef-dashboard/`](eef-dashboard) — a
+TypeScript / React + Three.js front end in a Tauri (Rust) shell.
 
-> [!TIP]
-> If you are using VS Code or another markdown viewer, you can print this document to PDF by opening it and selecting **File > Print > Save as PDF** or using the **Markdown PDF** extension.
+## Status
+
+An honest beta. The macOS builds are unsigned; contrastive-embedder *training*
+is not yet wired (the tab accumulates and persists training data today). Read
+the in-app scores as relative skill across a single scene, not absolute accuracy.
+
+## License
+
+[Apache-2.0](LICENSE) — permissive, with an explicit patent grant. Use it, fork
+it, build on it.
