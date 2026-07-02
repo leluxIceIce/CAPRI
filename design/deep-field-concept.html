@@ -1,0 +1,836 @@
+<title>CAPRI · Deep Field — immersive redesign concept</title>
+<style>
+  :root {
+    /* Deep Field — the calibrated void */
+    --void:      #05070C;
+    --void-2:    #0A0E17;
+    --void-3:    #10151F;
+    --hair:      rgba(234,240,255,0.14);
+    --hair-2:    rgba(234,240,255,0.07);
+    --ink:       #EAF0FF;
+    --ink-2:     #AEB9D2;
+    --ink-3:     #67738F;
+
+    /* Semantic encoding accents (spectral / life) */
+    --cyan:   #35E0D0;   /* flow · life · young */
+    --green:  #3BE06B;   /* anomaly · novelty  */
+    --amber:  #F2A93B;   /* density · caution  */
+    --crimson:#F0402A;   /* age · high · danger*/
+    --violet: #7C5CFF;   /* spectral low bands */
+
+    --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+    --edge: clamp(16px, 4vw, 56px);
+    --maxw: 1240px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--void);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+    line-height: 1.5;
+  }
+
+  /* Grain + vignette wash so the void reads as sampled light, not flat #000 */
+  body::before {
+    content: "";
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(124,92,255,0.10), transparent 60%),
+      radial-gradient(120% 90% at 50% 110%, rgba(53,224,208,0.06), transparent 55%),
+      radial-gradient(140% 140% at 50% 50%, transparent 55%, rgba(0,0,0,0.55) 100%);
+  }
+
+  .wrap { position: relative; z-index: 1; }
+
+  /* ── Micro-label: the reference-poster annotation voice ── */
+  .tag {
+    font-size: 10px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .num  { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+  /* ── Status rail ── */
+  .rail {
+    position: sticky; top: 0; z-index: 40;
+    display: flex; align-items: center; gap: 18px;
+    padding: 11px var(--edge);
+    background: linear-gradient(180deg, rgba(5,7,12,0.92), rgba(5,7,12,0.62));
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--hair-2);
+  }
+  .rail .brand { display: flex; align-items: baseline; gap: 10px; }
+  .rail .brand b { font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; font-weight: 600; }
+  .rail .brand span { font-size: 10px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--ink-3); }
+  .rail .spacer { flex: 1; }
+  .rail .vital { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--ink-2); }
+  .rail .vital .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: breathe 2.6s ease-in-out infinite; }
+  .rail .vital.hide-sm { }
+  @keyframes breathe { 0%,100%{opacity:.5; transform:scale(.85);} 50%{opacity:1; transform:scale(1);} }
+
+  /* ── The plate: a framed instrument field ── */
+  .stage { padding: 0 var(--edge); }
+  .plate {
+    position: relative;
+    max-width: var(--maxw); margin: 0 auto;
+  }
+
+  .field-plate {
+    position: relative;
+    margin-top: 22px;
+    border: 1px solid var(--hair);
+    background: linear-gradient(180deg, var(--void-2), var(--void));
+    aspect-ratio: 16 / 10;
+    min-height: 380px;
+    overflow: hidden;
+  }
+  @media (max-width: 640px){ .field-plate{ aspect-ratio: 4/5; } }
+
+  canvas#field { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* Corner fiducials — the measurement frame */
+  .fiducial { position: absolute; width: 18px; height: 18px; border: 1px solid var(--ink-2); opacity: .5; pointer-events: none; }
+  .fiducial.tl { top: 12px; left: 12px; border-right: 0; border-bottom: 0; }
+  .fiducial.tr { top: 12px; right: 12px; border-left: 0; border-bottom: 0; }
+  .fiducial.bl { bottom: 12px; left: 12px; border-right: 0; border-top: 0; }
+  .fiducial.br { bottom: 12px; right: 12px; border-left: 0; border-top: 0; }
+
+  .plate-meta { position: absolute; z-index: 5; pointer-events: none; }
+  .plate-meta.tl { top: 20px; left: 24px; }
+  .plate-meta.tr { top: 20px; right: 24px; text-align: right; }
+  .plate-meta.bl { bottom: 20px; left: 24px; }
+  .plate-title { font-size: 12px; letter-spacing: 0.30em; text-transform: uppercase; font-weight: 600; }
+  .plate-sub   { font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-3); margin-top: 5px; }
+
+  .scalebar { display: flex; align-items: center; gap: 8px; }
+  .scalebar .bar { width: 64px; height: 1px; background: var(--ink-2); position: relative; }
+  .scalebar .bar::before, .scalebar .bar::after { content:""; position:absolute; top:-3px; width:1px; height:7px; background: var(--ink-2); }
+  .scalebar .bar::before { left: 0; } .scalebar .bar::after { right: 0; }
+
+  /* Narrator line */
+  .narrator {
+    position: absolute; z-index: 6; left: 24px; right: 120px; bottom: 52px;
+    font-size: clamp(13px, 2vw, 17px); line-height: 1.45; color: var(--ink);
+    text-wrap: balance; pointer-events: none;
+    text-shadow: 0 1px 24px rgba(0,0,0,0.9);
+  }
+  .narrator .k { color: var(--cyan); }
+  .narrator .w { color: var(--amber); }
+  .narrator .a { color: var(--crimson); }
+  @media (max-width: 640px){ .narrator{ right: 24px; bottom: 92px; } }
+
+  /* Legend rail — always present, like the references */
+  .legend {
+    position: absolute; z-index: 6; top: 50%; right: 20px; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 16px; pointer-events: none;
+  }
+  .legend .lg { display: flex; align-items: center; gap: 9px; }
+  .legend .ramp { width: 9px; height: 74px; border-radius: 5px; border: 1px solid var(--hair); }
+  .legend .lg .txt { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); line-height: 1.35; }
+  .ramp.age     { background: linear-gradient(180deg, var(--cyan), var(--green) 38%, var(--amber) 70%, var(--crimson)); }
+  .ramp.density { background: linear-gradient(180deg, rgba(242,169,59,0.15), var(--amber)); }
+  @media (max-width: 860px){ .legend{ display: none; } }
+
+  /* ── Posture dial ── */
+  .dial-wrap { max-width: var(--maxw); margin: 18px auto 0; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .dial { display: flex; gap: 6px; padding: 5px; border: 1px solid var(--hair); border-radius: 40px; background: var(--void-2); }
+  .dial button {
+    appearance: none; border: 0; cursor: pointer; color: var(--ink-3);
+    background: transparent; font-family: var(--sans);
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600;
+    padding: 9px 18px; border-radius: 40px; transition: color .3s, background .3s;
+  }
+  .dial button[aria-pressed="true"] { color: var(--void); background: var(--ink); }
+  .dial button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .dial-note { font-size: 12px; color: var(--ink-2); max-width: 46ch; }
+  .dial-note b { color: var(--ink); font-weight: 600; }
+
+  /* ── Sections ── */
+  section { max-width: var(--maxw); margin: 0 auto; padding: clamp(64px, 10vw, 128px) var(--edge); }
+  .eyebrow { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+  .eyebrow .idx { font-family: var(--mono); font-size: 11px; color: var(--cyan); letter-spacing: 0.1em; }
+  .eyebrow .ln { flex: 1; height: 1px; background: var(--hair); }
+  h2 { font-size: clamp(26px, 4.5vw, 44px); line-height: 1.08; letter-spacing: -0.02em; font-weight: 600; margin: 0 0 18px; text-wrap: balance; }
+  h2 .dim { color: var(--ink-3); }
+  .lede { font-size: clamp(15px, 2vw, 18px); color: var(--ink-2); max-width: 64ch; margin: 0; }
+
+  /* From → To */
+  .shift { display: grid; grid-template-columns: 1fr; gap: 1px; margin-top: 44px; border: 1px solid var(--hair); background: var(--hair-2); }
+  .shift .row { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 1px; background: var(--hair-2); }
+  .shift .cell { background: var(--void); padding: 18px 20px; }
+  .shift .cell.h { background: var(--void-2); }
+  .shift .axis { font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink-3); }
+  .shift .from { color: var(--ink-2); font-size: 14px; }
+  .shift .to { color: var(--ink); font-size: 14px; }
+  .shift .to b { color: var(--cyan); font-weight: 600; }
+  @media (max-width: 720px){
+    .shift .row{ grid-template-columns: 1fr; }
+    .shift .cell.h.only-head{ display:none; }
+  }
+
+  /* Encoding law swatches */
+  .grid { display: grid; gap: 16px; margin-top: 44px; }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 900px){ .g4{ grid-template-columns: repeat(2,1fr);} .g3{ grid-template-columns: repeat(2,1fr);} }
+  @media (max-width: 560px){ .g4,.g3,.g2{ grid-template-columns: 1fr;} }
+
+  .swatch { border: 1px solid var(--hair); background: var(--void-2); padding: 18px; position: relative; overflow: hidden; }
+  .swatch .chip { width: 100%; height: 46px; border-radius: 3px; margin-bottom: 14px; }
+  .swatch .name { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; }
+  .swatch .hex { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-top: 3px; }
+  .swatch .use { font-size: 12px; color: var(--ink-2); margin-top: 10px; line-height: 1.45; }
+
+  /* Living-systems mapping cards */
+  .map { border: 1px solid var(--hair); background: linear-gradient(180deg, var(--void-2), var(--void)); padding: 22px; position: relative; }
+  .map .vis { height: 96px; margin: -4px -4px 16px; border-radius: 4px; position: relative; overflow: hidden; background: var(--void); border: 1px solid var(--hair-2); }
+  .map h3 { font-size: 15px; margin: 0 0 7px; font-weight: 600; letter-spacing: -0.01em; }
+  .map h3 .was { color: var(--ink-3); font-weight: 400; font-size: 12px; letter-spacing: 0.04em; }
+  .map p { margin: 0; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+  .map .src { margin-top: 12px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); font-family: var(--mono); }
+
+  /* Posture triad */
+  .triad { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-top: 44px; }
+  @media (max-width: 820px){ .triad{ grid-template-columns: 1fr; } }
+  .posture { border: 1px solid var(--hair); padding: 24px; background: var(--void-2); position: relative; }
+  .posture .n { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+  .posture h3 { font-size: 20px; margin: 8px 0 4px; font-weight: 600; }
+  .posture .role { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 14px; }
+  .posture.im h3 span, .posture.im .role { color: var(--cyan); }
+  .posture.at h3 span, .posture.at .role { color: var(--green); }
+  .posture.ep h3 span, .posture.ep .role { color: var(--amber); }
+  .posture p { font-size: 13px; color: var(--ink-2); margin: 0 0 14px; line-height: 1.5; }
+  .posture .meter { height: 3px; background: var(--hair); border-radius: 2px; overflow: hidden; margin-top: auto; }
+  .posture .meter i { display: block; height: 100%; }
+  .posture ul { margin: 0; padding-left: 16px; font-size: 12px; color: var(--ink-3); }
+  .posture li { margin: 4px 0; }
+
+  /* Keep / discard columns */
+  .kd { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 44px; }
+  @media (max-width: 720px){ .kd{ grid-template-columns: 1fr; } }
+  .col { border: 1px solid var(--hair); background: var(--void-2); padding: 22px; }
+  .col h3 { display: flex; align-items: center; gap: 10px; font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; margin: 0 0 16px; }
+  .col.keep h3 { color: var(--cyan); }
+  .col.drop h3 { color: var(--crimson); }
+  .col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+  .col li { font-size: 13.5px; color: var(--ink-2); display: flex; gap: 11px; line-height: 1.45; }
+  .col li::before { content: ""; flex: 0 0 6px; height: 6px; margin-top: 7px; border-radius: 50%; }
+  .col.keep li::before { background: var(--cyan); }
+  .col.drop li::before { background: var(--crimson); }
+  .col li b { color: var(--ink); font-weight: 600; }
+
+  /* Ledger banner */
+  .ledger { margin-top: 44px; border: 1px solid var(--hair); background: linear-gradient(120deg, rgba(53,224,208,0.05), transparent 60%); padding: 28px; }
+  .ledger .big { font-family: var(--mono); font-size: clamp(30px, 6vw, 52px); font-weight: 500; letter-spacing: -0.02em; line-height: 1; }
+  .ledger .big small { color: var(--ink-3); font-size: 0.4em; letter-spacing: 0.1em; }
+  .ledger p { max-width: 60ch; color: var(--ink-2); font-size: 14px; margin: 14px 0 0; }
+  .ledger .row2 { display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 20px; }
+  .ledger .row2 span { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); font-family: var(--mono); }
+  .ledger .row2 span b { color: var(--cyan); font-weight: 500; }
+
+  /* Closing */
+  .close { text-align: center; padding-bottom: clamp(80px,12vw,160px); }
+  .close blockquote { font-size: clamp(20px, 3.4vw, 32px); line-height: 1.3; letter-spacing: -0.01em; max-width: 20ch; margin: 0 auto; text-wrap: balance; font-weight: 500; }
+  .close blockquote em { color: var(--cyan); font-style: normal; }
+  .close .credit { margin-top: 40px; display: flex; flex-direction: column; gap: 5px; align-items: center; }
+  .close .credit .tag { color: var(--ink-3); }
+
+  footer { border-top: 1px solid var(--hair-2); padding: 22px var(--edge); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; max-width: var(--maxw); margin: 0 auto; }
+  footer .tag { color: var(--ink-3); }
+
+  a.txt { color: var(--cyan); text-decoration: none; border-bottom: 1px solid rgba(53,224,208,0.35); }
+  a.txt:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rail .vital .dot { animation: none; }
+    * { scroll-behavior: auto; }
+  }
+
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce){ .reveal{ opacity:1; transform:none; transition:none; } }
+</style>
+
+<div class="wrap">
+
+  <!-- ── Status rail ── -->
+  <div class="rail">
+    <div class="brand">
+      <b>CAPRI</b><span>Deep Field</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="vital mono" id="clock" aria-label="instrument clock">—— UTC</div>
+    <div class="vital hide-sm"><span class="dot"></span><span id="posture-vital">IMMERSION</span></div>
+  </div>
+
+  <!-- ── Hero: the live field plate ── -->
+  <div class="stage">
+    <div class="plate field-plate" id="plate">
+      <canvas id="field" aria-label="Live ocean-colour particle field: a spectral water column, particles coloured by age from cyan (young) to crimson (old) and brightened by density."></canvas>
+
+      <span class="fiducial tl"></span><span class="fiducial tr"></span>
+      <span class="fiducial bl"></span><span class="fiducial br"></span>
+
+      <div class="plate-meta tl">
+        <div class="plate-title">Water Column · Sounding</div>
+        <div class="plate-sub">Ocean colour · 21 channels · two emitters</div>
+      </div>
+      <div class="plate-meta tr">
+        <div class="tag num" id="frame">FRAME_060</div>
+        <div class="plate-sub" id="provenance" style="margin-top:6px">SYNTHETIC · seeded</div>
+      </div>
+      <div class="plate-meta bl">
+        <div class="scalebar"><span class="bar"></span><span class="tag num">2 km</span></div>
+      </div>
+
+      <p class="narrator" id="narrator"></p>
+
+      <div class="legend" aria-hidden="true">
+        <div class="lg"><span class="ramp age"></span><span class="txt">Old<br>particles<br><br>Young<br>particles</span></div>
+        <div class="lg"><span class="ramp density"></span><span class="txt">Density<br>increases</span></div>
+      </div>
+    </div>
+
+    <!-- Posture dial -->
+    <div class="dial-wrap">
+      <div class="dial" role="group" aria-label="Instrument posture">
+        <button data-posture="immersion" aria-pressed="true">Immersion</button>
+        <button data-posture="atlas" aria-pressed="false">Atlas</button>
+        <button data-posture="ephemeris" aria-pressed="false">Ephemeris</button>
+      </div>
+      <p class="dial-note" id="dial-note"><b>Turn the dial.</b> One instrument, one scene — its atmosphere, density and motion morph from <em>feeling</em> the water to <em>measuring</em> it. Art vs. rigour becomes a setting, not a product.</p>
+    </div>
+  </div>
+
+  <!-- ── 01 · The reframing ── -->
+  <section class="reveal">
+    <div class="eyebrow"><span class="idx">01</span><span class="tag">The reframing</span><span class="ln"></span></div>
+    <h2>Stop decoding charts. <span class="dim">Start standing inside the data.</span></h2>
+    <p class="lede">CAPRI already reads twenty-one channels of Sentinel-3 ocean colour for <em>state</em> — regimes, fronts, anomalies. Today it says so through panels and plots. Deep Field re-houses the same engine as an instrument you inhabit: state announces itself in light, density and motion <em>before</em> you read a number — and every number stays one gesture away.</p>
+
+    <div class="shift" role="table" aria-label="What changes, axis by axis">
+      <div class="row" role="row">
+        <div class="cell h only-head" role="columnheader"><span class="axis">Axis</span></div>
+        <div class="cell h" role="columnheader"><span class="axis">Today</span></div>
+        <div class="cell h" role="columnheader"><span class="axis">Deep Field</span></div>
+      </div>
+      <div class="row" role="row">
+        <div class="cell h" role="rowheader"><span class="axis">Medium</span></div>
+        <div class="cell from" role="cell">Dashboard of framed panels</div>
+        <div class="cell to" role="cell">A single continuous <b>instrument-space</b></div>
+      </div>
+      <div class="row" role="row">
+        <div class="cell h" role="rowheader"><span class="axis">Register</span></div>
+        <div class="cell from" role="cell">Read — decode the charts</div>
+        <div class="cell to" role="cell"><b>Perceive</b> the fields, then read</div>
+      </div>
+      <div class="row" role="row">
+        <div class="cell h" role="rowheader"><span class="axis">Atmosphere</span></div>
+        <div class="cell from" role="cell">Light glass, neutral, calm</div>
+        <div class="cell to" role="cell">Dark <b>calibrated void</b>, luminous data</div>
+      </div>
+      <div class="row" role="row">
+        <div class="cell h" role="rowheader"><span class="axis">Focal object</span></div>
+        <div class="cell from" role="cell">The panel</div>
+        <div class="cell to" role="cell">The <b>data</b> — monumental, centred</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 02 · Encoding law ── -->
+  <section class="reveal">
+    <div class="eyebrow"><span class="idx">02</span><span class="tag">The encoding law</span><span class="ln"></span></div>
+    <h2>Colour is never decoration.</h2>
+    <p class="lede"><b style="color:var(--ink)">Hue</b> = which variable or state · <b style="color:var(--ink)">luminance</b> = value · <b style="color:var(--ink)">saturation &amp; alpha</b> = confidence and density · <b style="color:var(--ink)">motion</b> = flux. The background is always the darkest thing, so luminous data reads at maximum contrast — the lesson of every reference plate: beautiful <em>because</em> rigorous.</p>
+
+    <div class="grid g4">
+      <div class="swatch">
+        <div class="chip" style="background:var(--cyan)"></div>
+        <div class="name">Flow · Life · Young</div>
+        <div class="hex">#35E0D0</div>
+        <div class="use">Hydrology, active fluorescence, freshly-sampled water. The luminous vectors of a satellite map.</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:var(--amber)"></div>
+        <div class="name">Density · Caution</div>
+        <div class="hex">#F2A93B</div>
+        <div class="use">Accumulation and concentration; the amber that brightens where particles pile up. Rising bloom risk.</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:var(--crimson)"></div>
+        <div class="name">Age · High · Danger</div>
+        <div class="hex">#F0402A</div>
+        <div class="use">Old particles, peak values, RED alert. The crimson sediment of a percolation column.</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:var(--violet)"></div>
+        <div class="name">Spectral low bands</div>
+        <div class="hex">#7C5CFF</div>
+        <div class="use">The 400 nm end of the OLCI spectrum — colour <em>is</em> the wavelength. Density overlays.</div>
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="swatch">
+        <div class="chip" style="background:linear-gradient(90deg,var(--violet),#3b82f6,var(--cyan),var(--green),var(--amber),var(--crimson))"></div>
+        <div class="name">The spectral palette — 400 → 761 nm</div>
+        <div class="use">The twelve raw OLCI bands are coloured by their <em>actual wavelength</em>. Honest, and it produces the blue-to-red life of the reference simulations on its own.</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:linear-gradient(90deg,var(--void),#141a26 40%,#39506e 75%,var(--ink))"></div>
+        <div class="name">Structure &amp; measurement — white on void</div>
+        <div class="hex">#EAF0FF on #05070C</div>
+        <div class="use">Wireframe scaffolding, graticule, scale bars and every label live as hairlines in the margins. Chrome recedes; data leads.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 03 · Data as living systems ── -->
+  <section class="reveal">
+    <div class="eyebrow"><span class="idx">03</span><span class="tag">Data as living systems</span><span class="ln"></span></div>
+    <h2>Every variable becomes a thing you can feel.</h2>
+    <p class="lede">Each mapping is tied to a computation CAPRI already performs. Nothing is invented; the science is spatialised.</p>
+
+    <div class="grid g3">
+      <div class="map">
+        <div class="vis" id="vis-terrain"></div>
+        <h3>Fronts become terrain <span class="was">· was: gradient overlay</span></h3>
+        <p>The nine spatial-structure descriptors rise into ridges and rifts. Where algorithms disagree, or gradients spike, a luminous seam cuts the field — a front you see from across the scene.</p>
+        <div class="src">spatialTensor · Moran's I</div>
+      </div>
+      <div class="map">
+        <div class="vis" id="vis-rooms"></div>
+        <h3>Regimes become rooms <span class="was">· was: k-means table</span></h3>
+        <p>Seeded k-means clusters render as translucent membranes draping the field. The dominant regime is the room you stand in; a mixing frontier is two coloured fogs bleeding together.</p>
+        <div class="src">regime posteriors · convex hulls</div>
+      </div>
+      <div class="map">
+        <div class="vis" id="vis-fog"></div>
+        <h3>Uncertainty becomes fog <span class="was">· was: confidence plane</span></h3>
+        <p>Per-cell confidence becomes the clarity of the water itself. Low confidence thickens into haze — you literally cannot see clearly where the data is uncertain. Epistemics, in the optics.</p>
+        <div class="src">aerosol confidence [0,1]</div>
+      </div>
+      <div class="map">
+        <div class="vis" id="vis-const"></div>
+        <h3>Relationships become a constellation <span class="was">· was: corr. heatmap</span></h3>
+        <p>Channels are nodes; correlations are luminous edges — brightness by |r|, hue by sign. Tightly-coupled channels visibly cluster. The Pearson-r grid stays one gesture away.</p>
+        <div class="src">relationshipTensor · Pearson r</div>
+      </div>
+      <div class="map">
+        <div class="vis" id="vis-weather"></div>
+        <h3>Risk becomes weather <span class="was">· was: alert badge</span></h3>
+        <p>The bloom detector tints the whole scene's atmosphere: clear for green, a gathering amber haze, a charged crimson storm-light. You feel the alert level on arrival, before reading a word.</p>
+        <div class="src">GAIA bloom · GREEN/AMBER/RED</div>
+      </div>
+      <div class="map">
+        <div class="vis" id="vis-beacon"></div>
+        <h3>Novelty becomes a beacon <span class="was">· was: p-value row</span></h3>
+        <p>The Mahalanobis novelty test lights a ranging reticle on the region it caught, its p-value in mono beside it. A genuine "the sensor found something" moment, not a table cell.</p>
+        <div class="src">Mahalanobis · p-value</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 04 · Posture ── -->
+  <section class="reveal">
+    <div class="eyebrow"><span class="idx">04</span><span class="tag">The core interaction</span><span class="ln"></span></div>
+    <h2>Three postures of one instrument.</h2>
+    <p class="lede">Not three apps — one continuous dial over the same scene and data. A newcomer arrives in Immersion and feels the ocean; an expert lives in Ephemeris and trusts every digit. Moving between them is a smooth descent, not a context switch.</p>
+
+    <div class="triad">
+      <div class="posture im" style="display:flex;flex-direction:column">
+        <div class="n">01 / recommended primary</div>
+        <h3><span>The Sounding</span></h3>
+        <div class="role">Immersion · feel</div>
+        <p>A dark calibrated volume you descend into. Particle sedimentation, volumetric fog, cinematic camera. For perceiving state at a glance — and for wonder.</p>
+        <ul><li>Descend through 21 strata</li><li>Risk weather tints the volume</li><li>Fronts as luminous seams</li></ul>
+        <div class="meter" style="margin-top:16px"><i style="width:92%;background:var(--cyan)"></i></div>
+        <div class="tag" style="margin-top:8px">Atmosphere ·············· max</div>
+      </div>
+      <div class="posture at" style="display:flex;flex-direction:column">
+        <div class="n">02 / geographic</div>
+        <h3><span>The Atlas</span></h3>
+        <div class="role">Atlas · place</div>
+        <p>Fields laid onto the real world with a measured graticule and glowing hydrology. For placing phenomena: <em>where exactly is this bloom?</em> Available when data carries lat/lon.</p>
+        <ul><li>Blooms snap to coordinates</li><li>Flow vectors over a basemap</li><li>Cells as luminous raster blocks</li></ul>
+        <div class="meter" style="margin-top:16px"><i style="width:58%;background:var(--green)"></i></div>
+        <div class="tag" style="margin-top:8px">Atmosphere ·········· medium</div>
+      </div>
+      <div class="posture ep" style="display:flex;flex-direction:column">
+        <div class="n">03 / expert</div>
+        <h3><span>The Ephemeris</span></h3>
+        <div class="role">Ephemeris · measure</div>
+        <p>A precision instrument panel — wireframe bounding volume, exhaustive labels, colorbars, everything numeric. For measuring, reporting, defensibility. The counterweight that keeps beauty honest.</p>
+        <ul><li>Every descriptor + colorbar</li><li>Keyboard-driven, near-frozen</li><li>Numbers to the last digit</li></ul>
+        <div class="meter" style="margin-top:16px"><i style="width:20%;background:var(--amber)"></i></div>
+        <div class="tag" style="margin-top:8px">Atmosphere ············· lean</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 05 · Keep / discard ── -->
+  <section class="reveal">
+    <div class="eyebrow"><span class="idx">05</span><span class="tag">What survives · what dissolves</span><span class="ln"></span></div>
+    <h2>Preserve every information-carrier. <span class="dim">Dissolve every pure frame.</span></h2>
+    <p class="lede">The test for each element: does it carry information, or merely frame it? Carriers are kept — often spatialised. Frames become the instrument itself.</p>
+
+    <div class="kd">
+      <div class="col keep">
+        <h3>Preserved</h3>
+        <ul>
+          <li><b>The 3D layered stack</b> — CAPRI's soul; elevated to the environment</li>
+          <li><b>Toggle · opacity · reorder · custom colour</b> per layer, as fluid in-scene controls</li>
+          <li><b>Scientific colormaps &amp; legends</b> — the honest key, always reachable</li>
+          <li><b>The auto-generated narrator</b> — promoted to the bridge from feeling to understanding</li>
+          <li><b>Raw-numbers escape hatches</b> — CSV rows, exact stats, actual-vs-predicted, colorbars</li>
+          <li><b>Client-side · seeded · no telemetry</b>, and the WebGL context-loss recovery — every line</li>
+        </ul>
+      </div>
+      <div class="col drop">
+        <h3>Dissolved</h3>
+        <ul>
+          <li><b>The three-column dashboard shell</b> → one instrument-space with summonable trays</li>
+          <li><b>Stat cards as the primary readout</b> → read-out gutter + ambient hover + narrator</li>
+          <li><b>Analysis modals</b> → rooms you fly to and trays that slide, never freezing the app</li>
+          <li><b>Generic SaaS chrome</b> → instrument scaffolding and margin metadata</li>
+          <li><b>Abrupt frame updates</b> → advected, continuous transitions</li>
+          <li><b>Correlation heatmap-first</b> → constellation-first, heatmap on demand</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="ledger">
+      <div class="big">100<small>% PRESERVED</small></div>
+      <p>Every channel, analysis, overlay, source, and export in the current app is re-housed intact. The redesign is a re-housing of a scientific engine, not a re-scoping of it.</p>
+      <div class="row2">
+        <span><b>21</b> channels</span>
+        <span><b>9</b> spatial descriptors</span>
+        <span><b>3</b> data sources</span>
+        <span><b>PLS · RF · UMAP · PCA</b></span>
+        <span><b>k-means</b> regimes</span>
+        <span><b>GAIA</b> bloom alert</span>
+        <span><b>0</b> features removed</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Closing ── -->
+  <section class="close reveal">
+    <blockquote>CAPRI does not name the states. It shows you where they begin — <em>and now, it lets you stand there.</em></blockquote>
+    <div class="credit">
+      <span class="tag">CAPRI · Deep Field — immersive scientific redesign concept</span>
+      <span class="tag num">DS_OCEAN-COLOUR · Brief 01 · Sounding</span>
+    </div>
+  </section>
+
+  <footer>
+    <span class="tag">Companion to IMMERSIVE_REDESIGN_PROPOSAL.md</span>
+    <span class="tag num" id="foot-clock">—— UTC</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ── Clocks ── */
+  function pad(n){ return (n<10?"0":"")+n; }
+  function tick(){
+    var d = new Date();
+    var s = pad(d.getUTCHours())+":"+pad(d.getUTCMinutes())+":"+pad(d.getUTCSeconds())+" UTC";
+    var c = document.getElementById("clock"); if (c) c.textContent = s;
+    var f = document.getElementById("foot-clock"); if (f) f.textContent = s;
+  }
+  tick(); setInterval(tick, 1000);
+
+  /* ── Narrator readings per posture ── */
+  var readings = {
+    immersion: '<span class="k">Coastal regime dominant.</span> One anomaly forming, north-east. Water clear.',
+    atlas: 'Bloom front at <span class="k">33.42°S, 70.65°W</span> — advancing <span class="w">1.2 cells/frame</span>, driven by CHL + FLH.',
+    ephemeris: 'Regime mixing entropy <span class="num">0.42</span> · novelty <span class="a">p = 0.006</span> · front index TRUE · CV R² <span class="num">0.71</span>.'
+  };
+  var provenance = { immersion: "SYNTHETIC · seeded", atlas: "GEOTIFF · 33.4°S 70.6°W", ephemeris: "GEOTIFF · Oa1–Oa13 + derived" };
+  var narratorEl = document.getElementById("narrator");
+  narratorEl.innerHTML = readings.immersion;
+
+  /* ── Field simulation (Canvas 2D, additive) ── */
+  var canvas = document.getElementById("field");
+  var ctx = canvas.getContext("2d", { alpha: false });
+  var plate = document.getElementById("plate");
+  var W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize(){
+    var r = plate.getBoundingClientRect();
+    W = Math.max(1, r.width); H = Math.max(1, r.height);
+    canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  resize();
+  var ro = ("ResizeObserver" in window) ? new ResizeObserver(resize) : null;
+  if (ro) ro.observe(plate); else window.addEventListener("resize", resize);
+
+  /* Age → colour ramp: cyan → green → amber → crimson */
+  var stops = [ [53,224,208], [59,224,107], [242,169,59], [240,64,42] ];
+  function ramp(t){
+    t = t<0?0:t>1?1:t;
+    var seg = t*3, i = Math.floor(seg); if (i>2) i=2;
+    var f = seg - i, a = stops[i], b = stops[i+1];
+    return [ (a[0]+(b[0]-a[0])*f)|0, (a[1]+(b[1]-a[1])*f)|0, (a[2]+(b[2]-a[2])*f)|0 ];
+  }
+
+  var N = 0, px, py, pvx, pvy, page, plife, MAXN = 2400;
+  function alloc(){
+    px=new Float32Array(MAXN); py=new Float32Array(MAXN); pvx=new Float32Array(MAXN);
+    pvy=new Float32Array(MAXN); page=new Float32Array(MAXN); plife=new Float32Array(MAXN);
+  }
+  alloc();
+
+  var emitters = [0.40, 0.60]; // two emitters, fractions of width
+  function spawn(i){
+    var colW = W * 0.42, cx = W * emitters[(Math.random()<0.5)?0:1];
+    px[i] = cx + (Math.random()-0.5) * colW * 0.5;
+    py[i] = H * (0.12 + Math.random()*0.05);
+    pvx[i] = (Math.random()-0.5) * 0.25;
+    pvy[i] = 0.15 + Math.random()*0.35;
+    page[i] = 0;
+    plife[i] = 0.6 + Math.random()*0.9;
+  }
+  for (var i=0;i<MAXN;i++) spawn(i);
+
+  /* Posture-driven parameters (lerped) */
+  var targets = {
+    immersion: { count: 2400, speed: 1.0, fog: 0.85, spread: 1.0, trail: 0.13, graticule: 0.10, colorbar: 0 },
+    atlas:     { count: 1500, speed: 0.62, fog: 0.42, spread: 1.25, trail: 0.18, graticule: 0.55, colorbar: 0 },
+    ephemeris: { count: 780,  speed: 0.16, fog: 0.14, spread: 0.85, trail: 0.30, graticule: 0.85, colorbar: 1 }
+  };
+  var cur = { count: 2400, speed: 1.0, fog: 0.85, spread: 1.0, trail: 0.13, graticule: 0.10, colorbar: 0 };
+  var tgt = targets.immersion;
+  var posture = "immersion";
+
+  var t = 0, running = true;
+
+  function drawScaffold(){
+    // dashed floor graticule + bounding frame, strength = cur.graticule
+    var g = cur.graticule;
+    if (g < 0.02) return;
+    ctx.save();
+    ctx.strokeStyle = "rgba(174,185,210," + (0.05 + g*0.20) + ")";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 6]);
+    var rows = 7, cols = 9;
+    for (var r=1;r<rows;r++){ var yy = H*0.18 + (H*0.72)*(r/rows); ctx.beginPath(); ctx.moveTo(W*0.06, yy); ctx.lineTo(W*0.94, yy); ctx.stroke(); }
+    for (var c=1;c<cols;c++){ var xx = W*0.06 + (W*0.88)*(c/cols); ctx.beginPath(); ctx.moveTo(xx, H*0.18); ctx.lineTo(xx, H*0.90); ctx.stroke(); }
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // colorbar (ephemeris)
+    if (cur.colorbar > 0.02){
+      var a = cur.colorbar, bx = W*0.045, by = H*0.30, bw = 7, bh = H*0.40;
+      var grad = ctx.createLinearGradient(0, by, 0, by+bh);
+      grad.addColorStop(0, "rgba(240,64,42,"+a+")");
+      grad.addColorStop(0.4, "rgba(242,169,59,"+a+")");
+      grad.addColorStop(0.72, "rgba(59,224,107,"+a+")");
+      grad.addColorStop(1, "rgba(53,224,208,"+a+")");
+      ctx.fillStyle = grad; ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = "rgba(174,185,210,"+(a*0.8)+")";
+      ctx.font = "9px " + "ui-monospace, Menlo, monospace";
+      ctx.fillText("0.29", bx+bw+5, by+7);
+      ctx.fillText("0.06", bx+bw+5, by+bh);
+    }
+  }
+
+  function frame(){
+    if (!running){ return; }
+    t += 0.016;
+
+    // lerp posture params
+    for (var k in tgt){ cur[k] += (tgt[k]-cur[k]) * 0.05; }
+    N = Math.round(cur.count);
+
+    // fade previous frame (trail / fog)
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(5,7,12," + cur.trail + ")";
+    ctx.fillRect(0,0,W,H);
+
+    drawScaffold();
+
+    // particles (additive)
+    ctx.globalCompositeOperation = "lighter";
+    var sp = cur.speed, spread = cur.spread;
+    var cx = W*0.5, colHalf = W*0.24*spread;
+    for (var i=0;i<N;i++){
+      // flow: gravity + layered sinusoidal curl + gentle inward pull to column
+      var fx = Math.sin((py[i]*0.012) + t*0.6 + i*0.003) * 0.22
+             + Math.sin((py[i]*0.03) - t*0.4) * 0.10;
+      pvx[i] += fx * 0.05 * sp;
+      pvx[i] += (cx - px[i]) * 0.00018; // soft column walls
+      pvx[i] *= 0.96;
+      px[i] += pvx[i] * sp;
+      py[i] += pvy[i] * sp * (0.8 + page[i]*0.6); // older = faster fall (settling)
+      page[i] += 0.0016 * (0.5 + sp);
+
+      // recycle
+      if (py[i] > H*0.93 || page[i] > plife[i] || px[i] < cx-colHalf-30 || px[i] > cx+colHalf+30){
+        spawn(i); continue;
+      }
+      var life = page[i] / plife[i];
+      var col = ramp(life);
+      // brightness by "density" proxy: young+dense near emitters brighter, plus size
+      var alpha = (0.5 - life*0.28) * (0.6 + cur.fog*0.6);
+      if (alpha < 0.04) alpha = 0.04;
+      var sz = 0.9 + (1-life)*1.6;
+      ctx.fillStyle = "rgba("+col[0]+","+col[1]+","+col[2]+","+alpha+")";
+      ctx.beginPath();
+      ctx.arc(px[i], py[i], sz, 0, 6.283);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+
+    requestAnimationFrame(frame);
+  }
+
+  if (reduce){
+    // Static settled field: one composite frame, no animation.
+    ctx.fillStyle = "#05070C"; ctx.fillRect(0,0,W,H);
+    cur = Object.assign({}, targets.immersion); cur.trail = 1;
+    drawScaffold();
+    ctx.globalCompositeOperation = "lighter";
+    for (var j=0;j<1600;j++){
+      var i2 = j % MAXN;
+      // advance each particle deterministically a few steps
+      for (var s=0;s<40;s++){
+        px[i2]+=pvx[i2]; py[i2]+=pvy[i2]*(0.8+page[i2]*0.6); page[i2]+=0.0016;
+        pvx[i2]+= (W*0.5 - px[i2])*0.00018; pvx[i2]*=0.96;
+        if (py[i2]>H*0.93||page[i2]>plife[i2]){ spawn(i2); }
+      }
+      var life2 = page[i2]/plife[i2], col2 = ramp(life2);
+      ctx.fillStyle = "rgba("+col2[0]+","+col2[1]+","+col2[2]+","+(0.4-life2*0.2)+")";
+      ctx.beginPath(); ctx.arc(px[i2],py[i2], 1.1+(1-life2)*1.4, 0, 6.283); ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+  } else {
+    requestAnimationFrame(frame);
+    // Pause when the plate scrolls out of view — be a good citizen.
+    if ("IntersectionObserver" in window){
+      var io = new IntersectionObserver(function(es){
+        es.forEach(function(e){
+          if (e.isIntersecting){ if(!running){ running = true; requestAnimationFrame(frame); } }
+          else { running = false; }
+        });
+      }, { threshold: 0.02 });
+      io.observe(plate);
+    }
+    document.addEventListener("visibilitychange", function(){
+      if (document.hidden){ running = false; }
+      else if (!running){ running = true; requestAnimationFrame(frame); }
+    });
+  }
+
+  /* ── Posture dial ── */
+  var frameN = 60;
+  var buttons = Array.prototype.slice.call(document.querySelectorAll(".dial button"));
+  var vital = document.getElementById("posture-vital");
+  var prov = document.getElementById("provenance");
+  var frameEl = document.getElementById("frame");
+  function setPosture(p){
+    posture = p; tgt = targets[p];
+    buttons.forEach(function(b){ b.setAttribute("aria-pressed", b.dataset.posture===p ? "true":"false"); });
+    if (vital) vital.textContent = p.toUpperCase();
+    if (prov) prov.textContent = provenance[p];
+    narratorEl.innerHTML = readings[p];
+    if (reduce){ // reflect params instantly for the static render context
+      cur.graticule = targets[p].graticule; cur.colorbar = targets[p].colorbar;
+    }
+  }
+  buttons.forEach(function(b){ b.addEventListener("click", function(){ setPosture(b.dataset.posture); }); });
+
+  // frame counter ticks like an experiment log
+  setInterval(function(){ frameN = (frameN+1) % 1000; if (frameEl) frameEl.textContent = "FRAME_"+pad(frameN); }, 1200);
+
+  /* ── Living-systems mini-visuals (lightweight canvases) ── */
+  function mini(id, draw){
+    var host = document.getElementById(id); if (!host) return;
+    var cv = document.createElement("canvas");
+    cv.style.width="100%"; cv.style.height="100%"; cv.style.display="block";
+    host.appendChild(cv);
+    var g = cv.getContext("2d");
+    function fit(){ var r=host.getBoundingClientRect(); cv.width=r.width*DPR; cv.height=r.height*DPR; g.setTransform(DPR,0,0,DPR,0,0); draw(g, r.width, r.height); }
+    fit();
+    if (ro) ro.observe(host); else window.addEventListener("resize", fit);
+    return fit;
+  }
+  // terrain / fronts: luminous ridge seam
+  mini("vis-terrain", function(g,w,h){
+    g.fillStyle="#05070C"; g.fillRect(0,0,w,h);
+    for (var y=0;y<h;y+=5){
+      var v = Math.abs(Math.sin(y*0.13)*0.5+0.5);
+      g.strokeStyle="rgba(103,115,143,"+(0.08+v*0.10)+")"; g.beginPath();
+      for (var x=0;x<=w;x+=6){ var yy=y+Math.sin(x*0.06+y*0.05)*3; if(x===0)g.moveTo(x,yy); else g.lineTo(x,yy); }
+      g.stroke();
+    }
+    var g2=g.createLinearGradient(0,0,w,h); g2.addColorStop(0,"rgba(53,224,208,0)"); g2.addColorStop(0.5,"rgba(53,224,208,0.9)"); g2.addColorStop(1,"rgba(240,64,42,0.6)");
+    g.strokeStyle=g2; g.lineWidth=2; g.beginPath();
+    for (var x2=0;x2<=w;x2+=4){ var yy2=h*0.5+Math.sin(x2*0.04)*h*0.22; if(x2===0)g.moveTo(x2,yy2); else g.lineTo(x2,yy2); } g.stroke();
+  });
+  // rooms: two translucent membranes bleeding
+  mini("vis-rooms", function(g,w,h){
+    g.fillStyle="#05070C"; g.fillRect(0,0,w,h);
+    var a=g.createRadialGradient(w*0.35,h*0.5,4,w*0.35,h*0.5,w*0.4); a.addColorStop(0,"rgba(53,224,208,0.5)"); a.addColorStop(1,"rgba(53,224,208,0)");
+    var b=g.createRadialGradient(w*0.65,h*0.5,4,w*0.65,h*0.5,w*0.4); b.addColorStop(0,"rgba(124,92,255,0.5)"); b.addColorStop(1,"rgba(124,92,255,0)");
+    g.fillStyle=a; g.fillRect(0,0,w,h); g.fillStyle=b; g.fillRect(0,0,w,h);
+  });
+  // fog: clear → hazy
+  mini("vis-fog", function(g,w,h){
+    g.fillStyle="#05070C"; g.fillRect(0,0,w,h);
+    for(var i=0;i<70;i++){ var x=Math.random()*w,y=Math.random()*h; var clarity=x/w; g.fillStyle="rgba(53,224,208,"+(0.5*(1-clarity)+0.05)+")"; g.beginPath(); g.arc(x,y,1.4,0,6.283); g.fill(); }
+    var fg=g.createLinearGradient(0,0,w,0); fg.addColorStop(0,"rgba(16,21,31,0.85)"); fg.addColorStop(1,"rgba(16,21,31,0)");
+    g.fillStyle=fg; g.fillRect(0,0,w,h);
+  });
+  // constellation
+  mini("vis-const", function(g,w,h){
+    g.fillStyle="#05070C"; g.fillRect(0,0,w,h);
+    var pts=[]; for(var i=0;i<9;i++) pts.push([w*(0.15+Math.random()*0.7), h*(0.15+Math.random()*0.7)]);
+    for(var a=0;a<pts.length;a++) for(var b=a+1;b<pts.length;b++){ if(Math.random()>0.72){ var pos=Math.random()>0.5; g.strokeStyle=pos?"rgba(53,224,208,0.5)":"rgba(240,64,42,0.4)"; g.lineWidth=Math.random()*1.6+0.3; g.beginPath(); g.moveTo(pts[a][0],pts[a][1]); g.lineTo(pts[b][0],pts[b][1]); g.stroke(); } }
+    pts.forEach(function(p){ g.fillStyle="#EAF0FF"; g.beginPath(); g.arc(p[0],p[1],2.2,0,6.283); g.fill(); });
+  });
+  // weather: crimson storm-light
+  mini("vis-weather", function(g,w,h){
+    var rg=g.createRadialGradient(w*0.5,h*0.4,4,w*0.5,h*0.4,w*0.6); rg.addColorStop(0,"rgba(240,64,42,0.55)"); rg.addColorStop(0.5,"rgba(242,169,59,0.18)"); rg.addColorStop(1,"rgba(5,7,12,1)");
+    g.fillStyle="#05070C"; g.fillRect(0,0,w,h); g.fillStyle=rg; g.fillRect(0,0,w,h);
+    for(var i=0;i<40;i++){ g.fillStyle="rgba(240,64,42,"+(Math.random()*0.5)+")"; g.beginPath(); g.arc(w*0.5+(Math.random()-0.5)*w*0.5,h*0.4+(Math.random()-0.5)*h*0.5,1.3,0,6.283); g.fill(); }
+  });
+  // beacon: ranging reticle
+  mini("vis-beacon", function(g,w,h){
+    g.fillStyle="#05070C"; g.fillRect(0,0,w,h);
+    for(var i=0;i<50;i++){ g.fillStyle="rgba(103,115,143,0.5)"; g.beginPath(); g.arc(Math.random()*w,Math.random()*h,1,0,6.283); g.fill(); }
+    var cx=w*0.62,cy=h*0.45;
+    g.strokeStyle="rgba(59,224,107,0.9)"; g.lineWidth=1.4;
+    g.beginPath(); g.arc(cx,cy,16,0,6.283); g.stroke();
+    g.beginPath(); g.moveTo(cx-24,cy); g.lineTo(cx-10,cy); g.moveTo(cx+10,cy); g.lineTo(cx+24,cy); g.moveTo(cx,cy-24); g.lineTo(cx,cy-10); g.moveTo(cx,cy+10); g.lineTo(cx,cy+24); g.stroke();
+    g.fillStyle="rgba(59,224,107,0.9)"; g.font="9px ui-monospace, Menlo, monospace"; g.fillText("p=0.006", cx+22, cy-18);
+  });
+
+  /* ── Scroll reveal ── */
+  if ("IntersectionObserver" in window && !reduce){
+    var rio = new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add("in"); rio.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    document.querySelectorAll(".reveal").forEach(function(el){ rio.observe(el); });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function(el){ el.classList.add("in"); });
+  }
+})();
+</script>
