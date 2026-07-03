@@ -1,0 +1,564 @@
+<title>CAPRI · TURBULENCE — maximalist console concept</title>
+<style>
+  :root{
+    --void:#04060B; --void-2:#080C15; --void-3:#0D1220; --panel:#0A0F1A;
+    --hair:rgba(234,240,255,0.13); --hair-2:rgba(234,240,255,0.06);
+    --ink:#EAF0FF; --ink-2:#AEB9D2; --ink-3:#69769A; --ink-4:#454f6b;
+    --cyan:#35E0D0; --green:#3BE06B; --amber:#F2A93B; --crimson:#F0402A; --violet:#7C5CFF;
+    --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:var(--void); color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; overflow:hidden; font-size:13px; line-height:1.45;
+  }
+  /* alert tint overlay */
+  #tint{position:fixed;inset:0;z-index:60;pointer-events:none;transition:background .8s ease, box-shadow .8s ease;}
+  body[data-alert="1"] #tint{background:radial-gradient(120% 90% at 50% 40%,rgba(242,169,59,0.06),transparent 60%);box-shadow:inset 0 0 200px rgba(242,169,59,0.10);}
+  body[data-alert="2"] #tint{background:radial-gradient(120% 90% at 50% 40%,rgba(240,64,42,0.10),transparent 55%);box-shadow:inset 0 0 240px rgba(240,64,42,0.20);}
+
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .tag{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-3);font-weight:600;}
+  .tag-sm{font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3);}
+
+  /* ── grid shell ── */
+  .shell{display:grid;grid-template-rows:44px 1fr 148px;height:100vh;}
+  .rail{display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--hair);background:linear-gradient(180deg,var(--void-3),var(--void-2));z-index:20;}
+  .rail .brand b{font-size:13px;letter-spacing:.24em;text-transform:uppercase;font-weight:700;}
+  .rail .brand span{font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--cyan);margin-left:8px;}
+  .rail .spacer{flex:1;}
+  .rail .vital{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-2);}
+
+  /* AGITATION dial */
+  .agit{display:flex;align-items:center;gap:10px;}
+  .agit label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3);font-weight:700;}
+  .agit input{width:130px;accent-color:var(--crimson);}
+  .agit .val{font-family:var(--mono);font-size:12px;color:var(--amber);width:30px;text-align:right;}
+
+  .alert-chip{display:flex;align-items:center;gap:7px;padding:4px 11px;border-radius:20px;border:1px solid var(--hair);font-family:var(--mono);font-size:11px;letter-spacing:.12em;}
+  .alert-chip .d{width:8px;height:8px;border-radius:50%;}
+
+  .main{display:grid;grid-template-columns:236px 1fr 244px;min-height:0;}
+  .col{min-height:0;overflow-y:auto;overflow-x:hidden;}
+  .col.left{border-right:1px solid var(--hair);background:var(--void-2);}
+  .col.right{border-left:1px solid var(--hair);background:var(--void-2);}
+  .col::-webkit-scrollbar{width:7px;} .col::-webkit-scrollbar-thumb{background:rgba(234,240,255,.12);border-radius:6px;}
+
+  .sect{padding:12px 13px;border-bottom:1px solid var(--hair-2);}
+  .sect h3{margin:0 0 10px;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-2);font-weight:700;display:flex;justify-content:space-between;align-items:center;}
+  .sect h3 .c{color:var(--cyan);font-family:var(--mono);letter-spacing:0;}
+
+  /* source tiles */
+  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .tile{border:1px solid var(--hair);background:var(--void-3);border-radius:6px;padding:8px 8px;cursor:pointer;font-size:10.5px;color:var(--ink-2);transition:.15s;text-align:left;}
+  .tile:hover{border-color:var(--ink-3);color:var(--ink);}
+  .tile[aria-pressed="true"]{border-color:var(--cyan);background:rgba(53,224,208,.08);color:var(--ink);}
+  .tile .k{display:block;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-top:2px;}
+
+  /* faders */
+  .fader{display:grid;grid-template-columns:64px 1fr 30px;align-items:center;gap:8px;margin:7px 0;}
+  .fader .n{font-size:10px;color:var(--ink-2);}
+  .fader input{width:100%;accent-color:var(--cyan);}
+  .fader .v{font-family:var(--mono);font-size:10px;color:var(--ink-3);text-align:right;}
+
+  /* spectral bank */
+  .chan{display:grid;grid-template-columns:12px 8px 1fr auto;align-items:center;gap:7px;padding:4px 2px;cursor:pointer;border-radius:4px;}
+  .chan:hover{background:rgba(234,240,255,.04);}
+  .chan .sw{width:8px;height:8px;border-radius:2px;}
+  .chan .dot{width:6px;height:6px;border-radius:50%;border:1px solid var(--ink-3);}
+  .chan[data-on="true"] .dot{background:var(--cyan);border-color:var(--cyan);box-shadow:0 0 6px var(--cyan);}
+  .chan[data-on="false"]{opacity:.4;}
+  .chan .nm{font-size:11px;color:var(--ink);}
+  .chan .nm small{color:var(--ink-3);font-size:8.5px;letter-spacing:.08em;}
+  .chan .vv{font-family:var(--mono);font-size:9.5px;color:var(--ink-2);}
+  .chan .bar{grid-column:3 / span 2;height:2px;background:var(--hair-2);border-radius:2px;overflow:hidden;margin-top:2px;}
+  .chan .bar i{display:block;height:100%;background:var(--cyan);}
+
+  /* ── chamber ── */
+  .chamber{position:relative;min-height:0;background:radial-gradient(120% 100% at 50% 40%,#070b14,#04060B);overflow:hidden;}
+  #field,#fx{position:absolute;inset:0;width:100%;height:100%;display:block;}
+  #fx{pointer-events:none;}
+  .cmeta{position:absolute;z-index:5;pointer-events:none;}
+  .cmeta.tl{top:12px;left:14px;} .cmeta.tr{top:12px;right:14px;text-align:right;}
+  .cmeta.bl{bottom:12px;left:14px;} .cmeta.br{bottom:12px;right:80px;text-align:right;}
+  .cmeta .t1{font-size:10px;letter-spacing:.26em;text-transform:uppercase;font-weight:700;}
+  .fid{position:absolute;width:16px;height:16px;border:1px solid var(--ink-3);opacity:.5;pointer-events:none;z-index:5;}
+  .fid.tl{top:10px;left:10px;border-right:0;border-bottom:0;} .fid.tr{top:10px;right:10px;border-left:0;border-bottom:0;}
+  .fid.bl{bottom:10px;left:10px;border-right:0;border-top:0;} .fid.br{bottom:10px;right:10px;border-left:0;border-top:0;}
+
+  .scaleb{display:flex;align-items:center;gap:7px;}
+  .scaleb .b{width:56px;height:1px;background:var(--ink-3);position:relative;}
+  .scaleb .b::before,.scaleb .b::after{content:"";position:absolute;top:-3px;width:1px;height:7px;background:var(--ink-3);}
+  .scaleb .b::before{left:0;} .scaleb .b::after{right:0;}
+
+  .narrator{position:absolute;left:14px;right:90px;bottom:40px;z-index:6;font-size:13px;color:var(--ink);text-shadow:0 1px 20px #000;pointer-events:none;}
+  .narrator .k{color:var(--cyan);} .narrator .w{color:var(--amber);} .narrator .a{color:var(--crimson);}
+
+  /* colorbar rail on chamber */
+  .cbar{position:absolute;top:50%;right:16px;transform:translateY(-50%);z-index:6;display:flex;flex-direction:column;align-items:center;gap:5px;pointer-events:none;}
+  .cbar .ramp{width:8px;height:120px;border-radius:5px;border:1px solid var(--hair);background:linear-gradient(180deg,var(--crimson),var(--amber) 40%,var(--green) 72%,var(--cyan));}
+  .cbar .lab{font-family:var(--mono);font-size:8px;color:var(--ink-3);}
+
+  /* diagnostics */
+  .diag{display:flex;flex-direction:column;gap:6px;}
+  .metric{display:flex;justify-content:space-between;align-items:baseline;}
+  .metric .l{font-size:10px;color:var(--ink-3);} .metric .v{font-family:var(--mono);font-size:13px;color:var(--ink);}
+  .gauge{height:3px;background:var(--hair);border-radius:2px;overflow:hidden;margin-top:3px;}
+  .gauge i{display:block;height:100%;background:var(--amber);transition:width .6s;}
+  .regime{display:flex;align-items:center;gap:7px;margin:5px 0;font-size:10.5px;}
+  .regime .track{flex:1;height:9px;background:var(--void-3);border-radius:3px;overflow:hidden;border:1px solid var(--hair-2);}
+  .regime .track i{display:block;height:100%;}
+  .regime .pc{font-family:var(--mono);font-size:9.5px;color:var(--ink-2);width:30px;text-align:right;}
+
+  .storm-card{border:1px solid var(--hair);border-radius:8px;padding:11px;text-align:center;}
+  .storm-card .big{font-family:var(--mono);font-size:22px;font-weight:700;letter-spacing:.06em;}
+  .storm-card .sub{font-size:9.5px;color:var(--ink-3);margin-top:2px;}
+  body[data-alert="0"] .storm-card{border-color:rgba(59,224,107,.4);} body[data-alert="0"] .storm-card .big{color:var(--green);}
+  body[data-alert="1"] .storm-card{border-color:rgba(242,169,59,.5);} body[data-alert="1"] .storm-card .big{color:var(--amber);}
+  body[data-alert="2"] .storm-card{border-color:rgba(240,64,42,.6);} body[data-alert="2"] .storm-card .big{color:var(--crimson);}
+
+  #mini-const{width:100%;height:74px;display:block;border:1px solid var(--hair-2);border-radius:5px;background:var(--void-3);}
+  .narr-tick{font-size:10.5px;color:var(--ink-2);line-height:1.5;}
+
+  /* ── bottom strip ── */
+  .strip{display:grid;grid-template-columns:1fr 300px;border-top:1px solid var(--hair);background:var(--void-2);min-height:0;}
+  .ribbon{padding:9px 14px;display:flex;flex-direction:column;gap:8px;border-right:1px solid var(--hair);min-width:0;}
+  .transport{display:flex;align-items:center;gap:10px;}
+  .transport button{width:30px;height:26px;border:1px solid var(--hair);background:var(--void-3);color:var(--ink-2);border-radius:5px;cursor:pointer;font-size:12px;}
+  .transport button:hover{color:var(--ink);border-color:var(--ink-3);}
+  .transport .scrub{flex:1;accent-color:var(--cyan);}
+  .transport .fr{font-family:var(--mono);font-size:11px;color:var(--amber);}
+  #waterfall{width:100%;height:58px;display:block;border:1px solid var(--hair-2);border-radius:5px;background:#000;}
+  .wf-lab{display:flex;justify-content:space-between;}
+
+  .rack{padding:9px 12px;overflow-y:auto;min-width:0;}
+  .rack h3{margin:0 0 8px;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-2);font-weight:700;}
+  .lenses{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .lens{border:1px solid var(--hair);background:var(--void-3);border-radius:6px;padding:7px 8px;cursor:pointer;font-size:10px;color:var(--ink-2);transition:.15s;display:flex;align-items:center;gap:6px;}
+  .lens:hover{border-color:var(--ink-3);color:var(--ink);}
+  .lens[aria-pressed="true"]{border-color:var(--violet);background:rgba(124,92,255,.12);color:var(--ink);}
+  .lens .ld{width:7px;height:7px;border-radius:2px;background:var(--ink-4);}
+  .lens[aria-pressed="true"] .ld{background:var(--violet);box-shadow:0 0 6px var(--violet);}
+
+  .foot{position:absolute;bottom:0;left:0;right:0;} /* unused safety */
+
+  button:focus-visible,input:focus-visible,[role="button"]:focus-visible,.tile:focus-visible,.lens:focus-visible,.chan:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;}
+
+  /* responsive: collapse side columns on narrow screens */
+  @media (max-width:1080px){
+    .main{grid-template-columns:1fr;}
+    .col.left,.col.right{display:none;}
+    .strip{grid-template-columns:1fr;}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+
+<div id="tint"></div>
+<div class="shell">
+
+  <!-- ── header rail ── -->
+  <div class="rail">
+    <div class="brand"><b>CAPRI</b><span>Turbulence</span></div>
+    <div class="agit">
+      <label for="agit">Agitation</label>
+      <input id="agit" type="range" min="0" max="100" value="62" aria-label="Agitation — master art intensity">
+      <span class="val mono" id="agit-val">62</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="vital mono" id="clock">——:——:—— UTC</div>
+    <div class="alert-chip" id="alert-chip"><span class="d"></span><span id="alert-txt">RED</span></div>
+  </div>
+
+  <!-- ── main ── -->
+  <div class="main">
+
+    <!-- LEFT: intake + spectral bank -->
+    <div class="col left">
+      <div class="sect">
+        <h3>Intake Manifold <span class="c" id="prov">SYN</span></h3>
+        <div class="tiles" id="sources">
+          <button class="tile" data-src="synthetic" aria-pressed="true">Synthetic<span class="k">seeded</span></button>
+          <button class="tile" data-src="coastal" aria-pressed="false">Coastal<span class="k">preset</span></button>
+          <button class="tile" data-src="deepsea" aria-pressed="false">Deep sea<span class="k">preset</span></button>
+          <button class="tile" data-src="estuary" aria-pressed="false">Estuary<span class="k">preset</span></button>
+          <button class="tile" data-src="csv" aria-pressed="false">CSV<span class="k">upload · frames</span></button>
+          <button class="tile" data-src="geotiff" aria-pressed="false">GeoTIFF<span class="k">observed</span></button>
+        </div>
+      </div>
+      <div class="sect">
+        <h3>Conditions</h3>
+        <div class="fader"><span class="n">Speed</span><input type="range" min="0" max="100" value="60"><span class="v mono">1.5Hz</span></div>
+        <div class="fader"><span class="n">Noise</span><input type="range" min="0" max="100" value="15"><span class="v mono">.03</span></div>
+        <div class="fader"><span class="n">Anomaly</span><input type="range" min="0" max="100" value="35"><span class="v mono">.35</span></div>
+        <div class="fader"><span class="n">Drift</span><input type="range" min="0" max="100" value="8"><span class="v mono">.01</span></div>
+        <div class="fader"><span class="n">Flow</span><input type="range" min="0" max="100" value="70"><span class="v mono">1.4</span></div>
+        <div class="fader"><span class="n">Lattice</span><input type="range" min="8" max="48" value="20"><span class="v mono">20²</span></div>
+      </div>
+      <div class="sect">
+        <h3>Spectral Bank <span class="c">×21</span></h3>
+        <div id="bank"></div>
+      </div>
+    </div>
+
+    <!-- CENTER: chamber -->
+    <div class="chamber" id="chamber">
+      <canvas id="field"></canvas>
+      <canvas id="fx"></canvas>
+      <span class="fid tl"></span><span class="fid tr"></span><span class="fid bl"></span><span class="fid br"></span>
+      <div class="cmeta tl"><div class="t1">The Chamber</div><div class="tag-sm" style="margin-top:4px">Ocean colour · 21 ch · 2 emitters</div></div>
+      <div class="cmeta tr"><div class="tag mono" id="frame">FRAME_060</div><div class="tag-sm mono" id="prov2" style="margin-top:4px">SYNTHETIC · seeded</div></div>
+      <div class="cmeta bl"><div class="scaleb"><span class="b"></span><span class="tag mono">2 km</span></div></div>
+      <div class="cmeta br"><div class="tag-sm mono">DS_OCEAN-COLOUR · BRIEF_01</div></div>
+      <p class="narrator" id="narrator"></p>
+      <div class="cbar"><span class="lab mono">0.29</span><span class="ramp"></span><span class="lab mono">0.06</span></div>
+    </div>
+
+    <!-- RIGHT: diagnostics -->
+    <div class="col right">
+      <div class="sect">
+        <h3>Storm System <span class="c">GAIA</span></h3>
+        <div class="storm-card">
+          <div class="big" id="storm-big">RED</div>
+          <div class="sub" id="storm-sub">risk 0.71 · driven by CHL + FLH</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:9px" class="mono">
+          <span class="tag-sm">Trend</span><span style="font-size:10px;color:var(--crimson)" id="trend">▲ growing · 1.2 cell/fr</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px" class="mono">
+          <span class="tag-sm">Hotspots</span><span style="font-size:10px;color:var(--ink-2)" id="hot">3 zones · 41 cells</span>
+        </div>
+      </div>
+      <div class="sect">
+        <h3>Regime Mixture <span class="c">k-means</span></h3>
+        <div id="regimes"></div>
+        <div class="metric" style="margin-top:8px"><span class="l">Mixing entropy (Tremor)</span><span class="v" id="entropy">0.42</span></div>
+        <div class="gauge"><i id="entropy-bar" style="width:42%"></i></div>
+        <div class="metric" style="margin-top:8px"><span class="l">Front index · Moran's I</span><span class="v" id="moran">0.31</span></div>
+      </div>
+      <div class="sect">
+        <h3>Novelty <span class="c">Mahalanobis</span></h3>
+        <div class="metric"><span class="l">Outlier fraction</span><span class="v" id="nov">7%</span></div>
+        <div class="metric" style="margin-top:4px"><span class="l">p-value</span><span class="v" id="pval" style="color:var(--green)">0.006</span></div>
+        <div class="tag-sm" style="margin-top:6px;color:var(--green)" id="nov-flag">◈ SHATTER — anomaly caught, NE quadrant</div>
+      </div>
+      <div class="sect">
+        <h3>Constellation <span class="c">Pearson r</span></h3>
+        <canvas id="mini-const"></canvas>
+        <div class="tag-sm" style="margin-top:6px">cyan +r · crimson −r · width = |r|</div>
+      </div>
+      <div class="sect">
+        <h3>Narrator</h3>
+        <div class="narr-tick" id="narr-tick"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── bottom strip ── -->
+  <div class="strip">
+    <div class="ribbon">
+      <div class="transport">
+        <button id="play" aria-label="play/pause">❚❚</button>
+        <input class="scrub" type="range" min="0" max="120" value="60" aria-label="time scrub">
+        <span class="fr" id="fr2">060 / 120</span>
+      </div>
+      <div class="wf-lab"><span class="tag-sm">Spectral waterfall — 21 ch × time</span><span class="tag-sm mono">400→761nm ↓</span></div>
+      <canvas id="waterfall"></canvas>
+    </div>
+    <div class="rack">
+      <h3>Lens Rack — stack the madness</h3>
+      <div class="lenses" id="lenses">
+        <button class="lens" data-lens="particles" aria-pressed="true"><span class="ld"></span>Advection particles</button>
+        <button class="lens" data-lens="vectors" aria-pressed="true"><span class="ld"></span>Vector field</button>
+        <button class="lens" data-lens="aurora" aria-pressed="true"><span class="ld"></span>Aurora regimes</button>
+        <button class="lens" data-lens="fog" aria-pressed="false"><span class="ld"></span>Uncertainty fog</button>
+        <button class="lens" data-lens="glitch" aria-pressed="true"><span class="ld"></span>Disagreement datamosh</button>
+        <button class="lens" data-lens="storm" aria-pressed="true"><span class="ld"></span>Storm system</button>
+      </div>
+      <div class="tag-sm" style="margin-top:9px;line-height:1.5">Presets: <span style="color:var(--cyan);cursor:pointer" data-preset="storm">Fisherman's Storm</span> · <span style="color:var(--cyan);cursor:pointer" data-preset="chaos">Case-2 Chaos</span> · <span style="color:var(--cyan);cursor:pointer" data-preset="calm">Clean Room</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion:reduce)").matches;
+  var body = document.body;
+
+  /* ── channels (real CAPRI metadata) ── */
+  var CH = [
+    ["CHL","Chlorophyll-a","mg/m³","#4ade80"],["aphy","Phyto absorption","m⁻¹","#e879f9"],
+    ["ADG","Detritus·Gelbstoff","m⁻¹","#fbbf24"],["bbp","Backscatter","m⁻¹","#22d3ee"],
+    ["TSM","Suspended solids","g/m³","#f87171"],["PAR","Solar · PAR","μE","#facc15"],
+    ["KD490","Light atten.","m⁻¹","#60a5fa"],["FLH","Fluor. line ht","mW","#f43f5e"],
+    ["CHL_dis","Algo disagreement","mg/m³","#fb923c"],
+    ["OA01","400nm","sr⁻¹","#7c3aed"],["OA02","412nm","sr⁻¹","#6366f1"],["OA03","442nm","sr⁻¹","#3b82f6"],
+    ["OA04","490nm","sr⁻¹","#06b6d4"],["OA05","510nm","sr⁻¹","#14b8a6"],["OA06","560nm","sr⁻¹","#84cc16"],
+    ["OA07","620nm","sr⁻¹","#f97316"],["OA08","665nm","sr⁻¹","#e11d48"],["OA09","673nm","sr⁻¹","#be123c"],
+    ["OA10","681nm","sr⁻¹","#9f1239"],["OA11","708nm","sr⁻¹","#881337"],["OA13","761nm","sr⁻¹","#4c0519"]
+  ];
+  var chanState = CH.map(function(){return {on:true, v:Math.random()};});
+
+  /* build the spectral bank */
+  var bank = document.getElementById("bank");
+  CH.forEach(function(c,i){
+    var el = document.createElement("div");
+    el.className="chan"; el.setAttribute("data-on","true"); el.tabIndex=0; el.setAttribute("role","button");
+    el.innerHTML='<span class="sw" style="background:'+c[3]+'"></span><span class="dot"></span>'+
+      '<span class="nm">'+c[0]+' <small>'+c[1]+'</small></span><span class="vv" id="cv'+i+'">0.00</span>'+
+      '<span class="bar"><i id="cb'+i+'" style="background:'+c[3]+'"></i></span>';
+    function tog(){ chanState[i].on=!chanState[i].on; el.setAttribute("data-on", chanState[i].on?"true":"false"); }
+    el.addEventListener("click",tog);
+    el.addEventListener("keydown",function(e){ if(e.key===" "||e.key==="Enter"){e.preventDefault();tog();} });
+    bank.appendChild(el);
+  });
+
+  /* ── clock ── */
+  function pad(n){return(n<10?"0":"")+n;}
+  function tick(){var d=new Date();document.getElementById("clock").textContent=pad(d.getUTCHours())+":"+pad(d.getUTCMinutes())+":"+pad(d.getUTCSeconds())+" UTC";}
+  tick();setInterval(tick,1000);
+
+  /* ── state ── */
+  var agit = 0.62, playing = true, alert = 2, frameN = 60;
+  var lenses = {particles:true,vectors:true,aurora:true,fog:false,glitch:true,storm:true};
+  var source = "synthetic";
+  var provShort = {synthetic:"SYN",coastal:"CST",deepsea:"DEEP",estuary:"EST",csv:"CSV",geotiff:"GTIF"};
+  var provLong = {synthetic:"SYNTHETIC · seeded",coastal:"PRESET · coastal",deepsea:"PRESET · deep-sea",estuary:"PRESET · estuary",csv:"CSV · 120 frames",geotiff:"GEOTIFF · 33.4°S 70.6°W"};
+
+  var narr = {
+    synthetic:'<span class="k">Coastal regime dominant.</span> One anomaly forming, north-east. Water clear.',
+    coastal:'<span class="k">High-productivity shelf.</span> CHL front sharpening along the <span class="w">10 m isobath</span>.',
+    deepsea:'Oligotrophic core · low CHL, high clarity. <span class="k">Stable.</span> No bloom signature.',
+    estuary:'<span class="w">Turbid Case-2 water.</span> Algorithm disagreement <span class="a">high</span> — trust the clear cells only.',
+    csv:'Playing <span class="k">120 frames</span>. Bloom advancing frame-over-frame, south-west.',
+    geotiff:'Observed tile · <span class="k">33.42°S 70.65°W</span>. <span class="a">RED</span> zone confirmed, driven by CHL + FLH.'
+  };
+  function setNarr(){ document.getElementById("narrator").innerHTML = narr[source]; document.getElementById("narr-tick").innerHTML = narr[source]; }
+  setNarr();
+
+  /* regimes */
+  var regHost = document.getElementById("regimes");
+  var regimes = [["Productive bloom","#3BE06B",0.48],["Mixing frontier","#F2A93B",0.34],["Clear oligotrophic","#35E0D0",0.18]];
+  function drawRegimes(){
+    regHost.innerHTML="";
+    regimes.forEach(function(r){
+      var d=document.createElement("div");d.className="regime";
+      d.innerHTML='<span style="width:74px;color:var(--ink-2)">'+r[0]+'</span><span class="track"><i style="width:'+(r[2]*100).toFixed(0)+'%;background:'+r[1]+'"></i></span><span class="pc">'+(r[2]*100).toFixed(0)+'%</span>';
+      regHost.appendChild(d);
+    });
+  }
+  drawRegimes();
+
+  /* ── chamber canvases ── */
+  var chamber=document.getElementById("chamber");
+  var field=document.getElementById("field"), fx=document.getElementById("fx");
+  var g=field.getContext("2d",{alpha:false}), gf=fx.getContext("2d");
+  var W=0,H=0,DPR=Math.min(window.devicePixelRatio||1,2);
+  function resize(){
+    var r=chamber.getBoundingClientRect(); W=Math.max(1,r.width);H=Math.max(1,r.height);
+    [field,fx].forEach(function(cv){cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);});
+    g.setTransform(DPR,0,0,DPR,0,0); gf.setTransform(DPR,0,0,DPR,0,0);
+  }
+  resize();
+  var ro=("ResizeObserver"in window)?new ResizeObserver(resize):null;
+  if(ro)ro.observe(chamber);else window.addEventListener("resize",resize);
+
+  /* age ramp cyan→green→amber→crimson */
+  var stops=[[53,224,208],[59,224,107],[242,169,59],[240,64,42]];
+  function ramp(t){t=t<0?0:t>1?1:t;var s=t*3,i=s|0;if(i>2)i=2;var f=s-i,a=stops[i],b=stops[i+1];return[(a[0]+(b[0]-a[0])*f)|0,(a[1]+(b[1]-a[1])*f)|0,(a[2]+(b[2]-a[2])*f)|0];}
+
+  /* particles */
+  var MAX=2600, px=new Float32Array(MAX),py=new Float32Array(MAX),pvx=new Float32Array(MAX),pvy=new Float32Array(MAX),pa=new Float32Array(MAX),pl=new Float32Array(MAX);
+  function spawn(i){var cx=W*(Math.random()<.5?.40:.60);px[i]=cx+(Math.random()-.5)*W*.22;py[i]=H*(.10+Math.random()*.05);pvx[i]=(Math.random()-.5)*.2;pvy[i]=.15+Math.random()*.3;pa[i]=0;pl[i]=.6+Math.random()*.9;}
+  for(var i=0;i<MAX;i++)spawn(i);
+
+  var t=0, running=true;
+
+  function scaffold(){
+    g.strokeStyle="rgba(105,118,154,0.10)";g.lineWidth=1;g.setLineDash([2,7]);
+    for(var r=1;r<6;r++){var yy=H*.16+(H*.72)*(r/6);g.beginPath();g.moveTo(W*.05,yy);g.lineTo(W*.95,yy);g.stroke();}
+    for(var c=1;c<8;c++){var xx=W*.05+(W*.9)*(c/8);g.beginPath();g.moveTo(xx,H*.16);g.lineTo(xx,H*.9);g.stroke();}
+    g.setLineDash([]);
+  }
+  function auroraLens(){
+    var a=g.createRadialGradient(W*.36,H*.42,6,W*.36,H*.42,W*.4);a.addColorStop(0,"rgba(59,224,107,"+(.14+agit*.14)+")");a.addColorStop(1,"rgba(59,224,107,0)");
+    var b=g.createRadialGradient(W*.64,H*.55,6,W*.64,H*.55,W*.4);b.addColorStop(0,"rgba(124,92,255,"+(.14+agit*.14)+")");b.addColorStop(1,"rgba(124,92,255,0)");
+    var d=g.createRadialGradient(W*.5+Math.sin(t*.4)*40,H*.5,6,W*.5,H*.5,W*.32);d.addColorStop(0,"rgba(242,169,59,"+(agit*.10)+")");d.addColorStop(1,"rgba(242,169,59,0)");
+    g.fillStyle=a;g.fillRect(0,0,W,H);g.fillStyle=b;g.fillRect(0,0,W,H);g.fillStyle=d;g.fillRect(0,0,W,H);
+  }
+  function fogLens(){
+    var fg=g.createLinearGradient(W*.55,0,W,0);fg.addColorStop(0,"rgba(13,18,32,0)");fg.addColorStop(1,"rgba(120,130,160,"+(.10+agit*.14)+")");
+    g.fillStyle=fg;g.fillRect(W*.55,0,W*.45,H);
+  }
+  function vectorLens(){
+    g.strokeStyle="rgba(53,224,208,"+(.10+agit*.22)+")";g.lineWidth=1;
+    var step=Math.max(26,42-agit*16);
+    for(var x=W*.08;x<W*.92;x+=step)for(var y=H*.2;y<H*.86;y+=step){
+      var ang=Math.sin(y*.012+t*.5)+Math.cos(x*.01-t*.3);
+      var len=8+agit*8;
+      g.beginPath();g.moveTo(x,y);g.lineTo(x+Math.cos(ang)*len,y+Math.sin(ang)*len);g.stroke();
+    }
+  }
+  function stormLens(){
+    // radar sweep + isobars, tint handled by body[data-alert]
+    var cx=W*.5,cy=H*.5,rad=Math.min(W,H)*.42, sweep=t*.7;
+    var grad=g.createConicGradient?g.createConicGradient(sweep,cx,cy):null;
+    if(grad){grad.addColorStop(0,"rgba(240,64,42,"+(.10+agit*.14)+")");grad.addColorStop(.08,"rgba(240,64,42,0)");grad.addColorStop(1,"rgba(240,64,42,0)");g.fillStyle=grad;g.beginPath();g.arc(cx,cy,rad,0,6.283);g.fill();}
+    g.strokeStyle="rgba(240,64,42,"+(.12+agit*.12)+")";g.lineWidth=1;
+    for(var k=1;k<=3;k++){g.beginPath();g.arc(cx,cy,rad*(k/3.5)+Math.sin(t+k)*3,0,6.283);g.stroke();}
+  }
+  function glitchLens(){
+    // datamosh: horizontal slice tears + chromatic split, intensity ∝ agit — over a "disagreement" band
+    if(Math.random()>.5+ (1-agit)*.4) return;
+    var bands=2+((agit*5)|0);
+    for(var b=0;b<bands;b++){
+      var y=H*(.25+Math.random()*.5), h=2+Math.random()*10*agit, dx=(Math.random()-.5)*40*agit;
+      try{ var img=g.getImageData(W*.28*DPR,y*DPR,W*.44*DPR,h*DPR); g.putImageData(img,W*.28*DPR+dx*DPR,y*DPR); }catch(e){}
+      // chromatic ghosts
+      g.globalCompositeOperation="lighter";
+      g.fillStyle="rgba(240,64,42,"+(.05*agit)+")";g.fillRect(W*.28+dx,y,W*.44,h);
+      g.fillStyle="rgba(53,224,208,"+(.05*agit)+")";g.fillRect(W*.28-dx,y,W*.44,h);
+      g.globalCompositeOperation="source-over";
+    }
+  }
+
+  function frame(){
+    if(!running)return;
+    if(playing) t+=0.016;
+    var trail=0.14+ (lenses.glitch?agit*0.05:0) - (agit*0.02);
+    g.globalCompositeOperation="source-over";
+    g.fillStyle="rgba(4,6,11,"+trail+")";g.fillRect(0,0,W,H);
+
+    scaffold();
+    if(lenses.aurora)auroraLens();
+    if(lenses.fog)fogLens();
+    if(lenses.vectors)vectorLens();
+
+    if(lenses.particles){
+      g.globalCompositeOperation="lighter";
+      var N=Math.round(500+agit*2100), sp=(playing?1:0.05)*(0.5+agit);
+      for(var i=0;i<N;i++){
+        var fxv=Math.sin(py[i]*.012+t*.6+i*.003)*.22+Math.sin(py[i]*.03-t*.4)*.1;
+        pvx[i]+=fxv*.05*sp;pvx[i]+=(W*.5-px[i])*.00018;pvx[i]*=.96;
+        px[i]+=pvx[i]*sp;py[i]+=pvy[i]*sp*(.8+pa[i]*.6);pa[i]+=.0016*(.5+sp);
+        if(py[i]>H*.92||pa[i]>pl[i]||px[i]<W*.2||px[i]>W*.8){spawn(i);continue;}
+        var life=pa[i]/pl[i],col=ramp(life),al=(.5-life*.28)*(.5+agit*.6);
+        g.fillStyle="rgba("+col[0]+","+col[1]+","+col[2]+","+(al<.04?.04:al)+")";
+        g.beginPath();g.arc(px[i],py[i],.8+(1-life)*1.5,0,6.283);g.fill();
+      }
+      g.globalCompositeOperation="source-over";
+    }
+    if(lenses.storm)stormLens();
+    if(lenses.glitch)glitchLens();
+
+    requestAnimationFrame(frame);
+  }
+  if(reduce){ // static composite
+    g.fillStyle="#04060B";g.fillRect(0,0,W,H);scaffold();
+    if(lenses.aurora)auroraLens();
+    g.globalCompositeOperation="lighter";
+    for(var j=0;j<1400;j++){var i2=j%MAX;for(var s=0;s<50;s++){px[i2]+=pvx[i2];py[i2]+=pvy[i2]*(.8+pa[i2]*.6);pa[i2]+=.0016;pvx[i2]+=(W*.5-px[i2])*.00018;pvx[i2]*=.96;if(py[i2]>H*.92||pa[i2]>pl[i2])spawn(i2);}var l2=pa[i2]/pl[i2],c2=ramp(l2);g.fillStyle="rgba("+c2[0]+","+c2[1]+","+c2[2]+","+(.4-l2*.2)+")";g.beginPath();g.arc(px[i2],py[i2],1.1+(1-l2)*1.4,0,6.283);g.fill();}
+    g.globalCompositeOperation="source-over";
+  } else {
+    requestAnimationFrame(frame);
+    if("IntersectionObserver"in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){if(!running){running=true;requestAnimationFrame(frame);}}else running=false;});},{threshold:0});io.observe(chamber);}
+    document.addEventListener("visibilitychange",function(){if(document.hidden)running=false;else if(!running){running=true;requestAnimationFrame(frame);}});
+  }
+
+  /* ── waterfall ── */
+  var wf=document.getElementById("waterfall"),wg=wf.getContext("2d"),ww=0,wh=0;
+  function wfResize(){var r=wf.getBoundingClientRect();ww=r.width;wh=r.height;wf.width=ww*DPR;wf.height=wh*DPR;wg.setTransform(DPR,0,0,DPR,0,0);wg.fillStyle="#000";wg.fillRect(0,0,ww,wh);}
+  wfResize();
+  function hex2rgb(h){return[parseInt(h.substr(1,2),16),parseInt(h.substr(3,2),16),parseInt(h.substr(5,2),16)];}
+  var chRGB=CH.map(function(c){return hex2rgb(c[3]);});
+  function wfTick(){
+    if(reduce)return;
+    // shift left 2px
+    try{var img=wg.getImageData(2*DPR,0,wf.width,wf.height);wg.putImageData(img,0,0);}catch(e){}
+    var cw=2,cellH=wh/21;
+    for(var i=0;i<21;i++){
+      var v=chanState[i].v, c=chRGB[i], on=chanState[i].on?1:.15;
+      wg.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+","+(0.25+v*0.75)*on+")";
+      wg.fillRect(ww-cw,i*cellH,cw,cellH+.5);
+    }
+  }
+
+  /* ── mini constellation ── */
+  var mc=document.getElementById("mini-const"),mg=mc.getContext("2d");
+  function mcDraw(){
+    var r=mc.getBoundingClientRect();mc.width=r.width*DPR;mc.height=r.height*DPR;mg.setTransform(DPR,0,0,DPR,0,0);
+    var w=r.width,h=r.height;mg.fillStyle="#0D1220";mg.fillRect(0,0,w,h);
+    var pts=[];for(var i=0;i<9;i++)pts.push([w*(.12+Math.random()*.76),h*(.15+Math.random()*.7)]);
+    for(var a=0;a<pts.length;a++)for(var b=a+1;b<pts.length;b++){if(Math.random()>.68){var pos=Math.random()>.45;mg.strokeStyle=pos?"rgba(53,224,208,"+(.3+Math.random()*.5)+")":"rgba(240,64,42,"+(.25+Math.random()*.4)+")";mg.lineWidth=Math.random()*1.8+.3;mg.beginPath();mg.moveTo(pts[a][0],pts[a][1]);mg.lineTo(pts[b][0],pts[b][1]);mg.stroke();}}
+    pts.forEach(function(p){mg.fillStyle="#EAF0FF";mg.beginPath();mg.arc(p[0],p[1],2,0,6.283);mg.fill();});
+  }
+  mcDraw();
+
+  /* ── live diagnostics tick ── */
+  function jitter(v,amt){return Math.max(0,Math.min(1,v+(Math.random()-.5)*amt));}
+  function diagTick(){
+    // channel values drift
+    chanState.forEach(function(cs,i){cs.v=jitter(cs.v,.08);document.getElementById("cv"+i).textContent=cs.v.toFixed(2);document.getElementById("cb"+i).style.width=(cs.v*100).toFixed(0)+"%";});
+    // entropy / moran / novelty wander
+    var ent=jitter(parseFloat(document.getElementById("entropy").textContent),.06);
+    document.getElementById("entropy").textContent=ent.toFixed(2);
+    document.getElementById("entropy-bar").style.width=(ent*100).toFixed(0)+"%";
+    document.getElementById("moran").textContent=jitter(parseFloat(document.getElementById("moran").textContent),.05).toFixed(2);
+    var nov=Math.max(2,Math.min(22,(parseFloat(document.getElementById("nov").textContent)||7)+(Math.random()-.5)*3));
+    document.getElementById("nov").textContent=nov.toFixed(0)+"%";
+    frameN=(frameN+1)%1000;document.getElementById("frame").textContent="FRAME_"+pad(frameN);
+    document.getElementById("fr2").textContent=pad(frameN)+" / 120";
+    mcDraw();
+    // occasionally shift alert to show tinting
+    if(Math.random()<.12){ alert=(alert+1)%3; applyAlert(); }
+  }
+  function applyAlert(){
+    body.setAttribute("data-alert",String(alert));
+    var names=["GREEN","AMBER","RED"],cols=["var(--green)","var(--amber)","var(--crimson)"];
+    document.getElementById("alert-txt").textContent=names[alert];
+    document.querySelector("#alert-chip .d").style.background=cols[alert];
+    document.getElementById("alert-txt").style.color=cols[alert];
+    document.getElementById("storm-big").textContent=names[alert];
+    var risk=[0.18,0.44,0.71][alert];
+    document.getElementById("storm-sub").textContent="risk "+risk.toFixed(2)+" · driven by "+["PAR","TSM + bbp","CHL + FLH"][alert];
+    document.getElementById("trend").textContent=["▼ retreating","● stable","▲ growing · 1.2 cell/fr"][alert];
+    document.getElementById("trend").style.color=cols[alert];
+  }
+  applyAlert();
+
+  if(!reduce){ setInterval(function(){wfTick();},120); setInterval(diagTick,1400); }
+  else { diagTick(); }
+
+  /* ── UI wiring ── */
+  var agitEl=document.getElementById("agit"),agitVal=document.getElementById("agit-val");
+  agitEl.addEventListener("input",function(){agit=(+agitEl.value)/100;agitVal.textContent=agitEl.value;});
+
+  document.getElementById("lenses").addEventListener("click",function(e){
+    var b=e.target.closest(".lens");if(!b)return;var k=b.dataset.lens;lenses[k]=!lenses[k];b.setAttribute("aria-pressed",lenses[k]?"true":"false");
+    if(reduce){ /* re-render static */ }
+  });
+  function setLenses(cfg){Object.keys(lenses).forEach(function(k){lenses[k]=!!cfg[k];});document.querySelectorAll(".lens").forEach(function(b){b.setAttribute("aria-pressed",lenses[b.dataset.lens]?"true":"false");});}
+  document.querySelectorAll("[data-preset]").forEach(function(el){el.addEventListener("click",function(){
+    var p=el.dataset.preset;
+    if(p==="storm"){setLenses({particles:1,storm:1,aurora:1,glitch:0,fog:0,vectors:1});agitEl.value=78;}
+    if(p==="chaos"){setLenses({particles:0,glitch:1,fog:1,vectors:0,aurora:0,storm:0});agitEl.value=92;}
+    if(p==="calm"){setLenses({particles:1,glitch:0,fog:0,vectors:0,aurora:0,storm:0});agitEl.value=12;}
+    agit=(+agitEl.value)/100;agitVal.textContent=agitEl.value;
+  });});
+
+  document.getElementById("sources").addEventListener("click",function(e){
+    var b=e.target.closest(".tile");if(!b)return;source=b.dataset.src;
+    document.querySelectorAll("#sources .tile").forEach(function(t){t.setAttribute("aria-pressed",t===b?"true":"false");});
+    document.getElementById("prov").textContent=provShort[source];
+    document.getElementById("prov2").textContent=provLong[source];
+    setNarr();
+  });
+
+  var playBtn=document.getElementById("play");
+  playBtn.addEventListener("click",function(){playing=!playing;playBtn.textContent=playing?"❚❚":"►";});
+
+  window.addEventListener("resize",function(){wfResize();});
+})();
+</script>
