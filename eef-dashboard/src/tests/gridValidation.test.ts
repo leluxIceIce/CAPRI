@@ -1,4 +1,5 @@
-import { generateDataCube, parseCSVToCubes } from "../telemetryGenerator";
+import { describe, it } from "vitest";
+import { generateDataCube } from "../telemetryGenerator";
 import { TelemetryStreamConfig, VariableName } from "../types";
 
 // Simple assertion helpers
@@ -181,58 +182,15 @@ function testV1_5_GridDimensionsMatchData(): void {
   console.log("✓ Test V.1.5 passed");
 }
 
-// Main test runner
-async function runAllTests(): Promise<void> {
-  console.log("=".repeat(60));
-  console.log("Grid Validation Test Suite");
-  console.log("=".repeat(60));
-  console.log();
-
-  const tests = [
-    testV1_1_Grid20x20Correctness,
-    testV1_2_Grid100x100Correctness,
-    testV1_3_Grid500x500Correctness,
-    testV1_4_VariableConsistencyAcrossSizes,
-    testV1_5_GridDimensionsMatchData
-  ];
-
-  let passedCount = 0;
-  let failedCount = 0;
-  const failedTests: string[] = [];
-
-  for (const test of tests) {
-    try {
-      test();
-      passedCount++;
-    } catch (error) {
-      failedCount++;
-      const testName = test.name;
-      failedTests.push(testName);
-      console.error(`✗ ${testName} failed: ${error}`);
-    }
-    console.log();
-  }
-
-  console.log("=".repeat(60));
-  console.log(`Test Results: ${passedCount} passed, ${failedCount} failed`);
-  console.log("=".repeat(60));
-
-  if (failedCount > 0) {
-    console.error(`\nFailed tests: ${failedTests.join(", ")}`);
-    process.exit(1);
-  } else {
-    console.log("\nAll tests passed!");
-    process.exit(0);
-  }
-}
-
-// Run tests if this is the main module
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
-if (isMainModule) {
-  runAllTests().catch((error) => {
-    console.error("Fatal error running tests:", error);
-    process.exit(1);
-  });
-}
+// Vitest suite — same five validations, now runnable via `npm test` and CI.
+// The 500×500 cases generate 250k cells × 21 channels, so the per-test timeout
+// is raised in vitest.config.ts rather than trimming the coverage.
+describe("Grid validation (V.1)", () => {
+  it("V.1.1 — 20×20 grid correctness", () => testV1_1_Grid20x20Correctness());
+  it("V.1.2 — 100×100 grid correctness", () => testV1_2_Grid100x100Correctness());
+  it("V.1.3 — 500×500 grid correctness", () => testV1_3_Grid500x500Correctness());
+  it("V.1.4 — variable consistency across sizes", () => testV1_4_VariableConsistencyAcrossSizes());
+  it("V.1.5 — grid dimensions match generated data", () => testV1_5_GridDimensionsMatchData());
+});
 
 export { testV1_1_Grid20x20Correctness, testV1_2_Grid100x100Correctness, testV1_3_Grid500x500Correctness, testV1_4_VariableConsistencyAcrossSizes, testV1_5_GridDimensionsMatchData };

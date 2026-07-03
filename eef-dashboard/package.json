@@ -14,6 +14,8 @@
     "serve:no-build": "npx http-server dist -p 8000 --cors",
     "clean": "rm -rf dist server.js out",
     "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "electron:preview": "npm run build && electron .",
     "electron:build": "npm run build && electron-builder --mac --arm64",
     "tauri": "tauri",
@@ -96,6 +98,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "vitest": "^4.1.9"
   }
 }
