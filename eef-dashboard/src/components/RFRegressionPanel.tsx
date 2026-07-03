@@ -1,15 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { Sigma, Play, AlertTriangle } from "lucide-react";
-import { DataCube, VariableName, VARIABLE_METADATA } from "../types";
+import { DataCube, VariableName, VARIABLE_METADATA } from "@capri/core/types";
 import {
   ALL_VARIABLES,
   buildSamples,
   extractColumn,
   subsampleIndices,
-} from "../utils/mlData";
-import { trainPLSWithCV } from "../utils/plsRegression";
+} from "@capri/core/utils/mlData";
+import { trainPLSWithCV } from "@capri/core/utils/plsRegression";
 import { CellTooltip, type HoverCell } from "../utils/cellTooltip";
-import { loadCached, saveCached } from "../utils/mlCache";
+import { loadCached, saveCached } from "@capri/core/utils/mlCache";
 
 // NOTE: the export name is kept as RFRegressionPanel for import stability, but the
 // model is now PLS regression (see below) — random forest was replaced because its

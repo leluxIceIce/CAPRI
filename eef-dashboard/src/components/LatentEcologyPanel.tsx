@@ -1,10 +1,10 @@
 import React, { useMemo } from "react";
-import { DataCube } from "../types";
+import { DataCube } from "@capri/core/types";
 import {
   LatentEcologyState,
   exploreLatentEcology,
   summarizeLatentEcology,
-} from "../gate2_understanding_roots/latentEcologyExplorer";
+} from "@capri/core/gate2_understanding_roots/latentEcologyExplorer";
 
 interface LatentEcologyPanelProps {
   activeDataCube: DataCube;

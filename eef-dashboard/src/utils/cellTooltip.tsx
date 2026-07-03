@@ -1,5 +1,5 @@
 import React from "react";
-import { DataCube } from "../types";
+import { DataCube } from "@capri/core/types";
 
 // Hover state shared by the UMAP and RF scatter plots. (px, py) are in the
 // plots' common 0..200 SVG viewBox space so the tooltip can be positioned as a

@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    // Deliberately NO "DOM" lib: this package must stay framework- and
+    // browser-API-free. Anything that needs localStorage, three, react or
+    // Tauri belongs in a shell (eef-dashboard / apps/*), not here.
+    "lib": ["ES2022"],
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src"]
+}

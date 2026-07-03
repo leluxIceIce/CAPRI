@@ -25,17 +25,17 @@ import {
   SpatialOverlayState,
   RelationshipGraphState,
   ConfidenceOverlayState
-} from "./types";
+} from "@capri/core/types";
 import {
   generateDataCube,
   evaluateScientificDiagnostics,
   ensureCubeComplete,
   type RawCSVData
-} from "./telemetryGenerator";
-import { computeRootAnalysis, type RootAnalysis } from "./utils/eigenmath";
-import { computeSpatialTensor, getSpatialChannelGrid, spatialChannelIndex } from "./utils/spatialTensor";
-import { computeRelationshipTensor } from "./utils/relationshipTensor";
-import { summarize as summarizeBloom, type FishermanSummary } from "./utils/bloomDetector";
+} from "@capri/core/telemetryGenerator";
+import { computeRootAnalysis, type RootAnalysis } from "@capri/core/utils/eigenmath";
+import { computeSpatialTensor, getSpatialChannelGrid, spatialChannelIndex } from "@capri/core/utils/spatialTensor";
+import { computeRelationshipTensor } from "@capri/core/utils/relationshipTensor";
+import { summarize as summarizeBloom, type FishermanSummary } from "@capri/core/utils/bloomDetector";
 import { ThreeViewport, type ThreeViewportHandle, type PixelClickEvent } from "./components/ThreeViewport";
 import { ViewportErrorBoundary } from "./components/ViewportErrorBoundary";
 import { PanelErrorBoundary } from "./components/PanelErrorBoundary";
@@ -52,8 +52,8 @@ const RFRegressionPanel = lazy(() => import("./components/RFRegressionPanel").th
 const EmbeddersPanel = lazy(() => import("./components/EmbeddersPanel").then((m) => ({ default: m.EmbeddersPanel })));
 import { CSVInspectorPanel } from "./components/CSVInspectorPanel";
 import { UpdateNotifier } from "./components/UpdateNotifier";
-import { type PixelInspectorState } from "./gate1_pixel_inspector/types";
-import { exploreLatentEcology, type LatentEcologyState } from "./gate2_understanding_roots/latentEcologyExplorer";
+import { type PixelInspectorState } from "@capri/core/gate1_pixel_inspector/types";
+import { exploreLatentEcology, type LatentEcologyState } from "@capri/core/gate2_understanding_roots/latentEcologyExplorer";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 
 // Detects the packaged Electron shell so the header can clear the macOS traffic-light buttons
