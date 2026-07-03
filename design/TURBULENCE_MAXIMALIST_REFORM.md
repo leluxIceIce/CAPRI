@@ -13,9 +13,9 @@ Sounding*) is the **calm** instrument: one monument, restraint, presentation-gra
 gentle. This is its opposite twin: **TURBULENCE** — a dense, layered, luminous,
 slightly-unhinged **observatory / war-room** where many artsy views of the same
 data are alive at once and you compose your own visual madness on top of rigorous
-numbers. Same scientific engine underneath. Two temperaments. You can ship one,
-the other, or both as switchable "temperaments" of one codebase (recommendation in
-§9).
+numbers. Same scientific engine underneath. Two temperaments — and **the decision
+from review is to ship them as two separate apps over one shared scientific core**
+(§9), browser first.
 
 Nothing here is built yet. This is the reform to react to before we build.
 
@@ -49,6 +49,12 @@ exact science and gains a maximalist treatment. **Zero features removed.**
 | Per-variable stats (min / max / mean / std) | ✅ | Live in the readout gutter + on each colorbar's ticks |
 | Custom colours (base + peak), persisted | ✅ | Full per-channel palette control, kept |
 | Per-variable scientific colormaps (Jet/Magma/Viridis/Turbo/Hot/Ocean/Rainbow/Seismic) | ✅ | Kept as selectable ramps, now GPU shaders |
+
+> **Featured channels** *(your pick — CHL · aphy · PAR · KD490 · OA11).* The Spectral
+> Bank pins these five to the top with a ★ and an accent rail, and the spectral
+> waterfall (§3.13) renders them brighter — a saved "focus set" so the channels you
+> care about lead without hiding the other sixteen. Fully re-pickable; nothing is
+> demoted permanently.
 
 ### 1.3 The 3D field — *the central "Chamber"*
 | Function (today) | Kept? | Treatment |
@@ -209,14 +215,18 @@ so structure becomes visible *flow lines*. *Binds to:* spatial-structure engine.
 confidence thickens into haze you literally can't see through. *Binds to:* the
 confidence grid. *Reads:* "trust the clear water, distrust the murk."
 
-**3.4 · Disagreement datamosh (the signature move).** `CHL_disagreement` drives
-compression-artifact / pixel-sort **glitch**: exactly where the NN and OC4ME
-algorithms disagree, the image *tears and smears*. *Binds to:* the QA channel.
-*Reads:* unreliable Case-2 water is visually unstable — you can't *not* notice it.
+**3.4 · Disagreement datamosh** *(default-OFF · "wild" tier · dialed back per review).*
+`CHL_disagreement` drives a **restrained** slice-tear where the NN and OC4ME
+algorithms disagree. The original full pixel-sort read as *too far* and, done via
+per-frame GPU read-back, it *lagged hard* — so the shipping design makes it an
+opt-in "wild" lens using cheap canvas-to-canvas slice offsets (no `getImageData`),
+subtle by default. *Binds to:* the QA channel. *Reads:* unreliable Case-2 water is
+visually unstable — without wrecking the frame-rate or the composure of the plate.
 
-**3.5 · Spectral chromatic aberration.** RGB separation proportional to variance
-across the 12 raw OLCI bands — high spectral spread splits the image into colour
-fringes. *Binds to:* raw-band stack. *Reads:* spectrally complex water shimmers apart.
+**3.5 · Spectral chromatic split** *(default-OFF · "wild" tier).* A cheap additive
+colour-fringe on the central band, offset ∝ spectral variance across the raw OLCI
+bands. Same lesson as 3.4: implemented with self-`drawImage`, never pixel read-back.
+*Binds to:* raw-band stack. *Reads:* spectrally complex water shimmers apart.
 
 **3.6 · The Probe (core sample).** Click any cell → a glowing core drops through the
 entire 21-channel stack; a dossier shows values, z-scores, PCA position, and lights
@@ -342,25 +352,40 @@ Analysis and art stay coupled; the numbers never leave.
 
 ---
 
-## 9. Two apps, one engine — the recommendation
+## 9. Two apps, one engine — **decided: two separate temperaments**
 - **Deep Field / The Sounding** = calm, focused, presentation, newcomer-friendly.
 - **TURBULENCE** = dense, alive, expert, "feel it," exhibition-grade.
-- **Recommendation:** build them as **two temperaments of one codebase**, switched by
-  the AGITATION dial (0 = Deep Field, up = TURBULENCE) over the *same* shared
-  scientific engine and the *same* function set. One app, two moods, zero forks of
-  the science. If you'd rather, they can be two separate shells sharing a core —
-  but the dial approach is less to maintain and lets a user slide between calm and
-  storm mid-session.
+- **Decision (your call):** ship them as **two separate apps** — two distinct shells,
+  each with its own identity, over one **shared scientific core** (the same engine,
+  the same §1 function set, extracted into a library both consume). This keeps each
+  experience uncompromised (no dial trying to be both at once) at the cost of a bit
+  more shell code. TURBULENCE still keeps its internal AGITATION dial + SOBER hold as
+  *in-app* range — it just isn't the seam between the two products.
+- **Platform (your call): browser showpiece first.** Web is the primary target; the
+  Tauri desktop packaging follows once the web build lands.
 
 ---
 
-## 10. What I'd want your steer on (so we can "go over it")
-1. **Temperament:** one dial-driven app (recommended), or two distinct apps?
-2. **Wildness ceiling:** how far up does AGITATION go by default — tasteful-dense, or
-   full glitch-storm?
-3. **Top lenses:** which 3–4 of the §3 catalog excite you most? I'll deepen those first.
-4. **The glitch idea (§3.4/§3.5):** love it or too much? (It's the boldest call here.)
-5. **Platform priority:** browser showpiece, or the Tauri desktop build first?
+## 10. Decisions locked from review — and what's next
+Resolved with you:
+1. **Temperament:** ✅ two separate apps over a shared core (not one dial-driven app).
+2. **Wildness ceiling:** ✅ leave default AGITATION as-is (~62); it's an in-app range,
+   not a headline knob.
+3. **Top lenses to build first:** ✅ **Storm radar** (you liked it) leads, with the
+   full lens set added — advection particles, vector field, aurora, long-exposure
+   trails, novelty shatter, uncertainty fog, correlation moiré, plus the two "wild"
+   opt-ins (datamosh, chromatic split).
+4. **The glitch idea (§3.4/§3.5):** ✅ cool but *too far* + *laggy* → demoted to
+   default-OFF "wild" lenses, re-implemented cheap (no per-frame GPU read-back).
+5. **Platform:** ✅ browser first.
+6. **Featured channels:** ✅ CHL · aphy · PAR · KD490 · OA11 pinned + waterfall-boosted.
+
+**Next steps I'd propose:** (a) extract the shared scientific core from `eef-dashboard`
+into a library both shells import; (b) stand up the TURBULENCE web shell with the
+Storm radar + particle/vector/aurora/trails/shatter lenses on real DataCubes; (c)
+wire the Spectral Bank to the live 21-channel stats with your five featured; (d) leave
+datamosh/chroma as off-by-default toggles. Say the word and I'll turn this into an
+implementation plan against the real codebase.
 
 A companion interactive demo of this console (dense + functional, so you can *see*
 the functions living inside the art) ships alongside this doc — open
