@@ -1,0 +1,49 @@
+name: Web CI
+
+# M0 safety net (design/TURBULENCE_IMPLEMENTATION_PLAN.md): typecheck, test and
+# build the web app on every PR and on main, so the M1 core extraction (and all
+# later work) refactors against a green wall instead of hope. The macOS .dmg
+# packaging stays in macos-beta.yml — this workflow is Linux-only and fast.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: eef-dashboard
+    env:
+      # electron is a devDependency for the legacy desktop shell; its ~100MB
+      # binary download is useless for typecheck/test/build, so skip it.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: eef-dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (tsc --noEmit)
+        run: npm run lint
+
+      - name: Unit tests (vitest)
+        run: npm test
+
+      - name: Production build (vite)
+        run: npm run build
