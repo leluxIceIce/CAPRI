@@ -87,6 +87,27 @@ export function fieldColour(t: number): RGB {
 export function vitalityColour(t: number): RGB {
   return lerpRamp(VIT_RAMP, t);
 }
+// Diverging map for the difference field: retreat (−) → cool, 0 → dark, grow (+) → warm.
+export function divergingColour(s: number): RGB {
+  const t = s < -1 ? -1 : s > 1 ? 1 : s;
+  if (t < 0) {
+    const k = -t; // 0..1 toward cool
+    return [(20 + 10 * (1 - k)) | 0, (30 + 60 * (1 - k)) | 0, (48 + 190 * k) | 0];
+  }
+  return [(48 + 200 * t) | 0, (34 + 30 * (1 - t)) | 0, (30 + 20 * (1 - t)) | 0];
+}
+
+export function drawReticle(ctx: CanvasRenderingContext2D, sx: number, sy: number, rr: number): void {
+  ctx.strokeStyle = "rgba(224,179,76,0.95)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(sx, sy, rr, 0, Math.PI * 2);
+  ctx.moveTo(sx - rr - 4, sy); ctx.lineTo(sx - rr + 2, sy);
+  ctx.moveTo(sx + rr - 2, sy); ctx.lineTo(sx + rr + 4, sy);
+  ctx.moveTo(sx, sy - rr - 4); ctx.lineTo(sx, sy - rr + 2);
+  ctx.moveTo(sx, sy + rr - 2); ctx.lineTo(sx, sy + rr + 4);
+  ctx.stroke();
+}
 
 /**
  * Draw the Signature Field for a real DataCube. Pure w.r.t. the cube — all state
@@ -102,6 +123,7 @@ export function drawSignatureField(
   params: SigParams,
   phase: number,
   selection?: Selection,
+  diff?: number[][] | null,
 ): void {
   const N = cube.gridSize;
   const field = cube.channels[params.fieldChannel] ?? cube.channels.CHL;
@@ -110,6 +132,37 @@ export function drawSignatureField(
   const flhStats = cube.stats.FLH;
 
   ctx.clearRect(0, 0, w, h);
+
+  // Difference mode — render the diverging change field of the active channel
+  // between the two pinned frames, and stop. Spectra/contours are per-frame, so
+  // they're suppressed here; the picture is purely "what changed, and where".
+  if (diff && diff.length) {
+    const dn = diff.length;
+    let m = 0;
+    for (const row of diff) for (const v of row) { const a = Math.abs(v); if (a > m) m = a; }
+    const scale = m > 1e-9 ? m : 1;
+    const off = document.createElement("canvas");
+    off.width = dn; off.height = dn;
+    const octx = off.getContext("2d");
+    if (octx) {
+      const img = octx.createImageData(dn, dn);
+      for (let r = 0; r < dn; r++) {
+        for (let c = 0; c < dn; c++) {
+          const [cr, cg, cb] = divergingColour(diff[r][c] / scale);
+          const o = (r * dn + c) * 4;
+          img.data[o] = cr; img.data[o + 1] = cg; img.data[o + 2] = cb; img.data[o + 3] = 255;
+        }
+      }
+      octx.putImageData(img, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(off, 0, 0, dn, dn, 0, 0, w, h);
+    }
+    if (selection) {
+      const cwd = w / (dn - 1), chd = h / (dn - 1);
+      drawReticle(ctx, selection.col * cwd, selection.row * chd, Math.max(7, Math.min(cwd, chd)));
+    }
+    return;
+  }
 
   // 1 · concentration colourmap of the active field channel — rendered at grid
   //     resolution then bilinearly upscaled so it reads as a continuous surface.
@@ -202,17 +255,6 @@ export function drawSignatureField(
 
   // 4 · selection reticle — the probed cell, lit for linked selection.
   if (selection) {
-    const sx = selection.col * cw;
-    const sy = selection.row * ch;
-    const rr = Math.max(7, Math.min(cw, ch));
-    ctx.strokeStyle = "rgba(224,179,76,0.95)";
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.arc(sx, sy, rr, 0, Math.PI * 2);
-    ctx.moveTo(sx - rr - 4, sy); ctx.lineTo(sx - rr + 2, sy);
-    ctx.moveTo(sx + rr - 2, sy); ctx.lineTo(sx + rr + 4, sy);
-    ctx.moveTo(sx, sy - rr - 4); ctx.lineTo(sx, sy - rr + 2);
-    ctx.moveTo(sx, sy + rr - 2); ctx.lineTo(sx, sy + rr + 4);
-    ctx.stroke();
+    drawReticle(ctx, selection.col * cw, selection.row * ch, Math.max(7, Math.min(cw, ch)));
   }
 }
