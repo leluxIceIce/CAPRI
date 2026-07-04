@@ -1,9 +1,9 @@
 // Signature Field — the pure, testable core of the instrument.
 // Translation (see design/TRANSLATION_PRINCIPLES.md): the Rosetta water-vapour
 // plate pinned each raw spectrum over the nucleus beside a concentration map +
-// emission contours. Here we do the ocean-colour equivalent — a CHL concentration
-// colourmap + iso-contours, with each cell's real OLCI reflectance spectrum drawn
-// *in place*, the 681 nm fluorescence band flagged. Signal-in-place, not a heatmap.
+// emission contours. Here we do the ocean-colour equivalent — a concentration
+// colourmap of the active field channel + iso-contours, with each cell's real OLCI
+// reflectance spectrum drawn *in place*, the 681 nm fluorescence band flagged.
 
 import type { DataCube, VariableName } from "@capri/core";
 
@@ -43,15 +43,24 @@ export function norm(v: number, min: number, max: number): number {
 }
 
 export interface SigParams {
+  /** Which channel colours the concentration field (default CHL). Driven by the Dock layer stack. */
+  fieldChannel: VariableName;
   /** Sample the in-place spectra every N cells (larger = sparser). */
   spectraStep: number;
-  /** Number of iso-contour levels drawn over the CHL field. */
+  /** Number of iso-contour levels drawn over the field. */
   contourLevels: number;
-  /** Colourmap contrast gain applied to the normalised CHL value. */
+  /** Colourmap contrast gain applied to the normalised value. */
   gain: number;
 }
 
-export const DEFAULT_SIG_PARAMS: SigParams = { spectraStep: 4, contourLevels: 5, gain: 1 };
+export const DEFAULT_SIG_PARAMS: SigParams = {
+  fieldChannel: "CHL",
+  spectraStep: 4,
+  contourLevels: 5,
+  gain: 1,
+};
+
+export type Selection = { row: number; col: number } | null;
 
 // ── colour ramps ────────────────────────────────────────────────────────────
 type RGB = [number, number, number];
@@ -72,7 +81,7 @@ function lerpRamp(ramp: RGB[], t: number): RGB {
     (a[2] + (b[2] - a[2]) * f) | 0,
   ];
 }
-export function chlColour(t: number): RGB {
+export function fieldColour(t: number): RGB {
   return lerpRamp(CHL_RAMP, t);
 }
 export function vitalityColour(t: number): RGB {
@@ -83,6 +92,7 @@ export function vitalityColour(t: number): RGB {
  * Draw the Signature Field for a real DataCube. Pure w.r.t. the cube — all state
  * comes from the arguments; `phase` (seconds) drives only subtle, information-free
  * micro-motion (a breathing shimmer on the contours) and is frozen for reduced-motion.
+ * `selection`, when set, marks the probed cell with a reticle.
  */
 export function drawSignatureField(
   ctx: CanvasRenderingContext2D,
@@ -91,17 +101,18 @@ export function drawSignatureField(
   h: number,
   params: SigParams,
   phase: number,
+  selection?: Selection,
 ): void {
   const N = cube.gridSize;
-  const chl = cube.channels.CHL;
+  const field = cube.channels[params.fieldChannel] ?? cube.channels.CHL;
+  const fstats = cube.stats[params.fieldChannel] ?? cube.stats.CHL;
   const flh = cube.channels.FLH;
-  const chlStats = cube.stats.CHL;
   const flhStats = cube.stats.FLH;
 
   ctx.clearRect(0, 0, w, h);
 
-  // 1 · CHL concentration colourmap — rendered at grid resolution into an offscreen
-  //     buffer, then bilinearly upscaled so the field reads as a continuous surface.
+  // 1 · concentration colourmap of the active field channel — rendered at grid
+  //     resolution then bilinearly upscaled so it reads as a continuous surface.
   const off = document.createElement("canvas");
   off.width = N;
   off.height = N;
@@ -110,9 +121,9 @@ export function drawSignatureField(
     const img = octx.createImageData(N, N);
     for (let r = 0; r < N; r++) {
       for (let c = 0; c < N; c++) {
-        let t = norm(chl[r][c], chlStats.min, chlStats.max);
+        let t = norm(field[r][c], fstats.min, fstats.max);
         t = Math.pow(t, 1 / Math.max(0.2, params.gain));
-        const [cr, cg, cb] = chlColour(t);
+        const [cr, cg, cb] = fieldColour(t);
         const o = (r * N + c) * 4;
         img.data[o] = cr; img.data[o + 1] = cg; img.data[o + 2] = cb; img.data[o + 3] = 255;
       }
@@ -125,7 +136,7 @@ export function drawSignatureField(
   const cw = w / (N - 1);
   const ch = h / (N - 1);
 
-  // 2 · iso-contours of the CHL field (marching squares on the normalised grid).
+  // 2 · iso-contours of the field (marching squares on the normalised grid).
   ctx.lineWidth = 1;
   for (let li = 1; li <= params.contourLevels; li++) {
     const level = li / (params.contourLevels + 1) + Math.sin(phase * 0.6 + li) * 0.006;
@@ -133,10 +144,10 @@ export function drawSignatureField(
     ctx.beginPath();
     for (let r = 0; r < N - 1; r++) {
       for (let c = 0; c < N - 1; c++) {
-        const v00 = norm(chl[r][c], chlStats.min, chlStats.max);
-        const v10 = norm(chl[r][c + 1], chlStats.min, chlStats.max);
-        const v01 = norm(chl[r + 1][c], chlStats.min, chlStats.max);
-        const v11 = norm(chl[r + 1][c + 1], chlStats.min, chlStats.max);
+        const v00 = norm(field[r][c], fstats.min, fstats.max);
+        const v10 = norm(field[r][c + 1], fstats.min, fstats.max);
+        const v01 = norm(field[r + 1][c], fstats.min, fstats.max);
+        const v11 = norm(field[r + 1][c + 1], fstats.min, fstats.max);
         const x0 = c * cw, y0 = r * ch, x1 = (c + 1) * cw, y1 = (r + 1) * ch;
         const pts: Array<[number, number]> = [];
         const edge = (a: number, b: number, ax: number, ay: number, bx: number, by: number) => {
@@ -180,7 +191,6 @@ export function drawSignatureField(
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
       }
       ctx.stroke();
-      // fluorescence tick (OA10 · 681 nm)
       if (FLUOR_BAND_INDEX >= 0) {
         const fx = cx - boxW / 2 + (FLUOR_BAND_INDEX / (spec.length - 1)) * boxW;
         const fy = cy + boxH / 2 - norm(spec[FLUOR_BAND_INDEX], sMin, sMax) * boxH;
@@ -188,5 +198,21 @@ export function drawSignatureField(
         ctx.fillRect(fx - 0.8, fy - 2, 1.6, 4);
       }
     }
+  }
+
+  // 4 · selection reticle — the probed cell, lit for linked selection.
+  if (selection) {
+    const sx = selection.col * cw;
+    const sy = selection.row * ch;
+    const rr = Math.max(7, Math.min(cw, ch));
+    ctx.strokeStyle = "rgba(224,179,76,0.95)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(sx, sy, rr, 0, Math.PI * 2);
+    ctx.moveTo(sx - rr - 4, sy); ctx.lineTo(sx - rr + 2, sy);
+    ctx.moveTo(sx + rr - 2, sy); ctx.lineTo(sx + rr + 4, sy);
+    ctx.moveTo(sx, sy - rr - 4); ctx.lineTo(sx, sy - rr + 2);
+    ctx.moveTo(sx, sy + rr - 2); ctx.lineTo(sx, sy + rr + 4);
+    ctx.stroke();
   }
 }
