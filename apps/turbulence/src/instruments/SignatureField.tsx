@@ -1,23 +1,29 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import type { DataCube } from "@capri/core";
-import { drawSignatureField, type SigParams } from "./signatureField";
+import { drawSignatureField, type SigParams, type Selection } from "./signatureField";
+import { pickCell } from "../lib/probe";
 
 interface Props {
   cube: DataCube;
   params: SigParams;
+  selection: Selection;
   paused: boolean;
+  onPick: (cell: { row: number; col: number }) => void;
 }
 
-// Canvas host for the Signature Field instrument. Keeps the latest cube/params in
-// refs so the animation loop reads current values without re-subscribing; the loop
-// exists only for the subtle contour shimmer (frozen when paused / reduced-motion).
-export function SignatureField({ cube, params, paused }: Props) {
+// Canvas host for the Signature Field instrument. Keeps the latest cube/params/
+// selection in refs so the animation loop reads current values without
+// re-subscribing; the loop exists only for the subtle contour shimmer (frozen when
+// paused / reduced-motion). Clicking maps to a grid cell and raises onPick.
+export function SignatureField({ cube, params, selection, paused, onPick }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cubeRef = useRef(cube);
   const paramsRef = useRef(params);
+  const selRef = useRef(selection);
   cubeRef.current = cube;
   paramsRef.current = params;
+  selRef.current = selection;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -47,14 +53,10 @@ export function SignatureField({ cube, params, paused }: Props) {
     const frame = () => {
       if (!running) return;
       const phase = reduce ? 0 : (performance.now() - t0) / 1000;
-      drawSignatureField(ctx, cubeRef.current, w, h, paramsRef.current, phase);
+      drawSignatureField(ctx, cubeRef.current, w, h, paramsRef.current, phase, selRef.current);
       if (!reduce && !paused) raf = requestAnimationFrame(frame);
     };
-    // Always draw at least once; only keep looping when live.
     frame();
-    if (reduce || paused) {
-      // single static frame already drawn
-    }
 
     return () => {
       running = false;
@@ -63,7 +65,7 @@ export function SignatureField({ cube, params, paused }: Props) {
     };
   }, [paused]);
 
-  // Redraw immediately whenever a new cube or params arrive (covers the paused case).
+  // Redraw immediately whenever a new cube / params / selection arrive.
   useEffect(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
@@ -71,12 +73,21 @@ export function SignatureField({ cube, params, paused }: Props) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const r = wrap.getBoundingClientRect();
-    drawSignatureField(ctx, cube, r.width, r.height, params, 0);
-  }, [cube, params]);
+    drawSignatureField(ctx, cube, r.width, r.height, params, 0, selection);
+  }, [cube, params, selection]);
+
+  const handleClick = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const r = canvas.getBoundingClientRect();
+    const nx = (e.clientX - r.left) / r.width;
+    const ny = (e.clientY - r.top) / r.height;
+    onPick(pickCell(nx, ny, cube.gridSize));
+  };
 
   return (
     <div ref={wrapRef} className="inst-canvas-wrap">
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} onClick={handleClick} />
     </div>
   );
 }

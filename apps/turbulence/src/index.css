@@ -15,6 +15,7 @@ input[type=range]{accent-color:var(--sel);}
 h3,h4{font-weight:600;}
 
 .app{display:grid;grid-template-rows:40px 1fr 46px;height:100vh;}
+.app-m3{grid-template-rows:40px 1fr 168px;}
 
 /* command bar */
 .cmd{display:flex;align-items:center;gap:14px;padding:0 12px;background:linear-gradient(180deg,var(--p2),var(--p1));border-bottom:1px solid var(--edge);}
@@ -78,8 +79,27 @@ h3,h4{font-weight:600;}
 .stat span:last-child{font-size:10px;color:var(--ink);}
 .note{font-size:9px;color:var(--ink3);line-height:1.55;margin-top:10px;}
 
+/* inspector faces */
+.faces{display:flex;border-bottom:1px solid var(--edge);}
+.faces button{flex:1;background:transparent;border:0;border-bottom:2px solid transparent;color:var(--ink3);font-size:9px;padding:8px 0;letter-spacing:.08em;text-transform:uppercase;}
+.faces button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--sel);}
+.zscore{margin-left:5px;font-size:8.5px;}
+
+/* bottom band: dock (layer stack) + timeline */
+.bottom{display:grid;grid-template-columns:1fr 340px;border-top:1px solid var(--edge);background:var(--p0);min-height:0;}
+.dock{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--edge);}
+.dock-body{flex:1;overflow-y:auto;padding:6px 8px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px 12px;align-content:start;}
+.layer{display:grid;grid-template-columns:11px 9px 1fr auto;gap:6px;align-items:center;padding:3px 5px;border-radius:4px;cursor:grab;border:1px solid transparent;}
+.layer:hover{background:rgba(255,255,255,.03);}
+.layer.active{border-color:var(--sel);background:rgba(224,179,76,.08);}
+.layer .grip{color:var(--ink4);font-size:8px;}
+.layer .sw{width:9px;height:9px;border-radius:2px;}
+.layer .nm{font-size:10px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.layer .nm small{color:var(--ink3);font-size:8px;margin-left:2px;}
+.layer .lv{font-size:9px;color:var(--ink3);}
+
 /* timeline */
-.timeline{display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--p0);border-top:1px solid var(--edge);}
+.timeline{display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--p0);}
 .tbtn{width:30px;height:24px;background:var(--p2);border:1px solid var(--edge2);border-radius:4px;color:var(--ink);font-size:9px;}
 .scrub{flex:1;accent-color:var(--cyan);}
 .prov{font-size:8.5px;color:var(--ink2);}
