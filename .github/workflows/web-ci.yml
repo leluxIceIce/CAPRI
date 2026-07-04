@@ -1,9 +1,11 @@
 name: Web CI
 
-# M0 safety net (design/TURBULENCE_IMPLEMENTATION_PLAN.md): typecheck, test and
-# build the web app on every PR and on main, so the M1 core extraction (and all
-# later work) refactors against a green wall instead of hope. The macOS .dmg
-# packaging stays in macos-beta.yml — this workflow is Linux-only and fast.
+# Safety net (design/TURBULENCE_IMPLEMENTATION_PLAN.md): typecheck, test and build
+# every web app on every PR and on main, so refactors land against a green wall.
+# The macOS .dmg packaging stays in macos-beta.yml — this workflow is Linux-only.
+#
+# Matrix over each standalone web app (they keep their own lockfile / npm ci, the
+# M1 "standalone sibling" pattern; all consume packages/core via a path alias).
 
 on:
   pull_request:
@@ -20,12 +22,18 @@ concurrency:
 jobs:
   web:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - eef-dashboard   # legacy dashboard → the "clean room" fallback shell
+          - apps/turbulence # the platform shell (M2+)
     defaults:
       run:
-        working-directory: eef-dashboard
+        working-directory: ${{ matrix.app }}
     env:
-      # electron is a devDependency for the legacy desktop shell; its ~100MB
-      # binary download is useless for typecheck/test/build, so skip it.
+      # electron (eef-dashboard devDep) ships a ~100MB binary that's useless for
+      # typecheck/test/build; skipping it is a no-op for apps that don't use it.
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +42,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: eef-dashboard/package-lock.json
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
 
       - name: Install dependencies
         run: npm ci
