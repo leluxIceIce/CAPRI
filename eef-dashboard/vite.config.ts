@@ -15,11 +15,18 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        // Shared scientific engine (M1) — consumed as TypeScript source from
+        // the sibling package; keeps eef-dashboard's install fully standalone.
+        '@capri/core': path.resolve(__dirname, '../packages/core/src'),
       },
     },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      fs: {
+        // Allow the dev server to serve the sibling @capri/core sources.
+        allow: [path.resolve(__dirname, '..')],
+      },
     },
     preview: {
       port: 4173,

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import type { RawCSVData } from "../telemetryGenerator";
+import type { RawCSVData } from "@capri/core/telemetryGenerator";
 
 interface CSVInspectorPanelProps {
   raw: RawCSVData;

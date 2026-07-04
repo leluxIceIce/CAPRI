@@ -1,0 +1,13 @@
+{
+  "name": "@capri/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CAPRI's framework-free scientific engine: the 21-channel DataCube pipeline, spatial/relationship tensors, PCA/k-means, PLS+VIP, GAIA bloom detection, pixel inspection, latent ecology, and source adapters. No React, no Three.js, no DOM, no Tauri — consumed as TypeScript source by both app shells via path alias (see eef-dashboard/tsconfig.json).",
+  "license": "Apache-2.0",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  }
+}

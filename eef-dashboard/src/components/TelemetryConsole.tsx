@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Play, Pause, RefreshCw, Upload, FileSpreadsheet, Settings, Sliders, Zap, Database } from "lucide-react";
-import { TelemetryStreamConfig, VariableName, VARIABLE_METADATA, StreamMode, DataCube } from "../types";
-import type { FishermanSummary } from "../utils/bloomDetector";
-import { parseCSVToCubes, parseCSVRaw, type RawCSVData } from "../telemetryGenerator";
-import { getCSSGradient } from "../utils/colormaps";
+import { TelemetryStreamConfig, VariableName, VARIABLE_METADATA, StreamMode, DataCube } from "@capri/core/types";
+import type { FishermanSummary } from "@capri/core/utils/bloomDetector";
+import { parseCSVToCubes, parseCSVRaw, type RawCSVData } from "@capri/core/telemetryGenerator";
+import { getCSSGradient } from "@capri/core/utils/colormaps";
 import { ColorPickerPopover } from "./ColorPickerPopover";
-import { rasterToDataCube } from "../adapters/geotiffAdapter";
+import { rasterToDataCube } from "@capri/core/adapters/geotiffAdapter";
 import { geoTiffFileToInput } from "../adapters/geotiffDecode";
 
 interface TelemetryConsoleProps {

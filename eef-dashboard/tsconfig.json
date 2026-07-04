@@ -18,6 +18,12 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@capri/core": [
+        "../packages/core/src/index.ts"
+      ],
+      "@capri/core/*": [
+        "../packages/core/src/*"
       ]
     },
     "allowImportingTsExtensions": true,

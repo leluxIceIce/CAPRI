@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Boxes, Plus, Trash2, Database, Sparkles, Info } from "lucide-react";
-import { DataCube } from "../types";
-import { ALL_VARIABLES, buildSamples } from "../utils/mlData";
+import { DataCube } from "@capri/core/types";
+import { ALL_VARIABLES, buildSamples } from "@capri/core/utils/mlData";
 import {
   Embedder,
   EmbedderRegistry,
@@ -9,7 +9,7 @@ import {
   DEFAULT_CONFIG,
   EMPTY_REGISTRY,
   totalSamples,
-} from "../embedders/embedderTypes";
+} from "@capri/core/embedders/embedderTypes";
 import { loadRegistry, saveRegistry, storageLabel } from "../utils/embedderStore";
 
 interface EmbeddersPanelProps {

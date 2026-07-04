@@ -7,8 +7,8 @@
 // sin/cos generator.
 
 import { fromArrayBuffer } from "geotiff";
-import type { DecodedRaster, GeoTiffInput } from "./geotiffAdapter";
-import { VARIABLE_METADATA, type VariableName } from "../types";
+import type { DecodedRaster, GeoTiffInput } from "@capri/core/adapters/geotiffAdapter";
+import { VARIABLE_METADATA, type VariableName } from "@capri/core/types";
 
 /** Decode an uploaded GeoTIFF ArrayBuffer into a DecodedRaster (all bands). */
 export async function decodeGeoTiff(buffer: ArrayBuffer): Promise<DecodedRaster> {

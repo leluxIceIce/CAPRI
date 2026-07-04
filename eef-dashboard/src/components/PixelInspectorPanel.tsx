@@ -5,22 +5,22 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Search, X, Info, Zap, Grid3x3, TrendingUp } from "lucide-react";
-import { DataCube, VariableName, VARIABLE_METADATA } from "../types";
+import { DataCube, VariableName, VARIABLE_METADATA } from "@capri/core/types";
 import {
   PixelCoord,
   PixelStatistics,
   SimilarPixel,
   PixelInspectorState,
   PixelComputationCache
-} from "../gate1_pixel_inspector/types";
+} from "@capri/core/gate1_pixel_inspector/types";
 import {
   computePixelStatistics,
   getSimilarPixelsCached,
   extractVariableDependency,
   invalidateCache,
   createPixelCache
-} from "../gate1_pixel_inspector/pixelCompute";
-import { getCSSGradient } from "../utils/colormaps";
+} from "@capri/core/gate1_pixel_inspector/pixelCompute";
+import { getCSSGradient } from "@capri/core/utils/colormaps";
 
 const VARS: VariableName[] = ["CHL", "aphy", "ADG", "bbp", "TSM", "PAR", "KD490", "FLH", "CHL_disagreement", "OA01", "OA02", "OA03", "OA04", "OA05", "OA06", "OA07", "OA08", "OA09", "OA10", "OA11", "OA13"];
 

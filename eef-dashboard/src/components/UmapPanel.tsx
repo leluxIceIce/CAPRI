@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef } from "react";
 import { Sparkle, Play, AlertTriangle } from "lucide-react";
 import { UMAP } from "umap-js";
-import { DataCube, VariableName } from "../types";
+import { DataCube, VariableName } from "@capri/core/types";
 import {
   ALL_VARIABLES,
   buildSamples,
@@ -9,9 +9,9 @@ import {
   standardizeColumns,
   subsampleIndices,
   mulberry32,
-} from "../utils/mlData";
+} from "@capri/core/utils/mlData";
 import { CellTooltip, type HoverCell } from "../utils/cellTooltip";
-import { loadCached, saveCached } from "../utils/mlCache";
+import { loadCached, saveCached } from "@capri/core/utils/mlCache";
 
 interface UmapPanelProps {
   dataCube: DataCube;

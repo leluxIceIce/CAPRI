@@ -4,7 +4,7 @@
 // (the web/GitHub-Pages build or the dev preview), it transparently falls back
 // to localStorage so the feature still works for inspection.
 
-import { EmbedderRegistry, EMPTY_REGISTRY } from "../embedders/embedderTypes";
+import { EmbedderRegistry, EMPTY_REGISTRY } from "@capri/core/embedders/embedderTypes";
 
 const STORE_FILE = "embedders.json";
 const REGISTRY_KEY = "registry";

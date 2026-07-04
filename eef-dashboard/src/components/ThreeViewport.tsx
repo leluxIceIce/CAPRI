@@ -10,10 +10,10 @@ import {
   SpatialOverlayState,
   RelationshipGraphState,
   ConfidenceOverlayState
-} from "../types";
-import { interpolateColormap, generateRampFromHex, generateRampFromTwoHex, getScalarFieldColor } from "../utils/colormaps";
-import { type RootAnalysis } from "../utils/eigenmath";
-import { type RelationshipTensor, relationshipChannelIndex } from "../utils/relationshipTensor";
+} from "@capri/core/types";
+import { interpolateColormap, generateRampFromHex, generateRampFromTwoHex, getScalarFieldColor } from "@capri/core/utils/colormaps";
+import { type RootAnalysis } from "@capri/core/utils/eigenmath";
+import { type RelationshipTensor, relationshipChannelIndex } from "@capri/core/utils/relationshipTensor";
 import { buildRelationshipEdges, buildRelationshipMesh } from "../utils/relationshipGeometry";
 
 export interface ThreeViewportHandle {

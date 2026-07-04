@@ -1,7 +1,7 @@
 import React from "react";
 import { AlertTriangle, ShieldCheck, Waves, Info, Radio, Compass, BarChart2, GripVertical } from "lucide-react";
-import { AnalysisResult, VariableName, VARIABLE_METADATA, DataCube } from "../types";
-import { getCSSGradient } from "../utils/colormaps";
+import { AnalysisResult, VariableName, VARIABLE_METADATA, DataCube } from "@capri/core/types";
+import { getCSSGradient } from "@capri/core/utils/colormaps";
 import { ColorPickerPopover } from "./ColorPickerPopover";
 
 interface DiagnosticsPanelProps {

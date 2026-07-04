@@ -5,8 +5,8 @@
 // BufferGeometry tube pattern.
 
 import * as THREE from "three";
-import { getRelationshipChannelGrid, type RelationshipTensor } from "./relationshipTensor";
-import { getScalarFieldColor } from "./colormaps";
+import { getRelationshipChannelGrid, type RelationshipTensor } from "@capri/core/utils/relationshipTensor";
+import { getScalarFieldColor } from "@capri/core/utils/colormaps";
 
 const SIDES = 6;
 
