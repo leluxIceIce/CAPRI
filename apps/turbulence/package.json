@@ -1,0 +1,29 @@
+{
+  "name": "@capri/turbulence",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CAPRI platform shell (M2) — the node-based computational-media workspace. Consumes @capri/core as TypeScript source via a path alias; keeps its own standalone install.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite --port=5273 --host=0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3",
+    "vitest": "^4.1.9"
+  }
+}
