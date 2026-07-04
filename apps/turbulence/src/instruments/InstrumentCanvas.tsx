@@ -1,29 +1,22 @@
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
-import type { DataCube } from "@capri/core";
-import { drawSignatureField, type SigParams, type Selection } from "./signatureField";
-import { pickCell } from "../lib/probe";
 
 interface Props {
-  cube: DataCube;
-  params: SigParams;
-  selection: Selection;
+  /** Draw one frame. `phase` (seconds) is for subtle motion only; frozen when paused/reduced. */
+  render: (ctx: CanvasRenderingContext2D, w: number, h: number, phase: number) => void;
   paused: boolean;
-  onPick: (cell: { row: number; col: number }) => void;
+  /** Normalised (0..1) click position within the canvas. */
+  onPick?: (nx: number, ny: number) => void;
 }
 
-// Canvas host for the Signature Field instrument. Keeps the latest cube/params/
-// selection in refs so the animation loop reads current values without
-// re-subscribing; the loop exists only for the subtle contour shimmer (frozen when
-// paused / reduced-motion). Clicking maps to a grid cell and raises onPick.
-export function SignatureField({ cube, params, selection, paused, onPick }: Props) {
+// Generic canvas host shared by every instrument: owns DPR scaling, resize, the
+// animation loop and reduced-motion handling, and turns clicks into normalised
+// positions. Instruments are just a `render` closure over their own cube/params/
+// selection — so adding the remaining lenses is a render function, not plumbing.
+export function InstrumentCanvas({ render, paused, onPick }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const cubeRef = useRef(cube);
-  const paramsRef = useRef(params);
-  const selRef = useRef(selection);
-  cubeRef.current = cube;
-  paramsRef.current = params;
-  selRef.current = selection;
+  const renderRef = useRef(render);
+  renderRef.current = render;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -42,6 +35,7 @@ export function SignatureField({ cube, params, selection, paused, onPick }: Prop
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      renderRef.current(ctx, w, h, 0);
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -53,7 +47,7 @@ export function SignatureField({ cube, params, selection, paused, onPick }: Prop
     const frame = () => {
       if (!running) return;
       const phase = reduce ? 0 : (performance.now() - t0) / 1000;
-      drawSignatureField(ctx, cubeRef.current, w, h, paramsRef.current, phase, selRef.current);
+      renderRef.current(ctx, w, h, phase);
       if (!reduce && !paused) raf = requestAnimationFrame(frame);
     };
     frame();
@@ -65,7 +59,8 @@ export function SignatureField({ cube, params, selection, paused, onPick }: Prop
     };
   }, [paused]);
 
-  // Redraw immediately whenever a new cube / params / selection arrive.
+  // Redraw immediately when the render closure changes (new cube / params / selection),
+  // covering the paused and reduced-motion cases where the loop isn't running.
   useEffect(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
@@ -73,16 +68,15 @@ export function SignatureField({ cube, params, selection, paused, onPick }: Prop
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const r = wrap.getBoundingClientRect();
-    drawSignatureField(ctx, cube, r.width, r.height, params, 0, selection);
-  }, [cube, params, selection]);
+    render(ctx, r.width, r.height, 0);
+  }, [render]);
 
   const handleClick = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+    if (!onPick) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const r = canvas.getBoundingClientRect();
-    const nx = (e.clientX - r.left) / r.width;
-    const ny = (e.clientY - r.top) / r.height;
-    onPick(pickCell(nx, ny, cube.gridSize));
+    onPick((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
   };
 
   return (
