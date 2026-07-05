@@ -17,6 +17,7 @@ import { drawDensityCartography, DEFAULT_DENSITY_PARAMS, type DensityParams } fr
 import { drawTerritorialIntel, DEFAULT_INTEL_PARAMS, type IntelParams } from "./instruments/territorialIntel";
 import { cellReadout, pickCell } from "./lib/probe";
 import { channelDiff } from "./lib/diff";
+import { serializeProject, deserializeProject, PROJECT_VERSION, type ProjectState } from "./lib/project";
 
 // Finishing the Stage — all six translated instruments live on the generic host,
 // reading the same DataCube and sharing one linked selection. Latent Volume uses
@@ -114,6 +115,41 @@ export default function App() {
     setLayerOrder((prev) => { const next = prev.filter((k) => k !== from); next.splice(next.indexOf(target), 0, from); return next; });
   };
 
+  // Project save / load — view + instrument state only (data is regenerable). M5.
+  const fileRef = useRef<HTMLInputElement>(null);
+  const buildProject = (): ProjectState => ({
+    version: PROJECT_VERSION, sig: params, opt: optParams, latent: latentParams, bloom: bloomParams,
+    density: densityParams, intel: intelParams, layerOrder, stageMode, focusId, selected, step,
+  });
+  const applyProject = (p: Partial<ProjectState>) => {
+    if (p.sig) setParams(p.sig);
+    if (p.opt) setOptParams(p.opt);
+    if (p.latent) setLatentParams(p.latent);
+    if (p.bloom) setBloomParams(p.bloom);
+    if (p.density) setDensityParams(p.density);
+    if (p.intel) setIntelParams(p.intel);
+    if (p.layerOrder) setLayerOrder(p.layerOrder);
+    if (p.stageMode) setStageMode(p.stageMode);
+    if (p.focusId) setFocusId(p.focusId);
+    if (p.selected) setSelected(p.selected);
+    if (typeof p.step === "number") scrubTo(p.step);
+  };
+  const handleSave = () => {
+    const blob = new Blob([serializeProject(buildProject())], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `capri-project-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const handleLoadFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => { const p = deserializeProject(String(reader.result)); if (p) applyProject(p); };
+    reader.readAsText(file);
+  };
+  const focusInstrument = (id: InstId) => { setStageMode("focus"); setFocusId(id); setSelected(id); };
+
   // Shared analyses — computed once per frame, consumed by the instruments.
   const rootAnalysis = useMemo(() => computeRootAnalysis(cube, 5), [cube]);
   const bloomRisk = useMemo(() => computeBloomRisk(cube), [cube]);
@@ -143,16 +179,24 @@ export default function App() {
     { id: "intel", name: "Territorial Intel", ref: "Po map", render: intelRender, legend: "CHL field · hotspots · GAIA bloom-risk · graticule" },
   ];
 
-  const spine = useMemo(() => NETWORK.map((f) => (
+  const renderSpine = () => NETWORK.map((f) => (
     <div className="fam" key={f.fam}>
       <div className="fam-label">{f.fam}</div>
-      {f.ops.map((o, i) => (
-        <div key={o.id} className={`op op-${o.kind}${o.active ? " active" : ""}`}>
-          {i > 0 && <span className="wire" />}<span className="op-dot" />{o.id}{o.active && <span className="op-run" />}
-        </div>
-      ))}
+      {f.ops.map((o, i) => {
+        const isInst = o.kind === "ins";
+        const focused = isInst && focusId === o.id;
+        return (
+          <div key={o.id}
+            className={`op op-${o.kind}${o.active ? " active" : ""}${focused ? " focused" : ""}${isInst ? " clickable" : ""}`}
+            onClick={isInst ? () => focusInstrument(o.id as InstId) : undefined}
+            role={isInst ? "button" : undefined} tabIndex={isInst ? 0 : undefined}
+            onKeyDown={isInst ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusInstrument(o.id as InstId); } } : undefined}>
+            {i > 0 && <span className="wire" />}<span className="op-dot" />{o.id}{o.active && <span className="op-run" />}
+          </div>
+        );
+      })}
     </div>
-  )), []);
+  ));
 
   const nodeFace = () => {
     if (selected === "signature") return (
@@ -222,6 +266,11 @@ export default function App() {
           <button aria-pressed={stageMode === "focus"} onClick={() => setStageMode("focus")}>focus</button>
         </span>
         <span className="spacer" />
+        <div className="proj">
+          <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleLoadFile(f); e.target.value = ""; }} />
+          <button className="cmd-btn" onClick={handleSave} title="Save project (view + instruments)">save</button>
+          <button className="cmd-btn" onClick={() => fileRef.current?.click()} title="Load a saved project">load</button>
+        </div>
         <span className="utc mono">{utc || "syncing…"}</span>
         <div className="mini-transport">
           <button onClick={() => setPlaying((p) => !p)} aria-label={playing ? "pause" : "play"}>{playing ? "❚❚" : "►"}</button>
@@ -231,8 +280,8 @@ export default function App() {
 
       <div className="main">
         <aside className="net">
-          <div className="panel-hd"><h3>The Network</h3><span className="tag">pipeline</span></div>
-          <div className="net-body">{spine}</div>
+          <div className="panel-hd"><h3>The Network</h3><span className="tag">click a lens</span></div>
+          <div className="net-body">{renderSpine()}</div>
         </aside>
 
         <main className="stage stage-multi stage-six" data-mode={stageMode}>
