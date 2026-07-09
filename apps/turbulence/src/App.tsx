@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   generateDataCube,
   computeRootAnalysis,
   computeBloomRisk,
   VARIABLE_METADATA,
   type DataCube,
+  type RootAnalysis,
   type TelemetryStreamConfig,
   type VariableName,
 } from "@capri/core";
-import { InstrumentCanvas } from "./instruments/InstrumentCanvas";
 import { drawSignatureField, DEFAULT_SIG_PARAMS, type SigParams, type Selection } from "./instruments/signatureField";
 import { drawOpticalSection, DEFAULT_OPT_PARAMS, type OptParams } from "./instruments/opticalSection";
 import { drawLatentVolume, DEFAULT_LATENT_PARAMS, type LatentParams } from "./instruments/latentVolume";
@@ -19,25 +19,36 @@ import { cellReadout, pickCell } from "./lib/probe";
 import { channelDiff } from "./lib/diff";
 import { serializeProject, deserializeProject, PROJECT_VERSION, type ProjectState } from "./lib/project";
 
-// Finishing the Stage — all six translated instruments live on the generic host,
-// reading the same DataCube and sharing one linked selection. Latent Volume uses
-// real PCA (computeRootAnalysis) and Territorial Intel the real GAIA bloom risk.
+// The whole platform, lighter: ONE shared render loop draws only the visible
+// instruments (six independent rAF loops → one), heavy analyses (PCA / bloom risk)
+// run only when their lens is on screen, and the field upscale reuses a cached
+// buffer. Same features — six instruments, linked selection, probe, layer stack,
+// difference timeline, project save/load, clickable Network — at a fraction of the
+// per-frame work.
 
-const CONFIG: TelemetryStreamConfig = {
-  mode: "synthetic", speedHz: 1.5, noiseLevel: 0.03, currentAnomaly: 0.25, driftFactor: 0, flowSpeed: 1.1,
-};
+const CONFIG: TelemetryStreamConfig = { mode: "synthetic", speedHz: 1.5, noiseLevel: 0.03, currentAnomaly: 0.25, driftFactor: 0, flowSpeed: 1.1 };
 const GRID = 20;
 const ALL_CHANNELS = Object.keys(VARIABLE_METADATA) as VariableName[];
+const DPR = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 1.5);
 
 type InstId = "signature" | "optical" | "latent" | "bloom" | "density" | "intel";
 const INST_ORDER: InstId[] = ["signature", "optical", "latent", "bloom", "density", "intel"];
 type Anchor = { step: number; cube: DataCube } | null;
 
+const META: Record<InstId, { name: string; ref: string }> = {
+  signature: { name: "Signature Field", ref: "Rosetta" },
+  optical: { name: "Optical Section", ref: "petrography" },
+  latent: { name: "Latent Volume", ref: "CFD box" },
+  bloom: { name: "Bloom Field", ref: "percolation" },
+  density: { name: "Density Cartography", ref: "SOYO" },
+  intel: { name: "Territorial Intel", ref: "Po map" },
+};
+
 const NETWORK: Array<{ fam: string; ops: Array<{ id: string; kind: string; active?: boolean }> }> = [
   { fam: "Sources", ops: [{ id: "synthetic", kind: "src", active: true }, { id: "csv_player", kind: "src" }, { id: "geotiff", kind: "src" }] },
   { fam: "Reducers", ops: [{ id: "pca_3pc", kind: "red", active: true }, { id: "umap", kind: "red" }, { id: "kmeans_regime", kind: "red", active: true }] },
   { fam: "Detectors", ops: [{ id: "bloom_gaia", kind: "det", active: true }, { id: "novelty", kind: "det" }] },
-  { fam: "Instruments", ops: INST_ORDER.map((id) => ({ id: `${id}`, kind: "ins", active: true })) },
+  { fam: "Instruments", ops: INST_ORDER.map((id) => ({ id, kind: "ins", active: true })) },
 ];
 
 function Slider({ label, min, max, step, value, onChange }: { label: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void }) {
@@ -47,6 +58,30 @@ function Slider({ label, min, max, step, value, onChange }: { label: string; min
       <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} />
       <span className="v mono">{step >= 1 ? value : value.toFixed(2)}</span>
     </label>
+  );
+}
+
+function StageTile({ id, legend, selected, focused, onSelect, onFocus, onPick, registerCanvas }: {
+  id: InstId; legend: string; selected: boolean; focused: boolean;
+  onSelect: () => void; onFocus: () => void; onPick: (nx: number, ny: number) => void;
+  registerCanvas: (id: InstId, el: HTMLCanvasElement | null) => void;
+}) {
+  const cvRef = useRef<HTMLCanvasElement | null>(null);
+  const setRef = useCallback((el: HTMLCanvasElement | null) => { cvRef.current = el; registerCanvas(id, el); }, [id, registerCanvas]);
+  const onClick = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+    const cv = cvRef.current; if (!cv) return;
+    const r = cv.getBoundingClientRect();
+    onPick((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+  };
+  return (
+    <div className={`tile${selected ? " sel" : ""}${focused ? " focused" : ""}`} onMouseDown={onSelect}>
+      <header className="tile-hd">
+        <span className="led" /><span className="t">{META[id].name}</span><span className="ref">ref · {META[id].ref}</span>
+        <button className="focusbtn" title="focus" onClick={(e) => { e.stopPropagation(); onFocus(); }}>⤢</button>
+      </header>
+      <div className="inst-canvas-wrap"><canvas ref={setRef} onClick={onClick} /></div>
+      <div className="legend mono">{legend}</div>
+    </div>
   );
 }
 
@@ -71,6 +106,7 @@ export default function App() {
   const [diffOn, setDiffOn] = useState(false);
   const [utc, setUtc] = useState("");
 
+  // Data tick — regenerate a frame at the stream rate (decoupled from rendering).
   const stepRef = useRef(step);
   stepRef.current = step;
   useEffect(() => {
@@ -82,7 +118,6 @@ export default function App() {
     }, 1000 / CONFIG.speedHz);
     return () => window.clearInterval(id);
   }, [playing]);
-
   const scrubTo = (s: number) => { setStep(s); setCube(generateDataCube(s, CONFIG, GRID)); };
 
   useEffect(() => {
@@ -95,10 +130,8 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
-      if (e.key >= "1" && e.key <= "6") {
-        const id = INST_ORDER[+e.key - 1];
-        setStageMode("focus"); setFocusId(id); setSelected(id);
-      } else if (e.key === "0") setStageMode("mosaic");
+      if (e.key >= "1" && e.key <= "6") { const id = INST_ORDER[+e.key - 1]; setStageMode("focus"); setFocusId(id); setSelected(id); }
+      else if (e.key === "0") setStageMode("mosaic");
       else if (e.key === " ") { e.preventDefault(); setPlaying((p) => !p); }
     };
     window.addEventListener("keydown", onKey);
@@ -109,146 +142,153 @@ export default function App() {
 
   const dragRef = useRef<VariableName | null>(null);
   const onDrop = (target: VariableName) => {
-    const from = dragRef.current;
-    dragRef.current = null;
+    const from = dragRef.current; dragRef.current = null;
     if (!from || from === target) return;
     setLayerOrder((prev) => { const next = prev.filter((k) => k !== from); next.splice(next.indexOf(target), 0, from); return next; });
   };
 
-  // Project save / load — view + instrument state only (data is regenerable). M5.
+  const focusInstrument = (id: InstId) => { setStageMode("focus"); setFocusId(id); setSelected(id); };
+
+  // Project save/load (view + instrument state only — data is regenerable).
   const fileRef = useRef<HTMLInputElement>(null);
-  const buildProject = (): ProjectState => ({
-    version: PROJECT_VERSION, sig: params, opt: optParams, latent: latentParams, bloom: bloomParams,
-    density: densityParams, intel: intelParams, layerOrder, stageMode, focusId, selected, step,
-  });
+  const buildProject = (): ProjectState => ({ version: PROJECT_VERSION, sig: params, opt: optParams, latent: latentParams, bloom: bloomParams, density: densityParams, intel: intelParams, layerOrder, stageMode, focusId, selected, step });
   const applyProject = (p: Partial<ProjectState>) => {
-    if (p.sig) setParams(p.sig);
-    if (p.opt) setOptParams(p.opt);
-    if (p.latent) setLatentParams(p.latent);
-    if (p.bloom) setBloomParams(p.bloom);
-    if (p.density) setDensityParams(p.density);
-    if (p.intel) setIntelParams(p.intel);
-    if (p.layerOrder) setLayerOrder(p.layerOrder);
-    if (p.stageMode) setStageMode(p.stageMode);
-    if (p.focusId) setFocusId(p.focusId);
-    if (p.selected) setSelected(p.selected);
+    if (p.sig) setParams(p.sig); if (p.opt) setOptParams(p.opt); if (p.latent) setLatentParams(p.latent);
+    if (p.bloom) setBloomParams(p.bloom); if (p.density) setDensityParams(p.density); if (p.intel) setIntelParams(p.intel);
+    if (p.layerOrder) setLayerOrder(p.layerOrder); if (p.stageMode) setStageMode(p.stageMode);
+    if (p.focusId) setFocusId(p.focusId); if (p.selected) setSelected(p.selected);
     if (typeof p.step === "number") scrubTo(p.step);
   };
   const handleSave = () => {
     const blob = new Blob([serializeProject(buildProject())], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `capri-project-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    a.href = url; a.download = `capri-project-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`;
+    a.click(); URL.revokeObjectURL(url);
   };
   const handleLoadFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => { const p = deserializeProject(String(reader.result)); if (p) applyProject(p); };
     reader.readAsText(file);
   };
-  const focusInstrument = (id: InstId) => { setStageMode("focus"); setFocusId(id); setSelected(id); };
 
-  // Shared analyses — computed once per frame, consumed by the instruments.
-  const rootAnalysis = useMemo(() => computeRootAnalysis(cube, 5), [cube]);
-  const bloomRisk = useMemo(() => computeBloomRisk(cube), [cube]);
-  const diffField = useMemo(
-    () => (diffOn && anchorA && anchorB ? channelDiff(anchorA.cube, anchorB.cube, params.fieldChannel) : null),
-    [diffOn, anchorA, anchorB, params.fieldChannel],
-  );
+  // Which lenses are on screen — drives both what we draw and what we compute.
+  const visible = useMemo<InstId[]>(() => (stageMode === "focus" ? [focusId] : INST_ORDER), [stageMode, focusId]);
+  const needLatent = visible.includes("latent");
+  const needIntel = visible.includes("intel");
 
-  const sigRender = useCallback((c: CanvasRenderingContext2D, w: number, h: number, p: number) => drawSignatureField(c, cube, w, h, params, p, selection, diffField), [cube, params, selection, diffField]);
-  const optRender = useCallback((c: CanvasRenderingContext2D, w: number, h: number, p: number) => drawOpticalSection(c, cube, w, h, optParams, p, selection), [cube, optParams, selection]);
-  const latentRender = useCallback((c: CanvasRenderingContext2D, w: number, h: number, p: number) => drawLatentVolume(c, cube, rootAnalysis, w, h, latentParams, p, selection), [cube, rootAnalysis, latentParams, selection]);
-  const bloomRender = useCallback((c: CanvasRenderingContext2D, w: number, h: number, p: number) => drawBloomField(c, cube, w, h, bloomParams, p, selection), [cube, bloomParams, selection]);
-  const densityRender = useCallback((c: CanvasRenderingContext2D, w: number, h: number, p: number) => drawDensityCartography(c, cube, w, h, densityParams, p, selection), [cube, densityParams, selection]);
-  const intelRender = useCallback((c: CanvasRenderingContext2D, w: number, h: number, p: number) => drawTerritorialIntel(c, cube, bloomRisk, w, h, intelParams, p, selection), [cube, bloomRisk, intelParams, selection]);
+  // Heavy analyses — computed once per cube, and only when their lens is visible.
+  const rootAnalysis = useMemo<RootAnalysis | null>(() => (needLatent ? computeRootAnalysis(cube, 5) : null), [cube, needLatent]);
+  const bloomRisk = useMemo<Float32Array | null>(() => (needIntel ? computeBloomRisk(cube) : null), [cube, needIntel]);
+  const diffField = useMemo(() => (diffOn && anchorA && anchorB ? channelDiff(anchorA.cube, anchorB.cube, params.fieldChannel) : null), [diffOn, anchorA, anchorB, params.fieldChannel]);
 
   const frame = Math.round(step * CONFIG.speedHz);
   const activeMeta = VARIABLE_METADATA[params.fieldChannel];
   const readout = useMemo(() => (selection ? cellReadout(cube, selection.row, selection.col) : []), [cube, selection]);
   const bothAnchors = !!(anchorA && anchorB);
 
-  const tiles: Array<{ id: InstId; name: string; ref: string; render: (c: CanvasRenderingContext2D, w: number, h: number, p: number) => void; legend: string }> = [
-    { id: "signature", name: "Signature Field", ref: "Rosetta", render: sigRender, legend: diffField ? `Δ ${params.fieldChannel} · retreat ← 0 → grow · F${Math.round((anchorA?.step ?? 0) * CONFIG.speedHz)}→F${Math.round((anchorB?.step ?? 0) * CONFIG.speedHz)}` : `${activeMeta.label} + contours + in-place OLCI spectra` },
-    { id: "optical", name: "Optical Section", ref: "petrography", render: optRender, legend: "optical water types · fronts = grain boundaries" },
-    { id: "latent", name: "Latent Volume", ref: "CFD box", render: latentRender, legend: "21→3-D PCA · clusters = regimes · outliers = novelty" },
-    { id: "bloom", name: "Bloom Field", ref: "percolation", render: bloomRender, legend: "FLH vitality · CHL size · TSM blur · front drift" },
-    { id: "density", name: "Density Cartography", ref: "SOYO", render: densityRender, legend: "CHL stipple · ■ confident / ● uncertain · drift route" },
-    { id: "intel", name: "Territorial Intel", ref: "Po map", render: intelRender, legend: "CHL field · hotspots · GAIA bloom-risk · graticule" },
-  ];
+  const legends: Record<InstId, string> = {
+    signature: diffField ? `Δ ${params.fieldChannel} · retreat ← 0 → grow` : `${activeMeta.label} + contours + in-place OLCI spectra`,
+    optical: "optical water types · fronts = grain boundaries",
+    latent: "21→3-D PCA · clusters = regimes · outliers = novelty",
+    bloom: "FLH vitality · CHL size · TSM blur · front drift",
+    density: "CHL stipple · ■ confident / ● uncertain · drift route",
+    intel: "CHL field · hotspots · GAIA bloom-risk · graticule",
+  };
 
-  const renderSpine = () => NETWORK.map((f) => (
-    <div className="fam" key={f.fam}>
-      <div className="fam-label">{f.fam}</div>
-      {f.ops.map((o, i) => {
-        const isInst = o.kind === "ins";
-        const focused = isInst && focusId === o.id;
-        return (
-          <div key={o.id}
-            className={`op op-${o.kind}${o.active ? " active" : ""}${focused ? " focused" : ""}${isInst ? " clickable" : ""}`}
-            onClick={isInst ? () => focusInstrument(o.id as InstId) : undefined}
-            role={isInst ? "button" : undefined} tabIndex={isInst ? 0 : undefined}
-            onKeyDown={isInst ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusInstrument(o.id as InstId); } } : undefined}>
-            {i > 0 && <span className="wire" />}<span className="op-dot" />{o.id}{o.active && <span className="op-run" />}
-          </div>
-        );
-      })}
-    </div>
-  ));
+  // ── the single shared render loop ─────────────────────────────────────────
+  const canvasEls = useRef(new Map<InstId, HTMLCanvasElement>());
+  const registerCanvas = useCallback((id: InstId, el: HTMLCanvasElement | null) => {
+    if (el) canvasEls.current.set(id, el); else canvasEls.current.delete(id);
+  }, []);
+
+  // Latest draw dispatcher + view state, read by the once-mounted loop via refs.
+  const drawRef = useRef<(id: InstId, ctx: CanvasRenderingContext2D, w: number, h: number, phase: number) => void>(() => {});
+  drawRef.current = (id, ctx, w, h, phase) => {
+    switch (id) {
+      case "signature": return drawSignatureField(ctx, cube, w, h, params, phase, selection, diffField);
+      case "optical": return drawOpticalSection(ctx, cube, w, h, optParams, phase, selection);
+      case "latent": if (rootAnalysis) drawLatentVolume(ctx, cube, rootAnalysis, w, h, latentParams, phase, selection); return;
+      case "bloom": return drawBloomField(ctx, cube, w, h, bloomParams, phase, selection);
+      case "density": return drawDensityCartography(ctx, cube, w, h, densityParams, phase, selection);
+      case "intel": if (bloomRisk) drawTerritorialIntel(ctx, cube, bloomRisk, w, h, intelParams, phase, selection); return;
+    }
+  };
+  const viewRef = useRef({ visible, playing });
+  viewRef.current = { visible, playing };
+  const dirtyRef = useRef(true);
+  useEffect(() => { dirtyRef.current = true; }, [cube, params, optParams, latentParams, bloomParams, densityParams, intelParams, selection, diffField, rootAnalysis, bloomRisk, visible]);
+
+  useEffect(() => {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    let raf = 0;
+    const t0 = performance.now();
+    const loop = () => {
+      const { visible: vis, playing: play } = viewRef.current;
+      const anim = play && !reduce;
+      if (anim || dirtyRef.current) {
+        const phase = reduce ? 0 : (performance.now() - t0) / 1000;
+        for (const id of vis) {
+          const cv = canvasEls.current.get(id);
+          if (!cv) continue;
+          const r = cv.getBoundingClientRect();
+          if (r.width < 2 || r.height < 2) continue;
+          const bw = Math.round(r.width * DPR), bh = Math.round(r.height * DPR);
+          if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; }
+          const ctx = cv.getContext("2d");
+          if (!ctx) continue;
+          ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+          drawRef.current(id, ctx, r.width, r.height, phase);
+        }
+        if (!anim) dirtyRef.current = false;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    const onVis = () => { if (!document.hidden) dirtyRef.current = true; };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { cancelAnimationFrame(raf); document.removeEventListener("visibilitychange", onVis); };
+  }, []);
 
   const nodeFace = () => {
-    if (selected === "signature") return (
-      <>
-        <h4 className="mono">signature_field</h4>
-        <p className="sub">Field channel is set from the layer stack. Live values from @capri/core.</p>
-        <div className="stat"><span>field channel</span><span className="mono" style={{ color: "var(--sel)" }}>{params.fieldChannel}</span></div>
-        <Slider label="spectra grid" min={2} max={8} step={1} value={params.spectraStep} onChange={(v) => setParams((p) => ({ ...p, spectraStep: v }))} />
-        <Slider label="contours" min={0} max={9} step={1} value={params.contourLevels} onChange={(v) => setParams((p) => ({ ...p, contourLevels: v }))} />
-        <Slider label="colour gain" min={0.4} max={2} step={0.05} value={params.gain} onChange={(v) => setParams((p) => ({ ...p, gain: v }))} />
-      </>
-    );
-    if (selected === "optical") return (
-      <>
-        <h4 className="mono">optical_section</h4>
-        <p className="sub">Water types from real CHL/TSM/FLH; fronts render as grain boundaries.</p>
-        <Slider label="birefringence" min={0.3} max={1.4} step={0.05} value={optParams.saturation} onChange={(v) => setOptParams((p) => ({ ...p, saturation: v }))} />
-        <Slider label="grain edges" min={0} max={1} step={0.05} value={optParams.fronts} onChange={(v) => setOptParams((p) => ({ ...p, fronts: v }))} />
-      </>
-    );
-    if (selected === "latent") return (
-      <>
-        <h4 className="mono">latent_volume</h4>
-        <p className="sub">Real PCA (computeRootAnalysis): the 21-channel space in 3 PCs. 3-PC variance {(rootAnalysis.varianceExplained[2] * 100) | 0}%.</p>
-        <Slider label="orbit rate" min={0} max={1.5} step={0.05} value={latentParams.orbit} onChange={(v) => setLatentParams((p) => ({ ...p, orbit: v }))} />
-        <Slider label="point size" min={0.5} max={3} step={0.1} value={latentParams.size} onChange={(v) => setLatentParams((p) => ({ ...p, size: v }))} />
-      </>
-    );
-    if (selected === "bloom") return (
-      <>
-        <h4 className="mono">bloom_field</h4>
-        <p className="sub">Physiology, not age: FLH vitality colour, CHL size, TSM blur, front-following drift.</p>
-        <Slider label="cell density" min={0.2} max={1} step={0.05} value={bloomParams.count} onChange={(v) => setBloomParams((p) => ({ ...p, count: v }))} />
-        <Slider label="vitality gain" min={0.4} max={1.6} step={0.05} value={bloomParams.vit} onChange={(v) => setBloomParams((p) => ({ ...p, vit: v }))} />
-      </>
-    );
-    if (selected === "density") return (
-      <>
-        <h4 className="mono">density_cartography</h4>
-        <p className="sub">CHL stipple; ■ confident vs ● uncertain (CHL disagreement); drift route + locator.</p>
-        <Slider label="dot pitch" min={4} max={12} step={0.5} value={densityParams.pitch} onChange={(v) => setDensityParams((p) => ({ ...p, pitch: v }))} />
-        <Slider label="drift route" min={0} max={1} step={0.05} value={densityParams.route} onChange={(v) => setDensityParams((p) => ({ ...p, route: v }))} />
-      </>
-    );
-    return (
-      <>
-        <h4 className="mono">territorial_intel</h4>
-        <p className="sub">CHL base + real GAIA bloom-risk overlay + coordinate graticule + CHL hotspots.</p>
-        <Slider label="graticule" min={0} max={1} step={0.05} value={intelParams.graticule} onChange={(v) => setIntelParams((p) => ({ ...p, graticule: v }))} />
-        <Slider label="hotspots" min={0} max={10} step={1} value={intelParams.hotspots} onChange={(v) => setIntelParams((p) => ({ ...p, hotspots: v }))} />
-      </>
-    );
+    if (selected === "signature") return (<>
+      <h4 className="mono">signature_field</h4>
+      <p className="sub">Field channel is set from the layer stack. Live values from @capri/core.</p>
+      <div className="stat"><span>field channel</span><span className="mono" style={{ color: "var(--sel)" }}>{params.fieldChannel}</span></div>
+      <Slider label="spectra grid" min={2} max={8} step={1} value={params.spectraStep} onChange={(v) => setParams((p) => ({ ...p, spectraStep: v }))} />
+      <Slider label="contours" min={0} max={9} step={1} value={params.contourLevels} onChange={(v) => setParams((p) => ({ ...p, contourLevels: v }))} />
+      <Slider label="colour gain" min={0.4} max={2} step={0.05} value={params.gain} onChange={(v) => setParams((p) => ({ ...p, gain: v }))} />
+    </>);
+    if (selected === "optical") return (<>
+      <h4 className="mono">optical_section</h4>
+      <p className="sub">Water types from real CHL/TSM/FLH; fronts render as grain boundaries.</p>
+      <Slider label="birefringence" min={0.3} max={1.4} step={0.05} value={optParams.saturation} onChange={(v) => setOptParams((p) => ({ ...p, saturation: v }))} />
+      <Slider label="grain edges" min={0} max={1} step={0.05} value={optParams.fronts} onChange={(v) => setOptParams((p) => ({ ...p, fronts: v }))} />
+    </>);
+    if (selected === "latent") return (<>
+      <h4 className="mono">latent_volume</h4>
+      <p className="sub">Real PCA: the 21-channel space in 3 PCs{rootAnalysis ? ` · 3-PC var ${(rootAnalysis.varianceExplained[2] * 100) | 0}%` : ""}.</p>
+      <Slider label="orbit rate" min={0} max={1.5} step={0.05} value={latentParams.orbit} onChange={(v) => setLatentParams((p) => ({ ...p, orbit: v }))} />
+      <Slider label="point size" min={0.5} max={3} step={0.1} value={latentParams.size} onChange={(v) => setLatentParams((p) => ({ ...p, size: v }))} />
+    </>);
+    if (selected === "bloom") return (<>
+      <h4 className="mono">bloom_field</h4>
+      <p className="sub">Physiology, not age: FLH vitality colour, CHL size, TSM blur, front drift.</p>
+      <Slider label="cell density" min={0.2} max={1} step={0.05} value={bloomParams.count} onChange={(v) => setBloomParams((p) => ({ ...p, count: v }))} />
+      <Slider label="vitality gain" min={0.4} max={1.6} step={0.05} value={bloomParams.vit} onChange={(v) => setBloomParams((p) => ({ ...p, vit: v }))} />
+    </>);
+    if (selected === "density") return (<>
+      <h4 className="mono">density_cartography</h4>
+      <p className="sub">CHL stipple; ■ confident vs ● uncertain (disagreement); drift route + locator.</p>
+      <Slider label="dot pitch" min={4} max={12} step={0.5} value={densityParams.pitch} onChange={(v) => setDensityParams((p) => ({ ...p, pitch: v }))} />
+      <Slider label="drift route" min={0} max={1} step={0.05} value={densityParams.route} onChange={(v) => setDensityParams((p) => ({ ...p, route: v }))} />
+    </>);
+    return (<>
+      <h4 className="mono">territorial_intel</h4>
+      <p className="sub">CHL base + real GAIA bloom-risk overlay + coordinate graticule + CHL hotspots.</p>
+      <Slider label="graticule" min={0} max={1} step={0.05} value={intelParams.graticule} onChange={(v) => setIntelParams((p) => ({ ...p, graticule: v }))} />
+      <Slider label="hotspots" min={0} max={10} step={1} value={intelParams.hotspots} onChange={(v) => setIntelParams((p) => ({ ...p, hotspots: v }))} />
+    </>);
   };
 
   return (
@@ -256,10 +296,8 @@ export default function App() {
       <header className="cmd">
         <div className="brand">CAPRI<small>PLATFORM</small></div>
         <nav className="tabs">
-          <button aria-pressed="true">Survey</button>
-          <button aria-pressed="false">Physiology</button>
-          <button aria-pressed="false">Latent</button>
-          <button aria-pressed="false">Clean room</button>
+          <button aria-pressed="true">Survey</button><button aria-pressed="false">Physiology</button>
+          <button aria-pressed="false">Latent</button><button aria-pressed="false">Clean room</button>
         </nav>
         <span className="stage-toggle">
           <button aria-pressed={stageMode === "mosaic"} onClick={() => setStageMode("mosaic")}>mosaic</button>
@@ -268,8 +306,8 @@ export default function App() {
         <span className="spacer" />
         <div className="proj">
           <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleLoadFile(f); e.target.value = ""; }} />
-          <button className="cmd-btn" onClick={handleSave} title="Save project (view + instruments)">save</button>
-          <button className="cmd-btn" onClick={() => fileRef.current?.click()} title="Load a saved project">load</button>
+          <button className="cmd-btn" onClick={handleSave} title="Save project">save</button>
+          <button className="cmd-btn" onClick={() => fileRef.current?.click()} title="Load project">load</button>
         </div>
         <span className="utc mono">{utc || "syncing…"}</span>
         <div className="mini-transport">
@@ -281,19 +319,34 @@ export default function App() {
       <div className="main">
         <aside className="net">
           <div className="panel-hd"><h3>The Network</h3><span className="tag">click a lens</span></div>
-          <div className="net-body">{renderSpine()}</div>
+          <div className="net-body">
+            {NETWORK.map((f) => (
+              <div className="fam" key={f.fam}>
+                <div className="fam-label">{f.fam}</div>
+                {f.ops.map((o, i) => {
+                  const isInst = o.kind === "ins";
+                  const nodeFocused = isInst && focusId === o.id;
+                  return (
+                    <div key={o.id}
+                      className={`op op-${o.kind}${o.active ? " active" : ""}${nodeFocused ? " focused" : ""}${isInst ? " clickable" : ""}`}
+                      onClick={isInst ? () => focusInstrument(o.id as InstId) : undefined}
+                      role={isInst ? "button" : undefined} tabIndex={isInst ? 0 : undefined}
+                      onKeyDown={isInst ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusInstrument(o.id as InstId); } } : undefined}>
+                      {i > 0 && <span className="wire" />}<span className="op-dot" />{o.id}{o.active && <span className="op-run" />}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </aside>
 
         <main className="stage stage-multi stage-six" data-mode={stageMode}>
-          {tiles.map((t) => (
-            <div key={t.id} className={`tile${selected === t.id ? " sel" : ""}${focusId === t.id ? " focused" : ""}`} onMouseDown={() => setSelected(t.id)}>
-              <header className="tile-hd">
-                <span className="led" /><span className="t">{t.name}</span><span className="ref">ref · {t.ref}</span>
-                <button className="focusbtn" title="focus" onClick={(e) => { e.stopPropagation(); setStageMode("focus"); setFocusId(t.id); setSelected(t.id); }}>⤢</button>
-              </header>
-              <InstrumentCanvas render={t.render} paused={!playing} onPick={onPick} />
-              <div className="legend mono">{t.legend}</div>
-            </div>
+          {(stageMode === "focus" ? [focusId] : INST_ORDER).map((id) => (
+            <StageTile key={id} id={id} legend={legends[id]}
+              selected={selected === id} focused={focusId === id}
+              onSelect={() => setSelected(id)} onFocus={() => focusInstrument(id)}
+              onPick={onPick} registerCanvas={registerCanvas} />
           ))}
         </main>
 
@@ -310,9 +363,7 @@ export default function App() {
                 {selection && readout.map((r) => (
                   <div className="stat" key={r.name}>
                     <span>{r.name}</span>
-                    <span className="mono">{r.value.toFixed(3)}
-                      <span className="zscore" style={{ color: Math.abs(r.z) > 1.5 ? "var(--amber)" : "var(--ink3)" }}> {r.z >= 0 ? "+" : ""}{r.z.toFixed(1)}σ</span>
-                    </span>
+                    <span className="mono">{r.value.toFixed(3)}<span className="zscore" style={{ color: Math.abs(r.z) > 1.5 ? "var(--amber)" : "var(--ink3)" }}> {r.z >= 0 ? "+" : ""}{r.z.toFixed(1)}σ</span></span>
                   </div>
                 ))}
                 {!selection && <p className="note">Nothing probed yet — click a cell in any instrument.</p>}
