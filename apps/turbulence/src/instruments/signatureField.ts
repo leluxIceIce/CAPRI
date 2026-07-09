@@ -88,6 +88,15 @@ export function vitalityColour(t: number): RGB {
   return lerpRamp(VIT_RAMP, t);
 }
 // Diverging map for the difference field: retreat (−) → cool, 0 → dark, grow (+) → warm.
+// One reused offscreen buffer for the grid→canvas upscale — allocated once, not
+// per frame (Signature Field is a single Stage tile).
+let _scratch: HTMLCanvasElement | null = null;
+function scratch(n: number): HTMLCanvasElement {
+  if (!_scratch) _scratch = document.createElement("canvas");
+  if (_scratch.width !== n) { _scratch.width = n; _scratch.height = n; }
+  return _scratch;
+}
+
 export function divergingColour(s: number): RGB {
   const t = s < -1 ? -1 : s > 1 ? 1 : s;
   if (t < 0) {
@@ -141,8 +150,7 @@ export function drawSignatureField(
     let m = 0;
     for (const row of diff) for (const v of row) { const a = Math.abs(v); if (a > m) m = a; }
     const scale = m > 1e-9 ? m : 1;
-    const off = document.createElement("canvas");
-    off.width = dn; off.height = dn;
+    const off = scratch(dn);
     const octx = off.getContext("2d");
     if (octx) {
       const img = octx.createImageData(dn, dn);
@@ -166,9 +174,7 @@ export function drawSignatureField(
 
   // 1 · concentration colourmap of the active field channel — rendered at grid
   //     resolution then bilinearly upscaled so it reads as a continuous surface.
-  const off = document.createElement("canvas");
-  off.width = N;
-  off.height = N;
+  const off = scratch(N);
   const octx = off.getContext("2d");
   if (octx) {
     const img = octx.createImageData(N, N);
