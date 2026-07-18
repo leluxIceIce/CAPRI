@@ -122,7 +122,12 @@
     <span class="fr mono" id="frame">FRAME_0000</span>
     <input type="range" id="scrub" min="0" max="2400" value="0" step="1" aria-label="timeline">
     <button id="reseed" title="re-seed the field" style="width:auto;padding:0 10px;font-family:var(--mono);font-size:9px;">RESEED</button>
-    <span class="seed mono" id="seedlab">seed 0xC4P21</span>
+    <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
+    <input type="file" id="loadInput" accept=".json,application/json" hidden>
+    <button id="csvBtn" title="Upload a CSV of channel columns from your computer" style="width:auto;padding:0 10px;font-family:var(--mono);font-size:9px;">CSV&nbsp;↑</button>
+    <button id="saveBtn" title="Download this project (view + parameters) as JSON" style="width:auto;padding:0 10px;font-family:var(--mono);font-size:9px;">SAVE&nbsp;↓</button>
+    <button id="loadBtn" title="Load a saved project JSON from your computer" style="width:auto;padding:0 10px;font-family:var(--mono);font-size:9px;">LOAD&nbsp;↑</button>
+    <span class="seed mono" id="srclab">synthetic</span>
   </div>
 </div>
 
@@ -178,6 +183,19 @@ var Field=(function(){
   rebuild();
   return {chl:chl,tsm:tsm,flh:flh,aphy:aphy,kd490:kd490,disagree:disagree,grad:grad,spectrum:spectrum,WL:WL,rebuild:rebuild};
 })();
+
+/* ── data mode: an uploaded CSV grid transparently overrides the synthetic field ──
+   every instrument reads Field.chl(u,v,t) &c., so wrapping those six accessors +
+   the spectrum is all it takes to run the whole bench on real data. */
+var DATA={on:false,name:"",n:0,grids:{}};
+function sampleGrid(gr,u,v){var n=gr.length;if(!n)return 0;var x=(u<0?0:u>1?1:u)*(n-1),y=(v<0?0:v>1?1:v)*(n-1),xi=x|0,yi=y|0,xf=x-xi,yf=y-yi,x1=xi+1<n?xi+1:n-1,y1=yi+1<n?yi+1:n-1;
+  var a=gr[yi][xi],b=gr[yi][x1],c=gr[y1][xi],d=gr[y1][x1];return a+(b-a)*xf+(c-a)*yf+(a-b-c+d)*xf*yf;}
+["chl","tsm","flh","aphy","kd490","disagree"].forEach(function(k){var syn=Field[k];Field[k]=function(u,v,tt){return DATA.on&&DATA.grids[k]?sampleGrid(DATA.grids[k],u,v):syn(u,v,tt);};});
+var _spec=Field.spectrum;
+Field.spectrum=function(u,v,tt,out){if(!DATA.on)return _spec(u,v,tt,out);
+  var C=Field.chl(u,v,tt),T=Field.tsm(u,v,tt),F=Field.flh(u,v,tt);
+  for(var i=0;i<21;i++){var wl=Field.WL[i],base=.35+T*.4,chlAbs=Math.exp(-Math.pow(wl-443,2)/900)*.9+Math.exp(-Math.pow(wl-665,2)/500)*.6,fluor=Math.exp(-Math.pow(wl-681,2)/120)*F*.5;
+    out[i]=Math.max(0,Math.min(1,base-chlAbs*C*.7+fluor));}return out;};
 
 /* colour ramps */
 function lerp3(a,b,f){return[(a[0]+(b[0]-a[0])*f)|0,(a[1]+(b[1]-a[1])*f)|0,(a[2]+(b[2]-a[2])*f)|0];}
@@ -477,7 +495,56 @@ var playBtn=document.getElementById("play"),scrub=document.getElementById("scrub
 function togglePlay(){playing=!playing;playBtn.textContent=playing?"❚❚":"►";}
 playBtn.addEventListener("click",togglePlay);
 scrub.addEventListener("input",function(){t=+scrub.value/40;frame=+scrub.value;});
-document.getElementById("reseed").addEventListener("click",function(){SEED=(SEED*1664525+1013904223)>>>0;rng=mulberry32(SEED);Field.rebuild();Lat.rebuild();document.getElementById("seedlab").textContent="seed 0x"+SEED.toString(16).toUpperCase().slice(0,6);});
+document.getElementById("reseed").addEventListener("click",function(){DATA.on=false;srcLabel("synthetic");SEED=(SEED*1664525+1013904223)>>>0;rng=mulberry32(SEED);Field.rebuild();Lat.rebuild();document.getElementById("seedlab").textContent="seed 0x"+SEED.toString(16).toUpperCase().slice(0,6);});
+
+/* ── CSV upload · save/load (all local, no server) ── */
+function srcLabel(s){var el=document.getElementById("srclab");if(el)el.textContent=s;}
+function reshape(vals,n){var g=[];for(var y=0;y<n;y++){g[y]=[];for(var x=0;x<n;x++){var idx=y*n+x;g[y][x]=idx<vals.length?vals[idx]:0;}}return g;}
+function normGrid(g){var mn=1/0,mx=-1/0,y,x;for(y=0;y<g.length;y++)for(x=0;x<g[y].length;x++){var v=g[y][x];if(v<mn)mn=v;if(v>mx)mx=v;}var d=(mx-mn)||1;for(y=0;y<g.length;y++)for(x=0;x<g[y].length;x++)g[y][x]=(g[y][x]-mn)/d;return g;}
+function fill(n,fn){var g=[];for(var y=0;y<n;y++){g[y]=[];for(var x=0;x<n;x++)g[y][x]=fn(x,y);}return g;}
+function parseCSV(text){
+  var lines=text.replace(/^﻿/,"").trim().split(/\r?\n/);if(lines.length<2)return null;
+  var sep=(lines[0].indexOf(";")>=0&&lines[0].indexOf(",")<0)?";":",";
+  var head=lines[0].split(sep).map(function(s){return s.trim().toLowerCase();});
+  function find(names){for(var i=0;i<head.length;i++)for(var j=0;j<names.length;j++)if(head[i]===names[j]||head[i].indexOf(names[j])>=0)return i;return -1;}
+  var map={chl:find(["chl","chlorophyll"]),tsm:find(["tsm","suspended"]),flh:find(["flh","fluor"]),aphy:find(["aphy"]),kd490:find(["kd490","kd_490","kd"]),disagree:find(["disagree","chl_disagreement","chldis"])};
+  var have=Object.keys(map).filter(function(k){return map[k]>=0;});
+  if(!have.length)return null;
+  var raw={};have.forEach(function(k){raw[k]=[];});
+  for(var r=1;r<lines.length;r++){var c=lines[r].split(sep);if(c.length<2)continue;have.forEach(function(k){var v=parseFloat(c[map[k]]);raw[k].push(isFinite(v)?v:0);});}
+  var rows=raw[have[0]].length;if(!rows)return null;
+  var n=Math.max(4,Math.min(96,Math.round(Math.sqrt(rows))));
+  var grids={};have.forEach(function(k){grids[k]=normGrid(reshape(raw[k],n));});
+  if(!grids.chl)grids.chl=fill(n,function(){return .4;});
+  if(!grids.tsm)grids.tsm=fill(n,function(){return .3;});
+  if(!grids.flh)grids.flh=fill(n,function(x,y){return grids.chl[y][x]*.85;});
+  if(!grids.aphy)grids.aphy=fill(n,function(x,y){return grids.chl[y][x]*.7;});
+  if(!grids.kd490)grids.kd490=fill(n,function(x,y){return Math.min(1,grids.tsm[y][x]*.5+grids.chl[y][x]*.4);});
+  if(!grids.disagree)grids.disagree=fill(n,function(x,y){return Math.min(1,grids.tsm[y][x]*(1-Math.abs(grids.chl[y][x]-.5)*1.4)*1.3);});
+  return {n:n,grids:grids,channels:have};
+}
+document.getElementById("csvBtn").addEventListener("click",function(){document.getElementById("csvInput").click();});
+document.getElementById("csvInput").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(!f)return;
+  var rd=new FileReader();rd.onload=function(){var p=parseCSV(String(rd.result));
+    if(p){DATA.on=true;DATA.n=p.n;DATA.grids=p.grids;DATA.name=f.name;Lat.rebuild();srcLabel("CSV · "+f.name+" · "+p.n+"×"+p.n+" · "+p.channels.join("/"));}
+    else srcLabel("CSV: no recognizable channel columns (need e.g. CHL, TSM, FLH…)");};
+  rd.readAsText(f);e.target.value="";});
+
+function collectParams(){var o={};IDS.forEach(function(id){o[id]={};Tools[id].params.forEach(function(p){o[id][p.k]=p.v;});});return o;}
+function applyParams(o){IDS.forEach(function(id){if(!o[id])return;Tools[id].params.forEach(function(p){if(o[id][p.k]!=null)p.v=+o[id][p.k];});});renderParams();}
+document.getElementById("saveBtn").addEventListener("click",function(){
+  var proj={app:"capri-phyto-instruments",version:1,seed:SEED,view:view,activeId:activeId,params:collectParams()};
+  var blob=new Blob([JSON.stringify(proj,null,2)],{type:"application/json"});var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");a.href=url;a.download="capri-project-"+new Date().toISOString().slice(0,19).replace(/:/g,"-")+".json";a.click();URL.revokeObjectURL(url);});
+document.getElementById("loadBtn").addEventListener("click",function(){document.getElementById("loadInput").click();});
+document.getElementById("loadInput").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(!f)return;
+  var rd=new FileReader();rd.onload=function(){var o;try{o=JSON.parse(String(rd.result));}catch(err){srcLabel("LOAD: not a valid project file");return;}
+    if(!o||(!o.params&&o.app!=="capri-phyto-instruments"))return;
+    if(o.params)applyParams(o.params);if(o.activeId&&Tools[o.activeId])select(o.activeId,false);if(o.view)setView(o.view);
+    if(typeof o.seed==="number"&&!DATA.on){SEED=o.seed>>>0;rng=mulberry32(SEED);Field.rebuild();Lat.rebuild();document.getElementById("seedlab").textContent="seed 0x"+SEED.toString(16).toUpperCase().slice(0,6);}
+    srcLabel(DATA.on?srcLabelText():"project loaded");};
+  rd.readAsText(f);e.target.value="";});
+function srcLabelText(){return "CSV · "+DATA.name+" · "+DATA.n+"×"+DATA.n;}
 
 /* loop */
 var running=true;
