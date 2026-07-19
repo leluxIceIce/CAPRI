@@ -310,47 +310,56 @@ var Opt={
 
 /* ─────────── 3 · latent_volume (voxel → 3-D reduction) ─────────── */
 var Lat=(function(){
-  var M=1500,cells=[],rotY=.7,rotX=.32,drag=false,lx=0,ly=0,seeds=[];
-  function rebuild(){
-    cells=[];seeds=[[.25,.2,.8],[.7,.3,.4],[.5,.75,.5],[.3,.55,.25]];
-    for(var i=0;i<M;i++){var u=rng(),v=rng();
-      var f=[Field.chl(u,v,0),Field.tsm(u,v,0),Field.flh(u,v,0)]; // 3 informative axes (stand-in for PCA/UMAP of 21ch)
-      // assign regime = nearest seed
-      var best=0,bd=9;for(var s=0;s<seeds.length;s++){var d=Math.pow(f[0]-seeds[s][0],2)+Math.pow(f[1]-seeds[s][1],2)+Math.pow(f[2]-seeds[s][2],2);if(d<bd){bd=d;best=s;}}
-      cells.push({u:u,v:v,reg:best,nov:bd>.16});}
+  var M=1500,cells=[],rotY=.7,rotX=.32,drag=false,lx=0,ly=0;
+  var CHAN=["chl","tsm","flh","aphy","kd490","disagree"];
+  var cache={key:"",asn:[],nov:[]};
+  function rebuild(){cells=[];for(var i=0;i<M;i++)cells.push({u:rng(),v:rng()});cache.key="";}
+  function kmeans(ax,ay,az,K){ // tiny k-means over sampled cells on the 3 chosen channels
+    var pts=cells.map(function(c){return[Field[ax](c.u,c.v,t),Field[ay](c.u,c.v,t),Field[az](c.u,c.v,t)];});
+    var cent=[],i,p,c;for(i=0;i<K;i++)cent.push(pts[(i*97)%pts.length].slice());
+    var asn=new Array(pts.length);
+    for(var it=0;it<6;it++){
+      for(p=0;p<pts.length;p++){var bd=9,bi=0;for(c=0;c<K;c++){var dx=pts[p][0]-cent[c][0],dy=pts[p][1]-cent[c][1],dz=pts[p][2]-cent[c][2],d=dx*dx+dy*dy+dz*dz;if(d<bd){bd=d;bi=c;}}asn[p]=bi;}
+      var sm=[],cn=[];for(c=0;c<K;c++){sm.push([0,0,0]);cn.push(0);}
+      for(p=0;p<pts.length;p++){var a=asn[p];sm[a][0]+=pts[p][0];sm[a][1]+=pts[p][1];sm[a][2]+=pts[p][2];cn[a]++;}
+      for(c=0;c<K;c++)if(cn[c])cent[c]=[sm[c][0]/cn[c],sm[c][1]/cn[c],sm[c][2]/cn[c]];}
+    var nov=new Array(pts.length);
+    for(p=0;p<pts.length;p++){var cc=cent[asn[p]],ex=pts[p][0]-cc[0],ey=pts[p][1]-cc[1],ez=pts[p][2]-cc[2];nov[p]=(ex*ex+ey*ey+ez*ez)>.12;}
+    return {key:ax+"|"+ay+"|"+az+"|"+K,asn:asn,nov:nov};
   }
   rebuild();
   document.addEventListener("mousedown",function(e){if(e.target.closest&&e.target.closest('.pane[data-id="latent"]')){drag=true;lx=e.clientX;ly=e.clientY;}});
   document.addEventListener("mousemove",function(e){if(drag){rotY+=(e.clientX-lx)*.006;rotX+=(e.clientY-ly)*.004;lx=e.clientX;ly=e.clientY;}});
   document.addEventListener("mouseup",function(){drag=false;});
-  var REGC=[[95,227,208],[242,169,59],[154,124,255],[79,208,122]];
+  var REGC=[[95,227,208],[242,169,59],[154,124,255],[79,208,122],[240,120,80],[80,150,255]];
   var E=[[-1,-1,-1,1,-1,-1],[1,-1,-1,1,1,-1],[1,1,-1,-1,1,-1],[-1,1,-1,-1,-1,-1],[-1,-1,1,1,-1,1],[1,-1,1,1,1,1],[1,1,1,-1,1,1],[-1,1,1,-1,-1,1],[-1,-1,-1,-1,-1,1],[1,-1,-1,1,-1,1],[1,1,-1,1,1,1],[-1,1,-1,-1,1,1]];
   return {
     rebuild:rebuild,
-    params:[{k:"orbit",l:"orbit rate",min:0,max:1.5,step:.01,v:.3},{k:"count",l:"cell sample",min:.2,max:1,step:.01,v:.8},{k:"spread",l:"axis spread",min:.6,max:1.6,step:.01,v:1.1},{k:"nov",l:"novelty flag",min:0,max:1,step:.01,v:.9}],
-    note:'<b>Latent Volume</b> — <span class="from">the CFD box scattered a scalar field in 3-D.</span> Here it\'s a true <i>dimensional reduction</i>: every cell\'s 21-channel signature placed in a 3-D embedding (PC1/PC2/PC3 — the 3-D sibling of the app\'s 2-D UMAP). Regime clusters = knots; Mahalanobis outliers = novelty floating free. Drag to orbit.',
+    params:[{k:"orbit",l:"orbit rate",min:0,max:1.5,step:.01,v:.3},{k:"count",l:"cell sample",min:.2,max:1,step:.01,v:.8},{k:"spread",l:"axis spread",min:.6,max:1.6,step:.01,v:1.1},{k:"clusters",l:"clusters (k)",min:2,max:6,step:1,v:4},{k:"nov",l:"novelty flag",min:0,max:1,step:.01,v:.9},{k:"axX",l:"axis X",type:"sel",opts:CHAN,v:"chl"},{k:"axY",l:"axis Y",type:"sel",opts:CHAN,v:"flh"},{k:"axZ",l:"axis Z",type:"sel",opts:CHAN,v:"tsm"}],
+    note:'<b>Latent Volume</b> — <span class="from">the CFD box scattered a scalar field in 3-D.</span> Here each water cell is placed by <i>three channels you pick</i> (axis X/Y/Z) and coloured by its <b>k-means cluster</b> (set k, 2–6). Cells far from every centroid float free as novelty. Drag to orbit; choose axes + k in Parameters.',
     draw:function(g,w,h,P,budget){
       g.fillStyle="#000";g.fillRect(0,0,w,h);
       if(!drag)rotY+=.0025*P.orbit;
+      var ax=P.axX,ay=P.axY,az=P.axZ,K=Math.round(P.clusters);
+      var key=ax+"|"+ay+"|"+az+"|"+K;if(key!==cache.key)cache=kmeans(ax,ay,az,K);
       var cx=w*.52,cy=h*.52,sc=Math.min(w,h)*.32*P.spread,cs=Math.cos(rotY),sn=Math.sin(rotY),c2=Math.cos(rotX),s2=Math.sin(rotX);
       function proj(x,y,z){var X=x*cs+z*sn,Z=-x*sn+z*cs,Y=y*c2-Z*s2;Z=y*s2+Z*c2;var d=1/(2.6-Z*.5);return[cx+X*sc*d,cy-Y*sc*d,Z];}
       E.forEach(function(e){var a=proj(e[0],e[1],e[2]),b=proj(e[3],e[4],e[5]),back=(a[2]+b[2])/2>.2;
         g.strokeStyle=back?"rgba(255,255,255,.22)":"rgba(255,255,255,.7)";g.setLineDash(back?[2,4]:[]);g.lineWidth=1;
         g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke();});g.setLineDash([]);
       var n=Math.round(cells.length*P.count*budget);
-      for(var i=0;i<n;i++){var C=cells[i],f0=Field.chl(C.u,C.v,t),f1=Field.tsm(C.u,C.v,t),f2=Field.flh(C.u,C.v,t);
-        var q=proj(f0*2-1,f2*2-1,f1*2-1);
-        if(C.nov&&P.nov>.3){g.strokeStyle="rgba(255,90,60,"+(.8*P.nov)+")";g.lineWidth=1;g.beginPath();g.arc(q[0],q[1],4,0,6.28);g.stroke();
+      for(var i=0;i<n;i++){var C=cells[i],fx=Field[ax](C.u,C.v,t),fy=Field[ay](C.u,C.v,t),fz=Field[az](C.u,C.v,t);
+        var q=proj(fx*2-1,fy*2-1,fz*2-1);
+        if(cache.nov[i]&&P.nov>.3){g.strokeStyle="rgba(255,90,60,"+(.8*P.nov)+")";g.lineWidth=1;g.beginPath();g.arc(q[0],q[1],4,0,6.28);g.stroke();
           g.fillStyle="rgba(255,120,90,.95)";g.fillRect(q[0]-1,q[1]-1,2,2);continue;}
-        var c=REGC[C.reg];g.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+",.8)";g.fillRect(q[0],q[1],1.6,1.6);}
-      // axes labels + regime legend
+        var c=REGC[cache.asn[i]%REGC.length];g.fillStyle="rgba("+c[0]+","+c[1]+","+c[2]+",.8)";g.fillRect(q[0],q[1],1.6,1.6);}
+      // axis labels (the channels you chose) + cluster legend
       g.fillStyle="rgba(255,255,255,.6)";g.font="7px "+FF;
-      g.fillText("PC1·CHL",cx+sc*.5,cy+sc*.62);g.fillText("PC2·FLH",cx-sc*.7,cy-sc*.5);g.fillText("PC3·TSM",cx+sc*.55,cy-sc*.2);
-      var names=["clear","turbid","bloom·active","bloom·senesc"];
-      for(var k=0;k<4;k++){var cc=REGC[k];g.fillStyle="rgb("+cc[0]+","+cc[1]+","+cc[2]+")";g.fillRect(8,10+k*11,7,7);
-        g.fillStyle="rgba(255,255,255,.75)";g.fillText(names[k],19,16+k*11);}
-      g.fillStyle="rgba(255,120,90,.9)";g.beginPath();g.arc(11,10+4*11+3,3,0,6.28);g.stroke();g.fillText("novelty (Mahalanobis)",19,16+4*11);
-      g.fillStyle="rgba(255,255,255,.4)";g.textAlign="right";g.fillText("21-D → 3-D embedding · variance 0.71",w-8,h-8);g.textAlign="left";
+      g.fillText("X·"+ax.toUpperCase(),cx+sc*.5,cy+sc*.62);g.fillText("Y·"+ay.toUpperCase(),cx-sc*.7,cy-sc*.5);g.fillText("Z·"+az.toUpperCase(),cx+sc*.55,cy-sc*.2);
+      for(var kk=0;kk<K;kk++){var lc=REGC[kk%REGC.length];g.fillStyle="rgb("+lc[0]+","+lc[1]+","+lc[2]+")";g.fillRect(8,10+kk*11,7,7);
+        g.fillStyle="rgba(255,255,255,.75)";g.fillText("cluster "+(kk+1),19,16+kk*11);}
+      g.fillStyle="rgba(255,120,90,.9)";g.beginPath();g.arc(11,10+K*11+3,3,0,6.28);g.stroke();g.fillText("novelty (far from centroid)",19,16+K*11);
+      g.fillStyle="rgba(255,255,255,.4)";g.textAlign="right";g.fillText(K+"-means · axes "+ax+"·"+ay+"·"+az,w-8,h-8);g.textAlign="left";
     }};
 })();
 
@@ -417,11 +426,21 @@ var Dens={
   }};
 
 /* ─────────── 6 · territorial_intel (Po map) ─────────── */
+function detectHotspots(n){ // top-n local maxima of CHL·FLH risk, non-max suppressed → always on real signal
+  if(n<=0)return[];
+  var G=22,d=1/(G-1),best=[],gx,gy;
+  for(gy=1;gy<G-1;gy++)for(gx=1;gx<G-1;gx++){var u=gx*d,v=gy*d,s=Field.chl(u,v,t)*Field.flh(u,v,t);
+    if(s<.1)continue;
+    if(s>=Field.chl(u-d,v,t)*Field.flh(u-d,v,t)&&s>=Field.chl(u+d,v,t)*Field.flh(u+d,v,t)&&s>=Field.chl(u,v-d,t)*Field.flh(u,v-d,t)&&s>=Field.chl(u,v+d,t)*Field.flh(u,v+d,t))best.push([u,v,s]);}
+  best.sort(function(a,b){return b[2]-a[2];});
+  var out=[],i,j;for(i=0;i<best.length&&out.length<n;i++){var ok=true;for(j=0;j<out.length;j++)if(Math.hypot(best[i][0]-out[j][0],best[i][1]-out[j][1])<.2){ok=false;break;}if(ok)out.push(best[i]);}
+  return out;
+}
 var Intel={
-  params:[{k:"grat",l:"graticule",min:0,max:1,step:.01,v:.6},{k:"layers",l:"theme layers",min:0,max:1,step:.01,v:1},{k:"thumbs",l:"hotspot strip",min:0,max:1,step:1,v:1},{k:"dist",l:"distances",min:0,max:1,step:1,v:1}],
-  note:'<b>Territorial Intel</b> — <span class="from">the Po map registered themed layers on a coordinate grid with a thumbnail strip of sites + inter-site distances.</span> Here: real lat/lon graticule, themed layers (CHL fill · TSM hatch · front network · bloom-risk hex), a hotspot thumbnail strip with stats, and inter-hotspot distances.',
-  hotspots:[[.32,.36],[.66,.63],[.84,.3]],
+  params:[{k:"grat",l:"graticule",min:0,max:1,step:.01,v:.6},{k:"hotspots",l:"hotspots",min:0,max:8,step:1,v:4},{k:"layers",l:"theme layers",min:0,max:1,step:.01,v:1},{k:"thumbs",l:"hotspot strip",min:0,max:1,step:1,v:1},{k:"dist",l:"distances",min:0,max:1,step:1,v:1}],
+  note:'<b>Territorial Intel</b> — <span class="from">the Po map registered themed layers on a coordinate grid with a thumbnail strip of sites + inter-site distances.</span> Here: real lat/lon graticule, themed layers (CHL fill · TSM hatch · front network · bloom-risk hex), a data-driven hotspot strip (peaks of real CHL·FLH signal), and inter-hotspot distances.',
   draw:function(g,w,h,P){
+    var spots=detectHotspots(Math.round(P.hotspots));
     var x0=w*0.19; // left strip width
     g.fillStyle="#0a0d12";g.fillRect(0,0,w,h);
     // master field (CHL fill, dim)
@@ -441,20 +460,20 @@ var Intel={
       for(var i=1;i<7;i++){var gx=x0+(w-x0)*i/7;g.beginPath();g.moveTo(gx,0);g.lineTo(gx,h);g.stroke();g.fillText((-70.6+i*.02).toFixed(2)+"°W",gx+2,10);}
       for(i=1;i<6;i++){var gy=h*i/6;g.beginPath();g.moveTo(x0,gy);g.lineTo(w,gy);g.stroke();g.fillText((-33.4-i*.02).toFixed(2)+"°S",x0+2,gy-2);}g.setLineDash([]);}
     // hotspots + distances
-    var HS=this.hotspots.map(function(p){return[x0+(w-x0)*p[0],h*p[1]];});
+    var HS=spots.map(function(p){return[x0+(w-x0)*p[0],h*p[1]];});
     if(P.dist>0){g.strokeStyle="rgba(255,255,255,.4)";g.setLineDash([1,3]);g.font="7px "+FF;g.fillStyle="rgba(255,255,255,.55)";
       for(i=0;i<HS.length-1;i++){g.beginPath();g.moveTo(HS[i][0],HS[i][1]);g.lineTo(HS[i+1][0],HS[i+1][1]);g.stroke();
-        var mx=(HS[i][0]+HS[i+1][0])/2,my=(HS[i][1]+HS[i+1][1])/2;g.fillText((4+i*2.3).toFixed(1)+" km",mx,my);}g.setLineDash([]);}
+        var mx=(HS[i][0]+HS[i+1][0])/2,my=(HS[i][1]+HS[i+1][1])/2;g.fillText((Math.hypot(spots[i+1][0]-spots[i][0],spots[i+1][1]-spots[i][1])*12).toFixed(1)+" km",mx,my);}g.setLineDash([]);}
     HS.forEach(function(p,i){g.strokeStyle="rgba(240,120,80,.9)";g.lineWidth=1;g.strokeRect(p[0]-7,p[1]-7,14,14);
       g.fillStyle="rgba(240,120,80,.9)";g.font="7px "+FF;g.fillText("H"+(i+1),p[0]+9,p[1]-6);});
     // left thumbnail strip (crops of hotspot neighbourhoods)
-    if(P.thumbs>0){var th=h/3.2;
-      for(i=0;i<3;i++){var ty=6+i*(th+4),tw=x0-12;g.fillStyle="#05070a";g.fillRect(6,ty,tw,th);
-        var hu=this.hotspots[i][0],hv=this.hotspots[i][1];
+    if(P.thumbs>0&&spots.length){var nS=spots.length,th=(h-12)/nS-4;
+      for(i=0;i<nS;i++){var ty=6+i*(th+4),tw=x0-12;g.fillStyle="#05070a";g.fillRect(6,ty,tw,th);
+        var hu=spots[i][0],hv=spots[i][1];
         for(var yy=0;yy<th;yy+=3)for(var xx=0;xx<tw;xx+=3){var su=hu-.09+xx/tw*.18,sv=hv-.09+yy/th*.18;var cc=chlCol(Field.chl(su,sv,t));g.fillStyle="rgb("+cc[0]+","+cc[1]+","+cc[2]+")";g.fillRect(6+xx,ty+yy,3,3);}
         g.strokeStyle="rgba(240,120,80,.8)";g.strokeRect(6,ty,tw,th);
-        g.fillStyle="rgba(255,255,255,.85)";g.font="7px "+FF;g.fillText("HOTSPOT "+(i+1),9,ty+10);
-        g.fillStyle="rgba(255,255,255,.55)";g.fillText("CHL "+(Field.chl(hu,hv,t)).toFixed(2)+" · FLH "+(Field.flh(hu,hv,t)).toFixed(2),9,ty+th-5);}}
+        g.fillStyle="rgba(255,255,255,.85)";g.font="7px "+FF;g.fillText("H"+(i+1),9,ty+10);
+        g.fillStyle="rgba(255,255,255,.55)";g.fillText("CHL "+(Field.chl(hu,hv,t)).toFixed(2)+" FLH "+(Field.flh(hu,hv,t)).toFixed(2),9,ty+th-5);}}
     // legend
     g.fillStyle="rgba(255,255,255,.55)";g.font="7px "+FF;g.fillText("▬ CHL field   ╱ TSM turbidity   ~ front   ⬡ bloom-risk   ▢ hotspot",x0+4,h-6);
   }};
@@ -466,6 +485,9 @@ var pOp=document.getElementById("p-op"),pRows=document.getElementById("p-rows"),
 function P(id){var o={};Tools[id].params.forEach(function(p){o[p.k]=p.v;});return o;}
 function renderParams(){var tool=Tools[activeId];pOp.textContent=document.querySelector('.pane[data-id="'+activeId+'"] .t').textContent;pNote.innerHTML=tool.note;pRows.innerHTML="";
   tool.params.forEach(function(p){var row=document.createElement("div");row.className="prow";
+    if(p.type==="sel"){var opts=p.opts.map(function(o){return '<option value="'+o+'"'+(o===p.v?' selected':'')+'>'+o+'</option>';}).join('');
+      row.innerHTML='<label>'+p.l+'</label><select aria-label="'+p.l+'" style="width:100%;height:16px;background:#10131b;color:#cdd6e6;border:1px solid #2a3348;border-radius:3px;font-size:9px;font-family:inherit">'+opts+'</select><span class="v"></span>';
+      var sel=row.querySelector("select");sel.addEventListener("change",function(){p.v=sel.value;});pRows.appendChild(row);return;}
     row.innerHTML='<label>'+p.l+'</label><input type="range" min="'+p.min+'" max="'+p.max+'" step="'+p.step+'" value="'+p.v+'" aria-label="'+p.l+'"><span class="v">'+(+p.v).toFixed(2)+'</span>';
     var inp=row.querySelector("input"),vv=row.querySelector(".v");inp.addEventListener("input",function(){p.v=+inp.value;vv.textContent=(+inp.value).toFixed(2);});pRows.appendChild(row);});}
 
@@ -531,7 +553,7 @@ document.getElementById("csvInput").addEventListener("change",function(e){var f=
   rd.readAsText(f);e.target.value="";});
 
 function collectParams(){var o={};IDS.forEach(function(id){o[id]={};Tools[id].params.forEach(function(p){o[id][p.k]=p.v;});});return o;}
-function applyParams(o){IDS.forEach(function(id){if(!o[id])return;Tools[id].params.forEach(function(p){if(o[id][p.k]!=null)p.v=+o[id][p.k];});});renderParams();}
+function applyParams(o){IDS.forEach(function(id){if(!o[id])return;Tools[id].params.forEach(function(p){if(o[id][p.k]!=null)p.v=p.type==="sel"?o[id][p.k]:+o[id][p.k];});});renderParams();}
 document.getElementById("saveBtn").addEventListener("click",function(){
   var proj={app:"capri-phyto-instruments",version:1,seed:SEED,view:view,activeId:activeId,params:collectParams()};
   var blob=new Blob([JSON.stringify(proj,null,2)],{type:"application/json"});var url=URL.createObjectURL(blob);
