@@ -30,6 +30,15 @@ Grab the latest build from **[Releases](https://github.com/leluxIceIce/CAPRI/rel
   It's an **unsigned beta**, so on first launch right-click the app → **Open** → **Open**.
 - **`capri-source-….zip`** — the full source for that release, to read or build yourself.
 
+### No-install option — `bench/phyto-instruments.html`
+
+Double-click it. One self-contained file: no terminal, no server, no internet, no install.
+Six instruments, the real datasets baked in, and drag-in support for your own CSVs (parsed
+locally — nothing is uploaded). See [`bench/README.md`](bench/README.md).
+
+> `capri/eef_viewer.html` is the **legacy** viewer. It requires `python capri/server.py`
+> running *and* internet access for its CDN scripts. Use `bench/` instead.
+
 ## What it is
 
 A satellite scene carries 21 (or more) Sentinel-3 OLCI channels per pixel — raw
