@@ -7,6 +7,10 @@ browser via the CSV button. Run this only to change which datasets ship pre-load
 
     python3 prep.py                       # reads ../capri/datasets/*/source.csv
     python3 prep.py path/to/a.csv b.csv   # or explicit files
+    python3 prep.py --no-inline           # write data.js only, leave the HTML untouched
+
+By default the datasets are baked straight INTO phyto-instruments.html, so the HTML stays
+a single self-contained file that needs no sibling files and makes no network requests.
 
 Standard library only — no pandas, no numpy, no pip install.
 Mirrors the binning in phyto-instruments.html and the column aliases in capri/tiler.py.
@@ -249,7 +253,7 @@ def inline_into_html(payload):
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    inline = "--inline" in sys.argv[1:]
+    inline = "--no-inline" not in sys.argv[1:]   # inlining is the default: one self-contained file
     if args:
         files = args
     else:

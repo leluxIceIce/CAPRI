@@ -65,13 +65,14 @@ Only needed to change which datasets ship pre-loaded. Standard library only; no 
 no numpy, no `pip install`.
 
 ```bash
-python3 prep.py              # bake ../capri/datasets/*/source.csv -> data.js
-python3 prep.py --inline     # ...and inline them into the HTML (single-file build)
+python3 prep.py              # bake ../capri/datasets/*/source.csv into the HTML
 python3 prep.py a.csv b.csv  # bake specific files
+python3 prep.py --no-inline  # write data.js only, leave the HTML untouched
 ```
 
-`data.js` beside the HTML also works on its own (folder mode) — a `<script>` tag loads
-from `file://` where `fetch` is blocked.
+Datasets are baked **into** `phyto-instruments.html` by default, so it stays one
+self-contained file that needs no sibling files and makes **no network requests at all**.
+`data.js` is just a by-product you can ignore.
 
 ## Instruments
 
