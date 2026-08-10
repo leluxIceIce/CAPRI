@@ -122,14 +122,24 @@
     <span class="fr mono" id="frame">FRAME_0000</span>
     <input type="range" id="scrub" min="0" max="2400" value="0" step="1" aria-label="timeline">
     <button id="reseed" title="re-seed the field" style="width:auto;padding:0 10px;font-family:var(--mono);font-size:9px;">RESEED</button>
-    <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
-    <input type="file" id="loadInput" accept=".json,application/json" hidden>
+    <!-- deliberately no accept="" filter: OS dialogs grey out files whose reported MIME
+         type doesn't match, which hides the very CSVs people are trying to pick.
+         Content is validated on read instead, and anything unusable is explained in LOG. -->
+    <input type="file" id="csvInput" hidden>
+    <input type="file" id="loadInput" hidden>
     <button id="csvBtn" title="Upload a CSV of channel columns from your computer" style="width:auto;padding:0 10px;font-family:var(--mono);font-size:9px;">CSV&nbsp;↑</button>
     <select id="dsPick" title="Bundled datasets (baked by prep.py)" style="height:22px;background:var(--panel-2);color:var(--ink-2);border:1px solid var(--edge);border-radius:3px;font-family:var(--mono);font-size:9px;max-width:190px;"><option value="">— synthetic —</option></select>
     <button id="logBtn" title="Ingest report: what was read, bound, skipped" style="width:auto;padding:0 10px;font-family:var(--mono);font-size:9px;">LOG</button>
     <button id="saveBtn" title="Download this project (view + parameters) as JSON" style="width:auto;padding:0 10px;font-family:var(--mono);font-size:9px;">SAVE&nbsp;↓</button>
     <button id="loadBtn" title="Load a saved project JSON from your computer" style="width:auto;padding:0 10px;font-family:var(--mono);font-size:9px;">LOAD&nbsp;↑</button>
     <span class="seed mono" id="srclab">synthetic</span>
+  </div>
+</div>
+
+<div id="dropOverlay" hidden style="position:fixed;inset:0;z-index:60;background:rgba(4,7,12,.86);border:2px dashed var(--sel);display:flex;align-items:center;justify-content:center;pointer-events:none;">
+  <div style="text-align:center;">
+    <div style="font-size:15px;letter-spacing:.22em;color:var(--sel);font-family:var(--mono);">DROP TO LOAD</div>
+    <div style="font-size:10px;color:var(--ink-2);margin-top:8px;font-family:var(--mono);">CSV measurements · or a saved project JSON · read locally, never uploaded</div>
   </div>
 </div>
 
@@ -710,15 +720,50 @@ function parseCSV(text){
   sel.addEventListener("change",function(){
     if(sel.value===""){DATA.on=false;DATA.cover=null;DATA.id="";hotCache.key="";Lat.rebuild();srcLabel("synthetic");return;}
     useData(B[+sel.value],B[+sel.value].name);});})();
-document.getElementById("csvBtn").addEventListener("click",function(){document.getElementById("csvInput").click();});
-document.getElementById("csvInput").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(!f)return;
-  var rd=new FileReader();rd.onload=function(){var p=parseCSV(String(rd.result));
+function readProjectText(txt,name){
+  var o;try{o=JSON.parse(txt);}catch(err){
+    writeLog(name,["FATAL: this looked like JSON but would not parse.",String(err)]);
+    srcLabel("LOAD: not a valid project file — press LOG");return;}
+  if(!o||(!o.params&&o.app!=="capri-phyto-instruments")){
+    writeLog(name,["Not a CAPRI project file (no 'params', and 'app' is not capri-phyto-instruments).",
+      "If this was meant to be measurement data, export it as CSV — JSON grids are not read as data."]);
+    srcLabel("LOAD: not a CAPRI project — press LOG");return;}
+  if(o.params)applyParams(o.params);if(o.activeId&&Tools[o.activeId])select(o.activeId,false);if(o.view)setView(o.view);
+  if(typeof o.seed==="number"&&!DATA.on){SEED=o.seed>>>0;rng=mulberry32(SEED);Field.rebuild();Lat.rebuild();document.getElementById("seedlab").textContent="seed 0x"+SEED.toString(16).toUpperCase().slice(0,6);}
+  writeLog(name,["Project file loaded: parameters and view restored.",
+    "(this was a saved project, not measurement data — the field is unchanged)"]);
+  srcLabel(DATA.on?srcLabelText():"project loaded");}
+
+/* read a dropped/picked table file. routing is by CONTENT, not by MIME type or extension,
+   so .txt/.dat/.tsv exports and mislabelled files all work. */
+function readTable(f){
+  var rd=new FileReader();
+  rd.onerror=function(){writeLog(f.name,["FATAL: the browser could not read this file.",
+    "If it is inside a .zip or on a network drive, copy it to your desktop and retry."]);
+    srcLabel("could not read "+f.name+" — press LOG");document.getElementById("logPanel").hidden=false;};
+  rd.onload=function(){var txt=String(rd.result);
+    if(/^\s*[\{\[]/.test(txt)){readProjectText(txt,f.name);return;}   // actually a project JSON
+    var p=parseCSV(txt);
     if(p&&!p.fatal){useData(p,f.name);}
     else{                                                     // failed: still report why, in detail
-      writeLog(f.name,(p&&p.diag)||["FATAL: file had fewer than 2 lines, or could not be read as text."]);
-      srcLabel("CSV rejected — press LOG for the reason");
+      writeLog(f.name,(p&&p.diag)||["FATAL: file had fewer than 2 lines, or could not be read as text.",
+        "First 120 characters seen: "+JSON.stringify(txt.slice(0,120))]);
+      srcLabel("rejected "+f.name+" — press LOG for the reason");
       document.getElementById("logPanel").hidden=false;}};
-  rd.readAsText(f);e.target.value="";});
+  rd.readAsText(f);}
+document.getElementById("csvBtn").addEventListener("click",function(){document.getElementById("csvInput").click();});
+document.getElementById("csvInput").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(f)readTable(f);e.target.value="";});
+
+/* drag-and-drop anywhere on the window — the reliable path when an OS file dialog misbehaves */
+(function(){var ov=document.getElementById("dropOverlay"),depth=0;
+  function show(){ov.hidden=false;}function hide(){depth=0;ov.hidden=true;}
+  window.addEventListener("dragenter",function(e){e.preventDefault();depth++;show();});
+  window.addEventListener("dragover",function(e){e.preventDefault();e.dataTransfer.dropEffect="copy";show();});
+  window.addEventListener("dragleave",function(e){e.preventDefault();if(--depth<=0)hide();});
+  window.addEventListener("drop",function(e){e.preventDefault();hide();
+    var dt=e.dataTransfer,f=dt&&dt.files&&dt.files[0];
+    if(!f){writeLog("(drop)",["Nothing usable was dropped — drag an actual file from your file manager."]);return;}
+    readTable(f);});})();
 
 function collectParams(){var o={};IDS.forEach(function(id){o[id]={};Tools[id].params.forEach(function(p){o[id][p.k]=p.v;});});return o;}
 function applyParams(o){IDS.forEach(function(id){if(!o[id])return;Tools[id].params.forEach(function(p){if(o[id][p.k]!=null)p.v=p.type==="sel"?o[id][p.k]:+o[id][p.k];});});renderParams();}
@@ -727,13 +772,7 @@ document.getElementById("saveBtn").addEventListener("click",function(){
   var blob=new Blob([JSON.stringify(proj,null,2)],{type:"application/json"});var url=URL.createObjectURL(blob);
   var a=document.createElement("a");a.href=url;a.download="capri-project-"+new Date().toISOString().slice(0,19).replace(/:/g,"-")+".json";a.click();URL.revokeObjectURL(url);});
 document.getElementById("loadBtn").addEventListener("click",function(){document.getElementById("loadInput").click();});
-document.getElementById("loadInput").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(!f)return;
-  var rd=new FileReader();rd.onload=function(){var o;try{o=JSON.parse(String(rd.result));}catch(err){srcLabel("LOAD: not a valid project file");return;}
-    if(!o||(!o.params&&o.app!=="capri-phyto-instruments"))return;
-    if(o.params)applyParams(o.params);if(o.activeId&&Tools[o.activeId])select(o.activeId,false);if(o.view)setView(o.view);
-    if(typeof o.seed==="number"&&!DATA.on){SEED=o.seed>>>0;rng=mulberry32(SEED);Field.rebuild();Lat.rebuild();document.getElementById("seedlab").textContent="seed 0x"+SEED.toString(16).toUpperCase().slice(0,6);}
-    srcLabel(DATA.on?srcLabelText():"project loaded");};
-  rd.readAsText(f);e.target.value="";});
+document.getElementById("loadInput").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(f)readTable(f);e.target.value="";});
 function srcLabelText(){return "CSV · "+DATA.name+" · "+DATA.n+"×"+DATA.n;}
 
 /* loop */

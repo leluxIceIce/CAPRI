@@ -13,8 +13,18 @@ from the dropdown next to `CSV ↑`.
 
 ## Using your own data
 
-Press `CSV ↑` and choose any CSV. It is parsed **in the browser** — nothing is uploaded
+**Drag the file anywhere onto the window** — that is the most reliable route. Or press
+`CSV ↑` and pick it. Either way it is parsed **in the browser**; nothing is uploaded
 anywhere. Then press `LOG` to see exactly what happened.
+
+The file inputs deliberately carry **no `accept` filter**. An `accept` list makes the OS
+dialog grey out any file whose reported MIME type doesn't match — which on many systems
+hides the very CSVs you are trying to open. Files are validated by **content** instead, so
+`.csv`, `.txt`, `.tsv`, `.dat` and extension-less exports all work, and anything genuinely
+unusable is explained in `LOG` rather than silently blocked.
+
+Dropping a saved project `.json` restores parameters instead — routing is by content, not
+by file name.
 
 ### What the CSV needs
 
